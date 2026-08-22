@@ -55,6 +55,8 @@ Panel {
   property string editingRemoteId: ""
   property int focusAttemptsRemaining: 0
   property bool focusPrimed: false
+  property int cursorReturnX: -1
+  property int cursorReturnY: -1
   property bool internalFocusTransfer: false
   property bool applyingPersistedSidebarState: false
 
@@ -608,6 +610,16 @@ Panel {
     focusAcquireTimer.restart()
   }
 
+  function focusSidebarFrom(x, y) {
+    var returnX = Number(x)
+    var returnY = Number(y)
+    if (!isNaN(returnX) && !isNaN(returnY)) {
+      cursorReturnX = Math.round(returnX)
+      cursorReturnY = Math.round(returnY)
+    }
+    focusSidebar()
+  }
+
   function releaseSidebarFocus(force) {
     if (!opened) return
     // Moving the pointer into the layer surface can emit a delayed toplevel
@@ -617,10 +629,23 @@ Panel {
     focusPrimeTimer.stop()
     focusAttemptsRemaining = 0
     focusPrimed = false
+    cursorReturnX = -1
+    cursorReturnY = -1
     keyboardFocusRequested = false
     searchField.focus = false
     if (searchText === "") searchOpen = false
     keyCatcher.focus = false
+  }
+
+  function escapeSidebarFocus() {
+    var returnX = cursorReturnX
+    var returnY = cursorReturnY
+    releaseSidebarFocus(true)
+    if (returnX < 0 || returnY < 0) return
+    Quickshell.execDetached([
+      "hyprctl", "dispatch",
+      "hl.dsp.cursor.move({ x = " + returnX + ", y = " + returnY + " })"
+    ])
   }
 
   onOpenedChanged: {
@@ -634,6 +659,8 @@ Panel {
     } else {
       keyboardFocusRequested = false
       focusPrimed = false
+      cursorReturnX = -1
+      cursorReturnY = -1
       setSearchText("")
       searchOpen = false
       helpOpen = false
@@ -722,6 +749,7 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function focus(): void { root.focusSidebar() }
+    function focusFrom(x: string, y: string): void { root.focusSidebarFrom(x, y) }
     function blur(): void { root.releaseSidebarFocus(true) }
     function help(): void { root.helpOpen = !root.helpOpen }
     function addRemote(): void { root.openRemoteSetup() }
@@ -939,7 +967,7 @@ Panel {
         else if (root.remoteSetupOpen) root.closeRemoteSetup()
         else if (root.helpOpen) root.helpOpen = false
         else if (root.searchText !== "" || root.searchOpen) root.cancelSearch()
-        else root.releaseSidebarFocus(true)
+        else root.escapeSidebarFocus()
       }
       onDeleteRequested: {
         // PanelKeyCatcher reserves x for destructive actions. Archiving uses y

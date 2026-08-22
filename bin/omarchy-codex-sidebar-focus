@@ -8,6 +8,13 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # Resolve the active terminal while it still owns the toplevel focus. A Codex
 # process may hold internal subagent rollouts in addition to the visible thread.
 active_thread_id="$("${script_dir}/omarchy-codex-active-thread" 2>/dev/null || true)"
+cursor_origin="$(hyprctl cursorpos 2>/dev/null || true)"
+origin_x=""
+origin_y=""
+if [[ "$cursor_origin" =~ ^[[:space:]]*(-?[0-9]+)[[:space:]]*,[[:space:]]*(-?[0-9]+)[[:space:]]*$ ]]; then
+  origin_x="${BASH_REMATCH[1]}"
+  origin_y="${BASH_REMATCH[2]}"
+fi
 
 # Mapping the sidebar does not take keyboard focus by itself. This lets us
 # locate the current thread while the Codex terminal is still the active app.
@@ -58,4 +65,8 @@ fi
 
 # Acquire keyboard focus only after the cursor is inside the active row, so
 # input:follow_mouse cannot immediately return focus to the previous window.
-omarchy-shell -q "$target" focus >/dev/null
+if [[ -n "$origin_x" && -n "$origin_y" ]]; then
+  omarchy-shell -q "$target" focusFrom "$origin_x" "$origin_y" >/dev/null
+else
+  omarchy-shell -q "$target" focus >/dev/null
+fi
