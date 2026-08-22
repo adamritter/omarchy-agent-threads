@@ -31,9 +31,13 @@ Item {
       panel.showAllGroup(row.groupKind, row.path, row.remoteId)
     else if (row.kind === "remote") panel.toggleRemote(row.remoteId)
     else if (row.kind === "project") panel.toggleProject(row.path, row.remoteId)
-    else if (row.remoteId)
+    else if (row.remoteId) {
+      panel.releaseSidebarFocus(true)
       service.openRemoteThread(row.remoteId, row.thread, row.path)
-    else service.openThread(row.thread, row.path)
+    } else {
+      panel.releaseSidebarFocus(true)
+      service.openThread(row.thread, row.path)
+    }
   }
 
   function newSelectedThread() {

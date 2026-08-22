@@ -23,7 +23,7 @@ Panel {
   readonly property string workPath: homePath + "/Work"
   readonly property string codexScratchRoot: homePath + "/Documents/Codex/"
   readonly property int sidebarContentWidth: Style.space(380)
-  readonly property int sidebarReserveWidth: sidebarContentWidth + Style.gapsOut * 2
+  readonly property int sidebarReserveWidth: sidebarContentWidth + Style.gapsOut
   readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
     || remoteSetup.inputFocused
   readonly property bool sidebarFocused: keyboardFocusRequested && sidebarItemFocused
@@ -876,12 +876,12 @@ Panel {
       id: card
       anchors.fill: parent
       anchors.leftMargin: Style.gapsOut
-      anchors.rightMargin: Style.gapsOut
+      anchors.rightMargin: 0
       color: Color.popups.background
       borderSpec: root.sidebarFocused
         ? Border.surfaceSpec("popups", "border", Color.popups.border,
                              Math.max(1, Style.space(2)))
-        : Border.flat("transparent", Math.max(1, Style.space(2)))
+        : Border.none()
       padding: Style.spacing.popupPadding
       radius: Style.cornerRadius
 
