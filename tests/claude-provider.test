@@ -12,8 +12,12 @@ session_id="11111111-2222-4333-8444-555555555555"
 transcript="$project_dir/${session_id}.jsonl"
 helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/bin/omarchy-agent-provider-query"
 
-mkdir -p -- "$project_dir" "$work_dir/.claude/agents" "$fake_home/.claude/agents"
-printf '%s\n' '{"model":"opus","effortLevel":"xhigh","agent":"global-reviewer"}' \
+mkdir -p -- "$project_dir" "$work_dir/.claude/agents" "$fake_home/.claude/agents" \
+  "$state_home/omarchy"
+printf '%s\n' \
+  '{"primary":{"usedPercent":12,"resetsAt":1999999999,"windowDurationMins":300},"secondary":{"usedPercent":34,"resetsAt":1999999999,"windowDurationMins":10080},"updatedAt":1787434000000}' \
+  > "$state_home/omarchy/claude-usage.json"
+printf '%s\n' '{"model":"claude-custom-default","effortLevel":"xhigh","agent":"global-reviewer"}' \
   > "$fake_home/.claude/settings.json"
 printf '%s\n' \
   '{"additionalModelOptionsCache":[{"value":"claude-fable-test","label":"Fable Test","description":"Fixture model"}]}' \
@@ -42,13 +46,18 @@ run_helper() {
 
 snapshot="$(run_helper snapshot)"
 jq -e --arg cwd "$work_dir" '
-  .defaultModel == "opus"
+  .defaultModel == "claude-custom-default"
   and .defaultEffort == "xhigh"
   and .defaultAgent == "global-reviewer"
   and .available == false
+  and .rateLimits.primary.usedPercent == 12
+  and .rateLimits.secondary.usedPercent == 34
   and (.models | any(.id == "claude-fable-test"))
+  and (.models | any(.id == "claude-custom-default"))
   and (.threads | length == 1)
   and .threads[0].status.type == "active"
+  and .threads[0].lifecycle == "busy"
+  and .threads[0].completionToken == ""
   and .threads[0].name == "Implement the provider"
   and .projectDefaults[$cwd].model == "sonnet"
   and .projectDefaults[$cwd].effort == "medium"
@@ -69,6 +78,8 @@ jq -cn --arg sessionId "$session_id" --arg cwd "$work_dir" '{
 snapshot="$(run_helper snapshot)"
 jq -e '
   .threads[0].status.type == "idle"
+  and .threads[0].lifecycle == "done"
+  and (.threads[0].completionToken | startswith("transcript:"))
   and .threads[0].lastModel == "claude-opus-test"
   and .threads[0].lastEffort == "xhigh"
 ' <<<"$snapshot" >/dev/null
@@ -78,5 +89,26 @@ run_helper snapshot | jq -e '.threads[0].isPinned == true' >/dev/null
 
 run_helper archive "$session_id" >/dev/null
 run_helper snapshot | jq -e '.threads | length == 0' >/dev/null
+
+auth_fixture="$test_root/authenticated"
+fake_claude="$test_root/claude"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'if [[ "${1:-}" == "--version" ]]; then' \
+  '  printf "%s\n" "2.1.999 (Claude Code)"' \
+  'elif [[ "${1:-}" == "auth" && "${2:-}" == "status" ]]; then' \
+  '  [[ -e "$CLAUDE_AUTH_FIXTURE" ]] && logged_in=true || logged_in=false' \
+  '  printf "{\"loggedIn\":%s}\n" "$logged_in"' \
+  'fi' > "$fake_claude"
+chmod +x "$fake_claude"
+export CLAUDE_AUTH_FIXTURE="$auth_fixture"
+OMARCHY_AGENT_PROVIDER_HOME="$fake_home" OMARCHY_CLAUDE_COMMAND="$fake_claude" \
+  XDG_STATE_HOME="$state_home" node "$helper" claude snapshot \
+  | jq -e '.available == true and .authenticated == false' >/dev/null
+touch "$auth_fixture"
+OMARCHY_AGENT_PROVIDER_HOME="$fake_home" OMARCHY_CLAUDE_COMMAND="$fake_claude" \
+  XDG_STATE_HOME="$state_home" node "$helper" claude snapshot \
+  | jq -e '.available == true and .authenticated == true' >/dev/null
 
 printf '%s\n' "claude-provider tests passed"

@@ -6,8 +6,8 @@ Item {
   id: root
 
   required property var controller
-  property bool configLoaded: false
-  property var remoteConfig: ({})
+  readonly property alias configLoaded: configStore.loaded
+  readonly property alias remoteConfig: configStore.config
   property var remoteHosts: []
   property var queryQueue: []
   property string queryHostId: ""
@@ -21,6 +21,15 @@ Item {
   property string archiveConfirmationHostId: ""
   property string archiveConfirmationThreadId: ""
   property string addError: ""
+  property string managementTestHostId: ""
+  property bool managementTestRunning: false
+  property bool managementTestSucceeded: false
+  property string managementTestMessage: ""
+  readonly property alias installHostId: claudeManager.installHostId
+  readonly property alias installRunning: claudeManager.installRunning
+  readonly property alias installMessage: claudeManager.installMessage
+  readonly property alias loginHostId: claudeManager.loginHostId
+  readonly property alias loginRunning: claudeManager.loginRunning
   property var sshHosts: []
   property bool sshHostsLoading: false
   property string sshHostsError: ""
@@ -38,82 +47,28 @@ Item {
     "../bin/omarchy-codex-remote-open").toString().replace(/^file:\/\//, "")
   readonly property string sshHostsHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-ssh-hosts").toString().replace(/^file:\/\//, "")
-  readonly property string mapThreadWindowHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-codex-map-thread-window").toString().replace(/^file:\/\//, "")
-  readonly property string configPath: controller.stateHome
-    + "/omarchy/codex-thread-remotes.json"
+
+  RemoteProviderRegistry { id: providerRegistry }
+  RemoteConfigStore {
+    id: configStore
+    provider: root
+    controller: root.controller
+    providerRegistry: providerRegistry
+  }
+  RemoteClaudeManager {
+    id: claudeManager
+    provider: root
+    controller: root.controller
+  }
+  ThreadLaunchCoordinator { id: launchCoordinator }
+  readonly property alias configPath: configStore.path
 
   function providerTypeForEntry(entry) {
-    return String(entry && entry.providerType || "").toLowerCase() === "claude"
-      ? "claude" : ""
+    return providerRegistry.typeForEntry(entry)
   }
 
   function providerLabel(host) {
-    return providerTypeForEntry(host) === "claude" ? "Claude" : "Codex"
-  }
-
-  function initializeConfig(raw) {
-    if (configLoaded) return
-    var text = String(raw || "").trim()
-    if (text === "") {
-      text = JSON.stringify({ version: 1, remotes: [] }, null, 2)
-      configFile.setText(text + "\n")
-      Qt.callLater(root.secureConfigFile)
-    }
-    text += "\n"
-    loadConfig(text)
-  }
-
-  function loadPrimaryConfig(raw) {
-    if (configLoaded) loadConfig(raw)
-    else initializeConfig(raw)
-    secureConfigFile()
-  }
-
-  function secureConfigFile() {
-    if (configPermissionsProcess.running) return
-    configPermissionsProcess.command = ["chmod", "600", configPath]
-    configPermissionsProcess.running = true
-  }
-
-  function loadConfig(raw) {
-    var parsed = ({ version: 1, remotes: [] })
-    try {
-      var text = String(raw || "").trim()
-      parsed = text === "" ? parsed : JSON.parse(text)
-    } catch (error) {
-      console.warn("Codex Threads: invalid remote config:", error)
-      addError = "Invalid remote.json"
-    }
-
-    var configured = Array.isArray(parsed) ? parsed
-      : (Array.isArray(parsed.remotes) ? parsed.remotes : [])
-    var nextHosts = []
-    for (var i = 0; i < configured.length; i++) {
-      var entry = configured[i] || ({})
-      var id = String(entry.id || "remote-" + (i + 1))
-      var existing = hostById(id)
-      var providerType = providerTypeForEntry(entry)
-      nextHosts.push(Object.assign({}, entry, {
-        id: id,
-        label: String(entry.label || id),
-        providerType: providerType,
-        type: providerType === "claude" || entry.type === "ssh" ? "ssh" : "app-server",
-        threads: existing ? existing.threads : [],
-        projects: existing ? existing.projects : [],
-        models: existing ? existing.models : [],
-        agents: existing ? existing.agents : [],
-        loaded: existing ? existing.loaded === true : false,
-        loading: false,
-        error: ""
-      }))
-    }
-
-    remoteConfig = { version: 2, remotes: configured }
-    remoteHosts = nextHosts
-    configLoaded = true
-    controller.startAppServer()
-    refresh()
+    return providerRegistry.adapterForEntry(host).label
   }
 
   function hostById(hostId) {
@@ -179,6 +134,12 @@ Item {
       var nowBusy = threadStatus(next) === "busy"
       var unread = next.attention === true || (old && old.unread === true)
       if (wasBusy && !nowBusy && id !== controller.activeThreadId) unread = true
+      if (old && String(next.completionToken || "") !== ""
+          && String(next.completionToken) !== String(old.completionToken || "")
+          && id !== controller.activeThreadId) unread = true
+      if (old && String(next.attentionToken || "") !== ""
+          && String(next.attentionToken) !== String(old.attentionToken || "")
+          && id !== controller.activeThreadId) unread = true
       if (id === controller.activeThreadId) unread = false
       merged.push(Object.assign({}, next, { unread: unread }))
     }
@@ -212,7 +173,7 @@ Item {
       if (id === queryHostId || queue.indexOf(id) >= 0) return
       queue.push(id)
       var host = hostById(id)
-      updateHost(id, { loading: !(host && host.loaded === true), error: "" })
+      updateHost(id, { loading: !(host && host.loaded === true) })
     }
     if (wanted !== "") append(wanted)
     else for (var i = 0; i < remoteHosts.length; i++) append(String(remoteHosts[i].id || ""))
@@ -273,10 +234,13 @@ Item {
       authenticated: snapshot.authenticated !== false,
       version: String(snapshot.version || ""),
       subscriptionType: String(snapshot.subscriptionType || ""),
+      rateLimits: snapshot.rateLimits && typeof snapshot.rateLimits === "object"
+        ? snapshot.rateLimits : ({}),
       loaded: true,
       loading: false,
       error: String(snapshot.error || "")
     })
+    claudeManager.verificationComplete(hostId)
     if (hostId === archiveConfirmationHostId) {
       archiveConfirmationHostId = ""
       archiveConfirmationThreadId = ""
@@ -302,63 +266,88 @@ Item {
     return visible
   }
 
+  function configuredRemoteById(hostId) {
+    return configStore.configuredById(hostId)
+  }
+
+  function writeRemoteConfig(remotes) {
+    configStore.write(remotes)
+  }
+
   function add(label, type, address, home, tokenFile, providerType) {
+    return configStore.add(label, type, address, home, tokenFile, providerType)
+  }
+
+  function updateRemote(hostId, label, type, address, home, tokenFile, providerType) {
+    return configStore.update(
+      hostId, label, type, address, home, tokenFile, providerType)
+  }
+
+  function removeRemote(hostId) {
     addError = ""
-    var name = String(label || "").trim()
-    var agentProvider = String(providerType || "codex").toLowerCase() === "claude"
-      ? "claude" : "codex"
-    var connectionType = agentProvider === "claude"
-      ? "ssh" : (type === "app-server" ? "app-server" : "ssh")
-    var endpoint = String(address || "").trim()
-    var remoteHome = String(home || "").trim()
-    var localTokenFile = String(tokenFile || "").trim()
-    if (name === "") {
-      addError = "Adj nevet a remote gépnek"
-      return ""
+    var id = String(hostId || "")
+    if (!configuredRemoteById(id)) {
+      addError = "The remote no longer exists"
+      return false
     }
-    if (connectionType === "ssh") {
-      if (!/^[A-Za-z0-9_.@:-]+$/.test(endpoint)) {
-        addError = "Érvénytelen SSH host vagy alias"
-        return ""
-      }
-    } else if (endpoint.indexOf("ws://") !== 0 && endpoint.indexOf("wss://") !== 0) {
-      addError = "Az App Server címe ws:// vagy wss:// legyen"
-      return ""
+    if ((actionProcess.running && actionHostId === id)
+        || (openProcess.running && openHostId === id) || pendingHostId === id) {
+      addError = "Wait for the remote operation to finish"
+      return false
     }
-
-    var baseId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-    if (baseId === "") baseId = "remote"
-    var id = baseId
-    var suffix = 2
-    while (hostById(id)) id = baseId + "-" + suffix++
-
-    var entry = { id: id, label: name, type: connectionType, home: remoteHome }
-    if (agentProvider === "claude") entry.providerType = "claude"
-    if (connectionType === "ssh") {
-      entry.sshHost = endpoint
-      if (agentProvider === "claude") entry.claudeCommand = "claude"
-      else entry.codexCommand = "codex"
-    } else {
-      entry.url = endpoint
-      entry.authTokenEnv = ""
-      entry.authTokenFile = localTokenFile
+    if (installRunning && installHostId === id) {
+      addError = "Wait for the Claude installation to finish"
+      return false
+    }
+    if (loginRunning && loginHostId === id) {
+      addError = "Wait for the Claude sign-in terminal to open"
+      return false
+    }
+    if (managementTestRunning && managementTestHostId === id) {
+      addError = "Wait for the connection test to finish"
+      return false
     }
 
-    var nextConfig = {
-      version: 2,
-      remotes: (remoteConfig.remotes || []).concat([entry])
+    var configured = remoteConfig.remotes || []
+    var next = []
+    for (var i = 0; i < configured.length; i++) {
+      if (String(configured[i] && configured[i].id || "") !== id)
+        next.push(configured[i])
     }
-    var serialized = JSON.stringify(nextConfig, null, 2) + "\n"
-    configFile.setText(serialized)
-    Qt.callLater(root.secureConfigFile)
-    loadConfig(serialized)
-    return id
+    queryQueue = queryQueue.filter(function(value) { return String(value || "") !== id })
+    writeRemoteConfig(next)
+    return true
+  }
+
+  function testRemote(hostId) {
+    addError = ""
+    var id = String(hostId || "")
+    if (!configuredRemoteById(id)) {
+      addError = "The remote no longer exists"
+      return false
+    }
+    if (controller.shuttingDown || managementTestProcess.running) return false
+    managementTestHostId = id
+    managementTestRunning = true
+    managementTestSucceeded = false
+    managementTestMessage = "Connecting…"
+    managementTestProcess.command = [queryHelperPath, configPath, id, "snapshot"]
+    managementTestProcess.running = true
+    return true
+  }
+
+  function installClaude(hostId) {
+    return claudeManager.install(hostId)
+  }
+
+  function loginClaude(hostId) {
+    return claudeManager.login(hostId)
   }
 
   function sshHostEnabled(alias, providerType) {
     var wanted = String(alias || "")
-    var wantedProvider = String(providerType || "codex").toLowerCase() === "claude"
-      ? "claude" : ""
+    var normalizedProvider = providerRegistry.normalize(providerType)
+    var wantedProvider = normalizedProvider === "codex" ? "" : normalizedProvider
     var configured = remoteConfig.remotes || []
     for (var i = 0; i < configured.length; i++) {
       var remote = configured[i] || ({})
@@ -366,6 +355,20 @@ Item {
           && providerTypeForEntry(remote) === wantedProvider) return true
     }
     return false
+  }
+
+  function remoteIdForSshHost(alias, providerType) {
+    var wanted = String(alias || "")
+    var normalizedProvider = providerRegistry.normalize(providerType)
+    var wantedProvider = normalizedProvider === "codex" ? "" : normalizedProvider
+    var configured = remoteConfig.remotes || []
+    for (var i = 0; i < configured.length; i++) {
+      var remote = configured[i] || ({})
+      if (remote.type === "ssh" && String(remote.sshHost || "") === wanted
+          && providerTypeForEntry(remote) === wantedProvider)
+        return String(remote.id || "")
+    }
+    return ""
   }
 
   function refreshSshHosts() {
@@ -389,7 +392,10 @@ Item {
     archivedThreadSnapshot = thread
     archivedThreadIndex = host ? threadIndex(host.threads, id) : -1
     if (host) updateHost(actionHostId, { threads: threadsWithoutId(host.threads, id) })
-    actionProcess.command = [queryHelperPath, configPath, actionHostId, "archive", id]
+    actionProcess.command = [
+      queryHelperPath, configPath, actionHostId, "archive", id,
+      pathForThread(host, thread)
+    ]
     actionProcess.running = true
   }
 
@@ -443,8 +449,8 @@ Item {
     if (!thread || !thread.id || openProcess.running) return
     var host = hostById(hostId)
     if (!host) return
-    if (providerTypeForEntry(host) === "claude" && host.available === false) {
-      controller.launchError = host.error || "Claude is unavailable on this remote"
+    if (providerTypeForEntry(host) !== "" && host.available === false) {
+      controller.launchError = host.error || providerLabel(host) + " is unavailable on this remote"
       return
     }
     var providerType = providerTypeForEntry(host) || "codex"
@@ -470,14 +476,14 @@ Item {
     if (openProcess.running) return
     var host = hostById(hostId)
     if (!host) return
-    if (providerTypeForEntry(host) === "claude" && host.available === false) {
-      controller.launchError = host.error || "Claude is unavailable on this remote"
+    if (providerTypeForEntry(host) !== "" && host.available === false) {
+      controller.launchError = host.error || providerLabel(host) + " is unavailable on this remote"
       return
     }
     var providerType = providerTypeForEntry(host) || "codex"
     var remotePath = String(path || host.home || "")
     if (remotePath === "") {
-      controller.launchError = "A remote home még nem ismert; add meg az R-es beállításnál"
+      controller.launchError = "The remote home is unknown; set it in the remote settings"
       return
     }
     openIsNew = true
@@ -529,15 +535,7 @@ Item {
       if (id === "" || pendingKnownIds[id] === true) continue
       if (pathForThread(host, thread) !== pendingPath
           && String(thread.cwd || "") !== pendingPath) continue
-      if (!mapThreadWindowProcess.running) {
-        mapThreadWindowProcess.command = [
-          mapThreadWindowHelperPath,
-          id,
-          pendingWindowAddress,
-          pendingHostId
-        ]
-        mapThreadWindowProcess.running = true
-      }
+      launchCoordinator.map(id, pendingWindowAddress, pendingHostId, "")
       controller.activeThreadId = id
       clearPendingNew()
       return
@@ -557,6 +555,9 @@ Item {
           error: queryStderr.text.trim()
             || "Could not load remote " + root.providerLabel(failedHost) + " threads"
         })
+        if (hostId === root.installHostId) {
+          claudeManager.verificationComplete(hostId)
+        }
       } else {
         try {
           root.applySnapshot(JSON.parse(String(queryStdout.text || "{}").trim()))
@@ -614,6 +615,50 @@ Item {
   }
 
   Process {
+    id: managementTestProcess
+    running: false
+
+    onExited: function(exitCode) {
+      root.managementTestRunning = false
+      if (exitCode !== 0) {
+        root.managementTestSucceeded = false
+        root.managementTestMessage = managementTestStderr.text.trim()
+          || "Connection failed"
+        root.updateHost(root.managementTestHostId, {
+          error: root.managementTestMessage,
+          loading: false
+        })
+        return
+      }
+      try {
+        var snapshot = JSON.parse(String(managementTestStdout.text || "{}").trim())
+        root.applySnapshot(snapshot)
+        var readinessError = String(snapshot.error || "").trim()
+        if (snapshot.available === false || snapshot.authenticated === false
+            || readinessError !== "") {
+          root.managementTestSucceeded = false
+          root.managementTestMessage = "Connected · "
+            + (readinessError !== "" ? readinessError
+              : (snapshot.authenticated === false
+                ? "The provider is not authenticated" : "The provider is unavailable"))
+          return
+        }
+        var count = Array.isArray(snapshot.threads) ? snapshot.threads.length : 0
+        var version = String(snapshot.version || "")
+        root.managementTestSucceeded = true
+        root.managementTestMessage = "Connection healthy · " + count + " threads"
+          + (version !== "" ? " · " + version : "")
+      } catch (error) {
+        root.managementTestSucceeded = false
+        root.managementTestMessage = "Invalid remote response"
+      }
+    }
+
+    stdout: StdioCollector { id: managementTestStdout; waitForEnd: true }
+    stderr: StdioCollector { id: managementTestStderr; waitForEnd: true }
+  }
+
+  Process {
     id: openProcess
     running: false
 
@@ -627,25 +672,12 @@ Item {
         else root.openHostId = ""
         return
       }
-      var output = String(openStdout.text || "").trim()
-      var address = output
-      var runtimeSessionId = ""
-      try {
-        var result = JSON.parse(output)
-        address = String(result.address || "")
-        runtimeSessionId = String(result.sessionId || "")
-      } catch (error) {
-        // Compatibility with the older remote helper which returned only an address.
-      }
+      var result = launchCoordinator.parseOutput(openStdout.text)
+      var address = result.address
+      var runtimeSessionId = result.sessionId
       if (root.openIsNew) {
         if (runtimeSessionId !== "" && address !== "") {
-          mapThreadWindowProcess.command = [
-            root.mapThreadWindowHelperPath,
-            runtimeSessionId,
-            address,
-            root.pendingHostId
-          ]
-          mapThreadWindowProcess.running = true
+          launchCoordinator.map(runtimeSessionId, address, root.pendingHostId, "")
           root.controller.activeThreadId = runtimeSessionId
           root.clearPendingNew()
         } else {
@@ -665,8 +697,6 @@ Item {
     stderr: StdioCollector { id: openStderr; waitForEnd: true }
   }
 
-  Process { id: mapThreadWindowProcess; running: false }
-
   Connections {
     target: root.controller
     function onActiveThreadIdChanged() {
@@ -682,7 +712,7 @@ Item {
       root.sshHostsLoading = false
       if (exitCode !== 0) {
         root.sshHosts = []
-        root.sshHostsError = sshHostsStderr.text.trim() || "Az SSH hostok nem olvashatók"
+        root.sshHostsError = sshHostsStderr.text.trim() || "Could not read SSH hosts"
         return
       }
       try {
@@ -691,28 +721,12 @@ Item {
         root.sshHostsError = ""
       } catch (error) {
         root.sshHosts = []
-        root.sshHostsError = "Érvénytelen SSH config válasz"
+        root.sshHostsError = "Invalid SSH config response"
       }
     }
 
     stdout: StdioCollector { id: sshHostsStdout; waitForEnd: true }
     stderr: StdioCollector { id: sshHostsStderr; waitForEnd: true }
-  }
-
-  FileView {
-    id: configFile
-    path: root.configPath
-    watchChanges: true
-    atomicWrites: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.loadPrimaryConfig(text())
-    onLoadFailed: root.initializeConfig("")
-  }
-
-  Process {
-    id: configPermissionsProcess
-    running: false
   }
 
   Timer {
@@ -743,6 +757,7 @@ Item {
   Component.onDestruction: {
     queryProcess.running = false
     actionProcess.running = false
+    managementTestProcess.running = false
     openProcess.running = false
     sshHostsProcess.running = false
   }

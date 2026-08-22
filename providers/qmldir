@@ -2,4 +2,12 @@ CodexAppServerClient 1.0 CodexAppServerClient.qml
 LocalAgentProvider 1.0 LocalAgentProvider.qml
 LocalCodexProvider 1.0 LocalCodexProvider.qml
 ProviderRegistry 1.0 ProviderRegistry.qml
+RemoteConfigStore 1.0 RemoteConfigStore.qml
 RemoteAgentProvider 1.0 RemoteAgentProvider.qml
+RemoteClaudeAdapter 1.0 RemoteClaudeAdapter.qml
+RemoteClaudeManager 1.0 RemoteClaudeManager.qml
+RemoteCodexAdapter 1.0 RemoteCodexAdapter.qml
+RemoteOpenCodeAdapter 1.0 RemoteOpenCodeAdapter.qml
+RemoteProviderAdapter 1.0 RemoteProviderAdapter.qml
+RemoteProviderRegistry 1.0 RemoteProviderRegistry.qml
+ThreadLaunchCoordinator 1.0 ThreadLaunchCoordinator.qml

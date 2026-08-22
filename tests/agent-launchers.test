@@ -13,6 +13,10 @@ mkdir -p -- "$stub_bin" "$runtime_dir" "$project_dir"
 printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -euo pipefail' \
+  'if [[ "${1:-}" == "-j" && "${2:-}" == "activeworkspace" ]]; then' \
+  '  printf "%s\n" "{\"id\":3}"' \
+  '  exit 0' \
+  'fi' \
   'if [[ "${1:-}" == "-j" && "${2:-}" == "clients" ]]; then' \
   '  count=0' \
   '  [[ ! -f "$HYPR_STUB_COUNT" ]] || IFS= read -r count < "$HYPR_STUB_COUNT"' \
@@ -22,6 +26,10 @@ printf '%s\n' \
   '  else printf "%s\n" "[{\"address\":\"0xabc123\"}]"; fi' \
   '  exit 0' \
   'fi' \
+  'if [[ "${1:-}" == "dispatch" ]]; then' \
+  '  printf "%s\n" "$*" >> "$HYPR_STUB_DISPATCH_LOG"' \
+  '  exit 0' \
+  'fi' \
   'exit 0' > "$stub_bin/hyprctl"
 
 printf '%s\n' \
@@ -29,12 +37,37 @@ printf '%s\n' \
   'set -euo pipefail' \
   'printf "%s\n" "$*" > "$OMARCHY_STUB_LOG"' \
   'exit 0' > "$stub_bin/omarchy"
-chmod +x "$stub_bin/hyprctl" "$stub_bin/omarchy"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'printf "%s\n" "$*" >> "$SSH_STUB_LOG"' \
+  'remote_command="${@: -1}"' \
+  'if [[ "$remote_command" == *"/session?directory="* && "$remote_command" == *"-X POST"* ]]; then' \
+  '  printf "%s\n" '\''{"id":"ses_opencode_remote_new"}'\''' \
+  '  exit 0' \
+  'fi' \
+  'cat >/dev/null' \
+  'exit 0' > "$stub_bin/ssh"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'for argument in "$@"; do' \
+  '  if [[ "$argument" == */session\?directory=* ]]; then' \
+  '    printf "%s\n" "{\"id\":\"ses_opencode_new\"}"' \
+  '    exit 0' \
+  '  fi' \
+  'done' \
+  'printf "%s\n" "{}"' > "$stub_bin/curl"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$stub_bin/ss"
+chmod +x "$stub_bin/hyprctl" "$stub_bin/omarchy" "$stub_bin/ssh" \
+  "$stub_bin/curl" "$stub_bin/ss"
 
 export PATH="$stub_bin:$PATH"
 export XDG_RUNTIME_DIR="$runtime_dir"
 export HYPR_STUB_COUNT="$test_root/hypr-count"
 export OMARCHY_STUB_LOG="$test_root/omarchy.log"
+export SSH_STUB_LOG="$test_root/ssh.log"
+export HYPR_STUB_DISPATCH_LOG="$test_root/hypr-dispatch.log"
 
 local_result="$("$plugin_root/bin/omarchy-agent-thread-open" \
   claude "$project_dir" "" http://127.0.0.1:43962 sonnet high reviewer)"
@@ -42,6 +75,7 @@ local_session="$(jq -er '.sessionId | select(test("^[0-9a-f-]{36}$"))' <<<"$loca
 jq -e '.address == "0xabc123"' <<<"$local_result" >/dev/null
 grep -F -- "claude --session-id $local_session --model sonnet --effort high --agent reviewer" \
   "$OMARCHY_STUB_LOG" >/dev/null
+grep -F -- 'refreshInterval' "$OMARCHY_STUB_LOG" >/dev/null
 
 resume_session="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 rm -f -- "$HYPR_STUB_COUNT"
@@ -61,6 +95,8 @@ remote_session="$(jq -er '.sessionId | select(test("^[0-9a-f-]{36}$"))' <<<"$rem
 jq -e '.address == "0xabc123"' <<<"$remote_result" >/dev/null
 grep -F -- "claude --session-id $remote_session --model opus --effort xhigh --agent reviewer" \
   "$OMARCHY_STUB_LOG" >/dev/null
+grep -F -- '$HOME/.local/bin' "$OMARCHY_STUB_LOG" >/dev/null
+grep -F -- 'refreshInterval' "$OMARCHY_STUB_LOG" >/dev/null
 test "$(<"$runtime_dir/omarchy-codex-threads-${UID}/remote-claude--${remote_session}.address")" \
   = "0xabc123"
 
@@ -72,5 +108,38 @@ jq -e --arg id "$resume_session" '.sessionId == $id and .address == "0xabc123"' 
   <<<"$remote_resume_result" >/dev/null
 grep -F -- "claude --resume $resume_session --model sonnet --effort medium" \
   "$OMARCHY_STUB_LOG" >/dev/null
+
+jq '.remotes += [{
+  id:"remote-opencode",label:"Remote OpenCode",type:"ssh",providerType:"opencode",
+  sshHost:"fixture",opencodeCommand:"opencode",opencodePort:43962,home:"/work"
+}]' "$test_root/remotes.json" > "$test_root/remotes-next.json"
+mv -- "$test_root/remotes-next.json" "$test_root/remotes.json"
+rm -f -- "$HYPR_STUB_COUNT"
+remote_opencode_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
+  "$test_root/remotes.json" remote-opencode /work "" fixture/model high build)"
+jq -e '
+  .sessionId == "ses_opencode_remote_new" and .address == "0xabc123"
+' <<<"$remote_opencode_result" >/dev/null
+grep -F -- "opencode /work --model fixture/model --variant high --agent build --session ses_opencode_remote_new" \
+  "$OMARCHY_STUB_LOG" >/dev/null
+grep -F -- "OpenCode API did not become ready within 30 seconds" "$SSH_STUB_LOG" >/dev/null
+test "$(<"$runtime_dir/omarchy-codex-threads-${UID}/remote-opencode--ses_opencode_remote_new.address")" \
+  = "0xabc123"
+
+rm -f -- "$HYPR_STUB_COUNT"
+opencode_result="$("$plugin_root/bin/omarchy-agent-thread-open" \
+  opencode "$project_dir" "" http://127.0.0.1:43962 \
+  fixture/model high build)"
+jq -e '
+  .sessionId == "ses_opencode_new"
+  and .address == "0xabc123"
+  and (.serverUrl | test("^http://127.0.0.1:[0-9]+$"))
+' <<<"$opencode_result" >/dev/null
+grep -E -- 'opencode .*/project --hostname 127\.0\.0\.1 --port [0-9]+ --model fixture/model --variant high --agent build --session ses_opencode_new' \
+  "$OMARCHY_STUB_LOG" >/dev/null
+grep -F -- 'dispatch movetoworkspacesilent 3,address:0xabc123' \
+  "$HYPR_STUB_DISPATCH_LOG" >/dev/null
+test "$(<"$runtime_dir/omarchy-codex-threads-${UID}/provider-opencode--ses_opencode_new.address")" \
+  = "0xabc123"
 
 printf '%s\n' "agent-launcher tests passed"

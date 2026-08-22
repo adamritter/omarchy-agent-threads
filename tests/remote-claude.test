@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-remote-claude-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+remote_home="$test_root/remote-home"
+stub_bin="$test_root/bin"
+session_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+mkdir -p -- "$stub_bin" "$remote_home/.claude/projects/fixture" \
+  "$remote_home/.local/state/omarchy"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'if [[ "${1:-}" == "--version" ]]; then echo "9.9.9 (Claude Code)"; exit 0; fi' \
+  'if [[ "${1:-}" == "auth" && "${2:-}" == "status" ]]; then' \
+  '  echo "{\"loggedIn\":true,\"subscriptionType\":\"pro\"}"; exit 0' \
+  'fi' \
+  'exit 0' > "$stub_bin/claude"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'remote_command="${@: -1}"' \
+  'export HOME="$REMOTE_FIXTURE_HOME"' \
+  'export XDG_STATE_HOME="$REMOTE_FIXTURE_HOME/.local/state"' \
+  'helper_file="$REMOTE_FIXTURE_HOME/remote-helper.mjs"' \
+  'tee "$helper_file" >/dev/null' \
+  '[[ -s "$helper_file" ]]' \
+  'if [[ "$remote_command" == *" '\''archive'\'' "* ]]; then' \
+  '  touch "$REMOTE_FIXTURE_HOME/archived"' \
+  '  printf "%s\n" '\''{"ok":true}'\''' \
+  'elif [[ "$remote_command" == *" '\''pin'\'' "* ]]; then' \
+  '  printf "%s\n" '\''{"ok":true}'\''' \
+  'elif [[ -e "$REMOTE_FIXTURE_HOME/archived" ]]; then' \
+  '  printf "%s\n" '\''{"available":true,"authenticated":true,"threads":[]}'\''' \
+  'else' \
+  '  printf '\''{"available":true,"authenticated":true,"threads":[{"id":"%s","lifecycle":"done","completionToken":"remote-complete"}]}\n'\'' "$REMOTE_SESSION_ID"' \
+  'fi' \
+  > "$stub_bin/ssh"
+chmod +x "$stub_bin/claude" "$stub_bin/ssh"
+
+transcript="$remote_home/.claude/projects/fixture/${session_id}.jsonl"
+printf '%s\n' \
+  "{\"type\":\"user\",\"sessionId\":\"$session_id\",\"cwd\":\"/work\",\"timestamp\":\"2026-08-22T20:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"Remote session\"}}" \
+  > "$transcript"
+printf '%s\n' "{\"version\":1,\"sessions\":{\"$session_id\":{\"sessionId\":\"$session_id\",\"state\":\"done\",\"updatedAt\":9999999999999,\"completionToken\":\"remote-complete\"}}}" \
+  > "$remote_home/.local/state/omarchy/claude-thread-runtime.json"
+
+config="$test_root/remotes.json"
+jq -n --arg command "$stub_bin/claude" '{version:2,remotes:[{
+  id:"remote-claude",label:"Fixture Claude",type:"ssh",providerType:"claude",
+  sshHost:"fixture",claudeCommand:$command,home:"/work"
+}]}' > "$config"
+
+export PATH="$stub_bin:$PATH"
+export REMOTE_FIXTURE_HOME="$remote_home"
+export REMOTE_SESSION_ID="$session_id"
+
+snapshot="$($plugin_root/bin/omarchy-codex-remote-query \
+  "$config" remote-claude snapshot)"
+jq -e --arg id "$session_id" '
+  .hostId == "remote-claude" and .providerType == "claude"
+  and .available == true and .authenticated == true
+  and (.threads[] | select(.id == $id)
+    | .lifecycle == "done" and .completionToken == "remote-complete")' \
+  <<<"$snapshot" >/dev/null
+
+$plugin_root/bin/omarchy-codex-remote-query \
+  "$config" remote-claude pin "$session_id" true | jq -e '.ok == true' >/dev/null
+$plugin_root/bin/omarchy-codex-remote-query \
+  "$config" remote-claude archive "$session_id" | jq -e '.ok == true' >/dev/null
+snapshot="$($plugin_root/bin/omarchy-codex-remote-query \
+  "$config" remote-claude snapshot)"
+jq -e --arg id "$session_id" '[.threads[] | select(.id == $id)] | length == 0' \
+  <<<"$snapshot" >/dev/null
+
+printf '%s\n' "remote-claude tests passed"

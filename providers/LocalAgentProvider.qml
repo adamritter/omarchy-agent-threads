@@ -40,8 +40,8 @@ Item {
     "../bin/omarchy-agent-provider-query").toString().replace(/^file:\/\//, "")
   readonly property string openHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-agent-thread-open").toString().replace(/^file:\/\//, "")
-  readonly property string mapThreadWindowHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-codex-map-thread-window").toString().replace(/^file:\/\//, "")
+
+  ThreadLaunchCoordinator { id: launchCoordinator }
 
   function pathForThread(thread) {
     return String(thread && thread.cwd || host.home || controller.localHome)
@@ -72,6 +72,12 @@ Item {
       var nowBusy = threadStatus(next) === "busy"
       var unread = next.attention === true || (old && old.unread === true)
       if (wasBusy && !nowBusy && id !== controller.activeThreadId) unread = true
+      if (old && String(next.completionToken || "") !== ""
+          && String(next.completionToken) !== String(old.completionToken || "")
+          && id !== controller.activeThreadId) unread = true
+      if (old && String(next.attentionToken || "") !== ""
+          && String(next.attentionToken) !== String(old.attentionToken || "")
+          && id !== controller.activeThreadId) unread = true
       if (id === controller.activeThreadId) unread = false
       merged.push(Object.assign({}, next, { unread: unread }))
     }
@@ -138,6 +144,7 @@ Item {
       authenticated: snapshot.authenticated,
       version: snapshot.version,
       subscriptionType: snapshot.subscriptionType,
+      rateLimits: snapshot.rateLimits,
       error: snapshot.error
     })
     if (signature === lastSnapshotSignature) {
@@ -262,14 +269,7 @@ Item {
       var id = String(thread && thread.id || "")
       if (id === "" || pendingKnownIds[id] === true) continue
       if (pathForThread(thread) !== pendingPath) continue
-      mapThreadWindowProcess.command = [
-        mapThreadWindowHelperPath,
-        id,
-        pendingWindowAddress,
-        hostId,
-        pendingServerUrl
-      ]
-      mapThreadWindowProcess.running = true
+      launchCoordinator.map(id, pendingWindowAddress, hostId, pendingServerUrl)
       controller.activeThreadId = id
       clearPendingNew()
       return
@@ -331,28 +331,13 @@ Item {
         if (root.openIsNew) root.clearPendingNew()
         return
       }
-      var output = String(openStdout.text || "").trim()
-      var address = output
-      var runtimeServer = ""
-      var runtimeSessionId = ""
-      try {
-        var result = JSON.parse(output)
-        address = String(result.address || "")
-        runtimeServer = String(result.serverUrl || "")
-        runtimeSessionId = String(result.sessionId || "")
-      } catch (error) {
-        // Compatibility with the older helper which returned only the address.
-      }
+      var result = launchCoordinator.parseOutput(openStdout.text)
+      var address = result.address
+      var runtimeServer = result.serverUrl
+      var runtimeSessionId = result.sessionId
       if (root.openIsNew) {
         if (runtimeSessionId !== "" && address !== "") {
-          mapThreadWindowProcess.command = [
-            root.mapThreadWindowHelperPath,
-            runtimeSessionId,
-            address,
-            root.hostId,
-            runtimeServer
-          ]
-          mapThreadWindowProcess.running = true
+          launchCoordinator.map(runtimeSessionId, address, root.hostId, runtimeServer)
           root.controller.activeThreadId = runtimeSessionId
           root.clearPendingNew()
         } else {
@@ -372,8 +357,6 @@ Item {
     stderr: StdioCollector { id: openStderr; waitForEnd: true }
   }
 
-  Process { id: mapThreadWindowProcess; running: false }
-
   Connections {
     target: root.controller
     function onActiveThreadIdChanged() {
@@ -384,7 +367,10 @@ Item {
   Process {
     id: serverProcess
     running: false
-    command: ["opencode", "serve", "--hostname", "127.0.0.1", "--port", "43962"]
+    command: [
+      "env", "-u", "OPENCODE_SERVER_PASSWORD", "-u", "OPENCODE_SERVER_USERNAME",
+      "opencode", "serve", "--hostname", "127.0.0.1", "--port", "43962"
+    ]
     onExited: {
       if (!root.enabled || root.controller.shuttingDown || root.providerType !== "opencode")
         return
@@ -398,7 +384,7 @@ Item {
   }
 
   Timer {
-    interval: 5000
+    interval: root.providerType === "claude" ? 750 : 5000
     running: root.enabled
     repeat: true
     onTriggered: root.refresh()
@@ -430,7 +416,8 @@ Item {
       root.resolvePendingNew()
       if (root.pendingPath === "") stop()
       else if (root.pendingAttempts <= 0) {
-        root.controller.launchError = "The new " + root.label + " session did not appear in time"
+        // Current launchers return a session id immediately. Keep this fallback
+        // silent for compatibility with older helpers that create it lazily.
         root.clearPendingNew()
       }
     }

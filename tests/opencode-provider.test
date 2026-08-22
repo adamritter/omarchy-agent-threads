@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-opencode-XXXXXX)"
+server_pid=""
+cleanup() {
+  [[ -z "$server_pid" ]] || kill "$server_pid" 2>/dev/null || true
+  rm -rf -- "$test_root"
+}
+trap cleanup EXIT
+
+fake_home="$test_root/home"
+state_home="$test_root/state"
+project_dir="$fake_home/project"
+port_file="$test_root/port"
+action_log="$test_root/actions.log"
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+helper="$plugin_root/bin/omarchy-agent-provider-query"
+mkdir -p -- "$fake_home" "$state_home" "$project_dir"
+
+node "$plugin_root/tests/fixtures/opencode-server.mjs" \
+  "$port_file" "$action_log" "$project_dir" &
+server_pid=$!
+for _ in $(seq 1 50); do
+  [[ ! -s "$port_file" ]] || break
+  sleep 0.05
+done
+[[ -s "$port_file" ]]
+server_url="http://127.0.0.1:$(<"$port_file")"
+
+run_helper() {
+  OMARCHY_AGENT_PROVIDER_HOME="$fake_home" \
+    OMARCHY_OPENCODE_URL="$server_url" \
+    XDG_STATE_HOME="$state_home" \
+    node "$helper" opencode "$@"
+}
+
+snapshot="$(run_helper snapshot)"
+jq -e --arg cwd "$project_dir" '
+  .available == true
+  and .authenticated == true
+  and .version == "1.18.21-test"
+  and .defaultModel == "fixture/model-default"
+  and .defaultEffort == "low"
+  and .defaultAgent == "build"
+  and (.models | any(.id == "fixture/model-project"
+    and (.efforts | index("high") != null)))
+  and (.agents | any(.id == "build"))
+  and .projectDefaults[$cwd].model == "fixture/model-project"
+  and .projectDefaults[$cwd].effort == "high"
+  and .projectDefaults[$cwd].agent == "review"
+  and (.projectAgents[$cwd] | any(.id == "review"))
+  and (.threads | length == 1)
+  and .threads[0].status.type == "active"
+  and .threads[0].lifecycle == "busy"
+  and .threads[0].cwd == $cwd
+' <<<"$snapshot" >/dev/null
+
+run_helper pin ses_opencode_fixture "$project_dir" true >/dev/null
+run_helper snapshot | jq -e '.threads[0].isPinned == true' >/dev/null
+
+run_helper archive ses_opencode_fixture "$project_dir" >/dev/null
+grep -F 'PATCH /session/ses_opencode_fixture {"time":{"archived":' "$action_log" >/dev/null
+
+printf '%s\n' "opencode-provider tests passed"

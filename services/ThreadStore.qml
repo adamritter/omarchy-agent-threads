@@ -45,6 +45,15 @@ Item {
     ? remoteProvider.actionHostId
     : providerRegistry.actionHostId
   property alias remoteAddError: remoteProvider.addError
+  readonly property alias remoteTestHostId: remoteProvider.managementTestHostId
+  readonly property alias remoteTestRunning: remoteProvider.managementTestRunning
+  readonly property alias remoteTestSucceeded: remoteProvider.managementTestSucceeded
+  readonly property alias remoteTestMessage: remoteProvider.managementTestMessage
+  readonly property alias remoteClaudeInstallHostId: remoteProvider.installHostId
+  readonly property alias remoteClaudeInstallRunning: remoteProvider.installRunning
+  readonly property alias remoteClaudeInstallMessage: remoteProvider.installMessage
+  readonly property alias remoteClaudeLoginHostId: remoteProvider.loginHostId
+  readonly property alias remoteClaudeLoginRunning: remoteProvider.loginRunning
   readonly property alias sshHosts: remoteProvider.sshHosts
   readonly property alias sshHostsLoading: remoteProvider.sshHostsLoading
   readonly property alias sshHostsError: remoteProvider.sshHostsError
@@ -173,8 +182,33 @@ Item {
     return remoteProvider.add(label, type, address, home, tokenFile, providerType)
   }
 
+  function updateRemote(hostId, label, type, address, home, tokenFile, providerType) {
+    return remoteProvider.updateRemote(
+      hostId, label, type, address, home, tokenFile, providerType)
+  }
+
+  function removeRemote(hostId) {
+    return remoteProvider.removeRemote(hostId)
+  }
+
+  function testRemote(hostId) {
+    return remoteProvider.testRemote(hostId)
+  }
+
+  function installRemoteClaude(hostId) {
+    return remoteProvider.installClaude(hostId)
+  }
+
+  function loginRemoteClaude(hostId) {
+    return remoteProvider.loginClaude(hostId)
+  }
+
   function sshHostEnabled(alias, providerType) {
     return remoteProvider.sshHostEnabled(alias, providerType)
+  }
+
+  function remoteIdForSshHost(alias, providerType) {
+    return remoteProvider.remoteIdForSshHost(alias, providerType)
   }
 
   function refreshSshHosts() {

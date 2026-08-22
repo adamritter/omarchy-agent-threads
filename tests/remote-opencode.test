@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-remote-opencode-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+stub_bin="$test_root/bin"
+ssh_log="$test_root/ssh.log"
+mkdir -p -- "$stub_bin"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'remote_command="${@: -1}"' \
+  'printf "%s\n" "$remote_command" >> "$REMOTE_OPENCODE_SSH_LOG"' \
+  'tee "$REMOTE_OPENCODE_HELPER" >/dev/null' \
+  '[[ -s "$REMOTE_OPENCODE_HELPER" ]]' \
+  'if [[ "$remote_command" == *opencode*archive*ses_remote_fixture* ]]; then' \
+  '  printf "%s\n" '\''{"ok":true}'\''' \
+  'elif [[ "$remote_command" == *opencode*pin*ses_remote_fixture* ]]; then' \
+  '  printf "%s\n" '\''{"ok":true}'\''' \
+  'else' \
+  '  printf "%s\n" '\''{"available":true,"authenticated":true,"version":"1.18.21-remote","home":"/work","defaultModel":"fixture/model","defaultEffort":"high","defaultAgent":"build","models":[{"id":"fixture/model","efforts":["high"]}],"agents":[{"id":"build","name":"build"}],"projects":[{"id":"/work","roots":[{"path":"/work"}]}],"threads":[{"id":"ses_remote_fixture","name":"Remote fixture","cwd":"/work","status":{"type":"active"},"providerType":"opencode","isPinned":false}]}'\''' \
+  'fi' > "$stub_bin/ssh"
+chmod +x "$stub_bin/ssh"
+
+config="$test_root/remotes.json"
+jq -n '{version:2,remotes:[{
+  id:"remote-opencode",label:"Fixture OpenCode",type:"ssh",providerType:"opencode",
+  sshHost:"fixture",opencodeCommand:"opencode",opencodePort:43962,home:"/work"
+}]}' > "$config"
+
+export PATH="$stub_bin:$PATH"
+export REMOTE_OPENCODE_SSH_LOG="$ssh_log"
+export REMOTE_OPENCODE_HELPER="$test_root/remote-helper.mjs"
+
+snapshot="$("$plugin_root/bin/omarchy-codex-remote-query" \
+  "$config" remote-opencode snapshot)"
+jq -e '
+  .hostId == "remote-opencode" and .providerType == "opencode"
+  and .type == "ssh" and .available == true and .authenticated == true
+  and .version == "1.18.21-remote"
+  and .defaultModel == "fixture/model" and .defaultEffort == "high"
+  and .defaultAgent == "build"
+  and (.threads[] | select(.id == "ses_remote_fixture") | .status.type == "active")
+' <<<"$snapshot" >/dev/null
+
+"$plugin_root/bin/omarchy-codex-remote-query" \
+  "$config" remote-opencode pin ses_remote_fixture true | jq -e '.ok == true' >/dev/null
+"$plugin_root/bin/omarchy-codex-remote-query" \
+  "$config" remote-opencode archive ses_remote_fixture /work | jq -e '.ok == true' >/dev/null
+
+grep -F -- "serve --hostname 127.0.0.1 --port 43962" "$ssh_log" >/dev/null
+grep -F -- "OpenCode API did not become ready within 30 seconds" "$ssh_log" >/dev/null
+grep -F -- " opencode 'archive' 'ses_remote_fixture' '/work' ''" "$ssh_log" >/dev/null
+grep -F -- " opencode 'pin' 'ses_remote_fixture' '' 'true'" "$ssh_log" >/dev/null
+
+printf '%s\n' "remote-opencode tests passed"

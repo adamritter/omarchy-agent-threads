@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+config_file="${1:-}"
+host_id="${2:-}"
+
+[[ -r "$config_file" && -n "$host_id" ]] || {
+  echo "Invalid remote Claude login arguments" >&2
+  exit 2
+}
+
+remote_json="$(jq -cer --arg id "$host_id" \
+  '.remotes[] | select(.id == $id)' "$config_file")" || {
+  echo "Remote entry not found" >&2
+  exit 2
+}
+
+[[ "$(jq -r '.providerType // ""' <<<"$remote_json")" == "claude" \
+    && "$(jq -r '.type // "ssh"' <<<"$remote_json")" == "ssh" ]] || {
+  echo "Claude sign-in is only available for an SSH Claude remote" >&2
+  exit 2
+}
+
+ssh_host="$(jq -r '.sshHost // ""' <<<"$remote_json")"
+[[ "$ssh_host" =~ ^[A-Za-z0-9_.@:-]+$ ]] || {
+  echo "Invalid SSH host or alias" >&2
+  exit 2
+}
+
+claude_command="$(jq -r '.claudeCommand // "claude"' <<<"$remote_json")"
+[[ "$claude_command" =~ ^[A-Za-z0-9_./-]+$ ]] || {
+  echo "Invalid remote Claude command" >&2
+  exit 2
+}
+
+helper_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+auth_session_helper="${helper_dir}/omarchy-claude-remote-auth-session"
+
+launch_workspace="$(hyprctl -j activeworkspace 2>/dev/null \
+  | jq -r '.id // empty')"
+before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
+omarchy launch terminal "$auth_session_helper" "$config_file" "$host_id" \
+  >/dev/null 2>&1 &
+
+for _ in $(seq 1 80); do
+  new_address="$(hyprctl -j clients 2>/dev/null | jq -r --arg before "$before_addresses" '
+    .[] | .address as $address
+    | select((($before | split("\n")) | index($address)) == null)
+    | $address' | head -n 1)"
+  if [[ -n "$new_address" ]]; then
+    if [[ "$launch_workspace" =~ ^[0-9]+$ ]]; then
+      hyprctl dispatch movetoworkspacesilent \
+        "${launch_workspace},address:${new_address}" >/dev/null 2>&1 || true
+    fi
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:${new_address}\" })" \
+      >/dev/null 2>&1 || true
+    jq -cn --arg address "$new_address" '{address:$address}'
+    exit 0
+  fi
+  sleep 0.1
+done
+
+echo "The Claude sign-in terminal started, but its Hyprland window could not be identified" >&2
+exit 1

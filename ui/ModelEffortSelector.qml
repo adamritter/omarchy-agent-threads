@@ -124,7 +124,7 @@ Item {
   function selectedAgent() { return service.selectedAgentForProvider(providerType) }
 
   function contextAgentEntries() {
-    if (providerType === "claude" && contextHost) {
+    if (providerType !== "codex" && contextHost) {
       var scoped = contextHost.projectAgents
       if (scoped && typeof scoped === "object" && Array.isArray(scoped[contextPath]))
         return scoped[contextPath]
@@ -134,7 +134,7 @@ Item {
   }
 
   function contextDefaultAgent() {
-    if (providerType !== "claude") return ""
+    if (providerType === "codex") return ""
     var defaults = contextDefaults()
     return String(defaults.defaultAgent || defaults.agent || "")
   }

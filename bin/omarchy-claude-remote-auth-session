@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+config_file="${1:-}"
+host_id="${2:-}"
+
+[[ -r "$config_file" && -n "$host_id" ]] || {
+  echo "Invalid remote Claude login arguments" >&2
+  exit 2
+}
+
+remote_json="$(jq -cer --arg id "$host_id" \
+  '.remotes[] | select(.id == $id)' "$config_file")" || {
+  echo "Remote entry not found" >&2
+  exit 2
+}
+
+[[ "$(jq -r '.providerType // ""' <<<"$remote_json")" == "claude" \
+    && "$(jq -r '.type // "ssh"' <<<"$remote_json")" == "ssh" ]] || {
+  echo "Claude sign-in is only available for an SSH Claude remote" >&2
+  exit 2
+}
+
+ssh_host="$(jq -r '.sshHost // ""' <<<"$remote_json")"
+[[ "$ssh_host" =~ ^[A-Za-z0-9_.@:-]+$ ]] || {
+  echo "Invalid SSH host or alias" >&2
+  exit 2
+}
+
+claude_command="$(jq -r '.claudeCommand // "claude"' <<<"$remote_json")"
+[[ "$claude_command" =~ ^[A-Za-z0-9_./-]+$ ]] || {
+  echo "Invalid remote Claude command" >&2
+  exit 2
+}
+
+open_login_url() {
+  local line url opened=false
+  while IFS= read -r line; do
+    [[ "$opened" == false ]] || continue
+    url="$(grep -Po 'https://(?:claude\.com|console\.anthropic\.com)/[^\x00-\x20\x7f-\x9f]+' \
+      <<<"$line" | head -n 1 || true)"
+    [[ -n "$url" ]] || continue
+    omarchy launch browser "$url" >/dev/null 2>&1
+    opened=true
+  done
+}
+
+printf -v quoted_claude_command '%q' "$claude_command"
+remote_command="export PATH=\"\$HOME/.local/bin:\$HOME/.claude/local:\$PATH\"; ${quoted_claude_command} auth login; status=\$?; rm -f -- \"\${XDG_STATE_HOME:-\$HOME/.local/state}/omarchy/claude-runtime.json\"; exit \$status"
+
+session_dir="$(mktemp -d -p "${XDG_RUNTIME_DIR:-/tmp}" claude-remote-auth-XXXXXX)"
+url_pipe="${session_dir}/url.pipe"
+mkfifo -m 600 "$url_pipe"
+open_login_url < "$url_pipe" &
+url_watcher_pid=$!
+
+set +e
+ssh -tt -o BatchMode=yes -o ConnectTimeout=8 \
+  "$ssh_host" "$remote_command" 2>&1 | tee "$url_pipe"
+status="${PIPESTATUS[0]}"
+wait "$url_watcher_pid" || true
+rm -f -- "$url_pipe"
+rmdir -- "$session_dir"
+set -e
+exit "$status"

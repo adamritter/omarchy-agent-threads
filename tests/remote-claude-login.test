@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-remote-login-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+stub_bin="$test_root/bin"
+mkdir -p -- "$stub_bin"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'printf "%s\n" "$@" >> "$REMOTE_LOGIN_CAPTURE"' \
+  > "$stub_bin/omarchy"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'if [[ "$*" == *"activeworkspace"* ]]; then' \
+  '  printf "%s\n" '\''{"id":3}'\''' \
+  'elif [[ "$*" == *"clients"* ]]; then' \
+  '  if [[ -e "$REMOTE_LOGIN_CLIENTS_SEEN" ]]; then' \
+  '    printf "%s\n" '\''[{"address":"0xlogin"}]'\''' \
+  '  else' \
+  '    touch "$REMOTE_LOGIN_CLIENTS_SEEN"' \
+  '    printf "%s\n" '\''[]'\''' \
+  '  fi' \
+  'elif [[ "${1:-}" == "dispatch" ]]; then' \
+  '  printf "%s\n" "$*" >> "$REMOTE_LOGIN_FOCUS_CAPTURE"' \
+  '  exit 7' \
+  'fi' > "$stub_bin/hyprctl"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'printf "%s\n" "$@" > "$REMOTE_LOGIN_SSH_CAPTURE"' \
+  'printf "%s\n" "Opening browser to sign in…"' \
+  'printf "%s\n" "https://claude.com/cai/oauth/authorize?code=true&fixture=1"' \
+  > "$stub_bin/ssh"
+chmod +x "$stub_bin/omarchy" "$stub_bin/hyprctl" "$stub_bin/ssh"
+
+config="$test_root/remotes.json"
+jq -n '{version:2,remotes:[
+  {id:"lambda-claude",label:"Lambda",type:"ssh",providerType:"claude",sshHost:"lambda",claudeCommand:"/opt/claude"},
+  {id:"lambda-codex",label:"Lambda",type:"ssh",sshHost:"lambda"}
+]}' > "$config"
+
+export PATH="$stub_bin:$PATH"
+export REMOTE_LOGIN_CAPTURE="$test_root/login-command"
+export REMOTE_LOGIN_CLIENTS_SEEN="$test_root/clients-seen"
+export REMOTE_LOGIN_FOCUS_CAPTURE="$test_root/focus-command"
+export REMOTE_LOGIN_SSH_CAPTURE="$test_root/ssh-command"
+export XDG_RUNTIME_DIR="$test_root"
+
+result="$("$plugin_root/bin/omarchy-claude-remote-login" "$config" lambda-claude)"
+jq -e '.address == "0xlogin"' <<<"$result" >/dev/null
+grep -Fx 'launch' "$REMOTE_LOGIN_CAPTURE" >/dev/null
+grep -Fx 'terminal' "$REMOTE_LOGIN_CAPTURE" >/dev/null
+grep -F 'omarchy-claude-remote-auth-session' "$REMOTE_LOGIN_CAPTURE" >/dev/null
+grep -Fx 'lambda-claude' "$REMOTE_LOGIN_CAPTURE" >/dev/null
+grep -F 'movetoworkspacesilent 3,address:0xlogin' "$REMOTE_LOGIN_FOCUS_CAPTURE" >/dev/null
+grep -F 'address:0xlogin' "$REMOTE_LOGIN_FOCUS_CAPTURE" >/dev/null
+
+: > "$REMOTE_LOGIN_CAPTURE"
+"$plugin_root/bin/omarchy-claude-remote-auth-session" "$config" lambda-claude \
+  >/dev/null
+grep -F '/opt/claude auth login' "$REMOTE_LOGIN_SSH_CAPTURE" >/dev/null
+grep -F '$HOME/.local/bin' "$REMOTE_LOGIN_SSH_CAPTURE" >/dev/null
+grep -F 'claude-runtime.json' "$REMOTE_LOGIN_SSH_CAPTURE" >/dev/null
+grep -Fx 'launch' "$REMOTE_LOGIN_CAPTURE" >/dev/null
+grep -Fx 'browser' "$REMOTE_LOGIN_CAPTURE" >/dev/null
+grep -F 'https://claude.com/cai/oauth/authorize?code=true&fixture=1' \
+  "$REMOTE_LOGIN_CAPTURE" >/dev/null
+
+if "$plugin_root/bin/omarchy-claude-remote-login" \
+    "$config" lambda-codex >/dev/null 2>&1; then
+  echo "Codex remote unexpectedly accepted for Claude sign-in" >&2
+  exit 1
+fi
+
+printf '%s\n' "remote-claude-login tests passed"

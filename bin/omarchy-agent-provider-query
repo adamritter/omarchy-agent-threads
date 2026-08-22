@@ -9,9 +9,12 @@ const [provider = "", action = "snapshot", threadID = "", threadPath = "", actio
 const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
 const stateHome = process.env.XDG_STATE_HOME || path.join(home, ".local", "state")
 const metadataPath = path.join(stateHome, "omarchy", "codex-thread-providers.json")
-const openCodeCapabilitiesPath = path.join(stateHome, "omarchy", "opencode-capabilities.json")
 const claudeRuntimePath = path.join(stateHome, "omarchy", "claude-runtime.json")
-const openCodeURL = process.env.OMARCHY_OPENCODE_URL || "http://127.0.0.1:43962"
+const claudeUsagePath = path.join(stateHome, "omarchy", "claude-usage.json")
+const claudeThreadRuntimePath = process.env.OMARCHY_CLAUDE_RUNTIME_PATH
+  || path.join(stateHome, "omarchy", "claude-thread-runtime.json")
+const claudeUsageURL = process.env.OMARCHY_CLAUDE_USAGE_URL
+  || "https://api.anthropic.com/api/oauth/usage"
 const claudeCommand = process.env.OMARCHY_CLAUDE_COMMAND || "claude"
 
 function fail(message) {
@@ -129,7 +132,7 @@ function claudeJobStates() {
   return states
 }
 
-function parseClaudeTranscript(filePath, jobs, metadata) {
+function parseClaudeTranscript(filePath, jobs, runtimeStates, metadata) {
   const fallbackID = path.basename(filePath, ".jsonl")
   let stat
   try { stat = fs.statSync(filePath) } catch { return null }
@@ -144,6 +147,8 @@ function parseClaudeTranscript(filePath, jobs, metadata) {
   let lastModel = ""
   let lastEffort = ""
   let inferredBusy = false
+  let transcriptState = "idle"
+  let terminalAt = 0
   let updatedAt = stat.mtimeMs / 1000
   for (const line of content.split(/\r?\n/)) {
     if (!line.trim()) continue
@@ -151,30 +156,57 @@ function parseClaudeTranscript(filePath, jobs, metadata) {
     try { entry = JSON.parse(line) } catch { continue }
     id = String(entry.sessionId || entry.sessionID || id)
     if (entry.cwd) cwd = String(entry.cwd)
-    if (entry.timestamp) updatedAt = Math.max(updatedAt, timestampSeconds(entry.timestamp))
+    const entryTimestamp = entry.timestamp
+      ? timestampSeconds(entry.timestamp) : stat.mtimeMs / 1000
+    updatedAt = Math.max(updatedAt, entryTimestamp)
     if (entry.type === "custom-title" && entry.customTitle) title = cleanText(entry.customTitle)
     if (entry.type === "summary" && entry.summary) summary = cleanText(entry.summary)
     const role = entry.message && entry.message.role
     if (!firstPrompt && (entry.type === "user" || role === "user"))
       firstPrompt = textContent(entry.message ? entry.message.content : entry.content)
-    if (entry.isSidechain !== true && role === "user") inferredBusy = true
+    if (entry.isSidechain !== true && role === "user") {
+      inferredBusy = true
+      transcriptState = "busy"
+    }
     if (entry.isSidechain !== true && role === "assistant") {
       if (entry.message.model) lastModel = String(entry.message.model)
       if (entry.effort) lastEffort = String(entry.effort)
       const stopReason = String(entry.message.stop_reason || "")
       inferredBusy = stopReason !== "end_turn" && stopReason !== "stop_sequence"
+      if (!inferredBusy) {
+        transcriptState = "done"
+        terminalAt = Math.max(terminalAt, entryTimestamp)
+      }
     }
     if (entry.isSidechain !== true && entry.type === "system"
         && ["turn_duration", "stop_failure", "api_error", "interrupted"]
-          .includes(String(entry.subtype || ""))) inferredBusy = false
-    if (entry.isSidechain !== true
-        && (entry.type === "last-prompt" || entry.type === "bridge-session"))
+          .includes(String(entry.subtype || ""))) {
       inferredBusy = false
+      transcriptState = String(entry.subtype || "done")
+      terminalAt = Math.max(terminalAt, entryTimestamp)
+    }
+    if (entry.isSidechain !== true
+        && (entry.type === "last-prompt" || entry.type === "bridge-session")) {
+      inferredBusy = false
+      transcriptState = "idle"
+      terminalAt = Math.max(terminalAt, entryTimestamp)
+    }
   }
 
   const local = metadata[`claude:${id}`] || {}
   if (local.archived === true) return null
   const job = jobs.get(id)
+  const runtime = runtimeStates.get(id) || null
+  const runtimeUpdatedAt = Number(runtime && runtime.updatedAt || 0) / 1000
+  const runtimeWins = runtime && runtimeUpdatedAt >= terminalAt
+  const lifecycle = runtimeWins ? String(runtime.state || "idle") : transcriptState
+  const busy = job && job.busy === true
+    || (runtimeWins ? lifecycle === "busy" : inferredBusy)
+  const completionToken = runtime && runtime.completionToken
+    ? String(runtime.completionToken) : (terminalAt > 0 ? `transcript:${terminalAt}` : "")
+  const attentionToken = runtime && runtime.attentionToken
+    ? String(runtime.attentionToken)
+    : (job && job.attention ? `job:${job.raw}` : "")
   const display = title || summary || firstPrompt || "Untitled Claude session"
   return {
     id,
@@ -183,8 +215,11 @@ function parseClaudeTranscript(filePath, jobs, metadata) {
     cwd: cwd || home,
     projectId: cwd || home,
     updatedAt,
-    status: { type: job && job.busy || inferredBusy ? "active" : "idle" },
-    attention: job && job.attention === true,
+    status: { type: busy ? "active" : "idle" },
+    lifecycle,
+    completionToken,
+    attentionToken,
+    runtimeError: String(runtime && runtime.error || ""),
     providerType: "claude",
     isPinned: local.pinned === true,
     lastModel,
@@ -201,7 +236,8 @@ function claudeRuntimeInfo() {
   const cached = readJSON(claudeRuntimePath, null)
   try {
     const age = Date.now() - fs.statSync(claudeRuntimePath).mtimeMs
-    if (age < 60000 && cached && typeof cached === "object" && cached.available === true)
+    if (age < 60000 && cached && typeof cached === "object"
+        && cached.available === true && cached.authenticated === true)
       return cached
   } catch { /* Probe the CLI below. */ }
 
@@ -257,7 +293,7 @@ function claudeModelEfforts(model) {
   return ["low", "medium", "high", "xhigh", "max"]
 }
 
-function claudeModels(settings, state) {
+function claudeModels(settings, state, configuredModels = []) {
   const entries = [
     { id: "sonnet", name: "Sonnet", defaultEffort: "high" },
     { id: "opus", name: "Opus", defaultEffort: "xhigh" },
@@ -274,6 +310,12 @@ function claudeModels(settings, state) {
       description: cleanText(option.description),
       defaultEffort: claudeDefaultEffort(id)
     })
+  }
+
+  for (const configuredModel of configuredModels) {
+    const id = cleanText(configuredModel)
+    if (!id || entries.some(entry => entry.id === id)) continue
+    entries.push({ id, name: id, defaultEffort: claudeDefaultEffort(id) })
   }
 
   const available = Array.isArray(settings.availableModels)
@@ -394,14 +436,104 @@ function claudeDefaults(configRoot, threads, configuredSettings, configuredState
   return { model, effort, agent: cleanText(settings.agent) }
 }
 
-function claudeSnapshot() {
+function claudeRateLimits(runtimeValue) {
+  const stored = runtimeValue && runtimeValue.rateLimits
+  if (!stored || typeof stored !== "object") return {}
+  const now = Date.now() / 1000
+  const window = (value, duration) => {
+    if (!value || typeof value !== "object") return null
+    let usedPercent = Number(value.used_percentage)
+    let resetsAt = Number(value.resets_at)
+    if (!Number.isFinite(usedPercent)) return null
+    if (Number.isFinite(resetsAt) && resetsAt > 0 && resetsAt <= now) {
+      usedPercent = 0
+      resetsAt = 0
+    }
+    return {
+      usedPercent: Math.max(0, Math.min(100, usedPercent)),
+      resetsAt: Number.isFinite(resetsAt) ? resetsAt : 0,
+      windowDurationMins: duration
+    }
+  }
+  const primary = window(stored.fiveHour, 300)
+  const secondary = window(stored.sevenDay, 10080)
+  return {
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    updatedAt: Number(stored.updatedAt || 0)
+  }
+}
+
+function normalizedClaudeUsage(usage) {
+  if (!usage || typeof usage !== "object") return {}
+  const window = (value, duration) => {
+    if (!value || typeof value !== "object") return null
+    const usedPercent = Number(value.utilization)
+    const parsedReset = Date.parse(String(value.resets_at || ""))
+    if (!Number.isFinite(usedPercent)) return null
+    return {
+      usedPercent: Math.max(0, Math.min(100, usedPercent)),
+      resetsAt: Number.isFinite(parsedReset) ? parsedReset / 1000 : 0,
+      windowDurationMins: duration
+    }
+  }
+  const primary = window(usage.five_hour, 300)
+  const secondary = window(usage.seven_day, 10080)
+  return {
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    updatedAt: Date.now()
+  }
+}
+
+async function claudeUsageRateLimits(configRoot, hookRuntime, authenticated) {
+  const cached = readJSON(claudeUsagePath, null)
+  try {
+    const age = Date.now() - fs.statSync(claudeUsagePath).mtimeMs
+    if (age < 60000 && cached && typeof cached === "object") return cached
+  } catch { /* Fetch below. */ }
+
+  if (authenticated) {
+    const credentials = readJSON(path.join(configRoot, ".credentials.json"), {}) || {}
+    const oauth = credentials.claudeAiOauth && typeof credentials.claudeAiOauth === "object"
+      ? credentials.claudeAiOauth : {}
+    const accessToken = String(oauth.accessToken || "")
+    if (accessToken !== "") {
+      try {
+        const response = await fetch(claudeUsageURL, {
+          signal: AbortSignal.timeout(5000),
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            "anthropic-beta": "oauth-2025-04-20",
+            "user-agent": "omarchy-codex-threads"
+          }
+        })
+        if (!response.ok) throw new Error(`Claude usage HTTP ${response.status}`)
+        const limits = normalizedClaudeUsage(await response.json())
+        if (limits.primary || limits.secondary) {
+          try { writePrivateJSON(claudeUsagePath, limits) } catch { /* Cache is best effort. */ }
+          return limits
+        }
+      } catch { /* Use the last known or status-line value below. */ }
+    }
+  }
+
+  if (cached && typeof cached === "object") return cached
+  return claudeRateLimits(hookRuntime)
+}
+
+async function claudeSnapshot() {
   const configRoot = process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude")
   const settings = readJSON(path.join(configRoot, "settings.json"), {}) || {}
   const state = readJSON(path.join(home, ".claude.json"), {}) || {}
   const jobs = claudeJobStates()
+  const runtimeValue = readJSON(claudeThreadRuntimePath, {}) || {}
+  const runtimeStates = new Map(Object.entries(
+    runtimeValue.sessions && typeof runtimeValue.sessions === "object"
+      ? runtimeValue.sessions : {}))
   const metadata = loadMetadata()
   const threads = walkClaudeTranscripts(path.join(configRoot, "projects"))
-    .map(file => parseClaudeTranscript(file, jobs, metadata))
+    .map(file => parseClaudeTranscript(file, jobs, runtimeStates, metadata))
     .filter(Boolean)
     .sort((a, b) => b.updatedAt - a.updatedAt)
   const projects = projectList(threads)
@@ -417,7 +549,10 @@ function claudeSnapshot() {
       state)
     projectAgents[directory] = claudeAgentsForDirectory(configRoot, directory)
   }
+  const configuredModels = [defaults.model].concat(
+    Object.values(projectDefaults).map(value => value && value.model))
   const runtime = claudeRuntimeInfo()
+  const rateLimits = await claudeUsageRateLimits(configRoot, runtimeValue, runtime.authenticated)
   return {
     hostId: "provider-claude",
     label: "CLAUDE",
@@ -430,172 +565,24 @@ function claudeSnapshot() {
     projectAgents,
     defaultModel: defaults.model,
     defaultEffort: defaults.effort,
-    models: claudeModels(settings, state),
+    models: claudeModels(settings, state, configuredModels),
     agents: claudeAgentsForDirectory(configRoot, ""),
     defaultAgent: defaults.agent,
     available: runtime.available,
     authenticated: runtime.authenticated,
     version: runtime.version,
     subscriptionType: runtime.subscriptionType,
-    error: !runtime.available ? "Claude CLI is not installed"
-      : (!runtime.authenticated ? "Claude is not signed in" : "")
-  }
-}
-
-async function requestOpenCodeAt(baseURL, endpoint, options = {}) {
-  const response = await fetch(baseURL + endpoint, {
-    ...options,
-    signal: AbortSignal.timeout(options.timeout || 5000),
-    headers: { "content-type": "application/json", ...(options.headers || {}) }
-  })
-  if (!response.ok) throw new Error(`OpenCode HTTP ${response.status}`)
-  if (response.status === 204) return null
-  return response.json()
-}
-
-async function requestOpenCode(endpoint, options = {}) {
-  return requestOpenCodeAt(openCodeURL, endpoint, options)
-}
-
-function openCodeRuntimeServers() {
-  const runtimeRoot = process.env.XDG_RUNTIME_DIR || "/tmp"
-  const runtimeDirectory = path.join(runtimeRoot, `omarchy-codex-threads-${process.getuid()}`)
-  let entries = []
-  try { entries = fs.readdirSync(runtimeDirectory, { withFileTypes: true }) } catch { return [] }
-  return entries.flatMap(entry => {
-    const match = /^provider-opencode--(.+)\.server$/.exec(entry.name)
-    if (!entry.isFile() || !match) return []
-    let url = ""
-    try { url = fs.readFileSync(path.join(runtimeDirectory, entry.name), "utf8").trim() } catch { return [] }
-    if (!/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(url)) return []
-    return [{ id: match[1], url, file: path.join(runtimeDirectory, entry.name) }]
-  })
-}
-
-async function runtimeOpenCodeStatuses(sessions) {
-  const directories = new Map(sessions.map(session => [String(session.id || ""), String(session.directory || home)]))
-  const results = await Promise.all(openCodeRuntimeServers().map(async runtime => {
-    try {
-      const directory = directories.get(runtime.id) || home
-      const status = await requestOpenCodeAt(
-        runtime.url,
-        `/session/status?directory=${encodeURIComponent(directory)}`,
-        { timeout: 700 })
-      return [runtime.id, status && status[runtime.id]]
-    } catch {
-      try { fs.unlinkSync(runtime.file) } catch { /* The runtime entry may already be gone. */ }
-      return [runtime.id, null]
-    }
-  }))
-  return Object.fromEntries(results.filter(([, status]) => status))
-}
-
-function normalizeOpenCodeCapabilities(providerResponse) {
-  const connected = new Set(Array.isArray(providerResponse.connected) ? providerResponse.connected : [])
-  const defaults = providerResponse.default && typeof providerResponse.default === "object"
-    ? providerResponse.default : {}
-  const models = []
-  for (const providerInfo of Array.isArray(providerResponse.all) ? providerResponse.all : []) {
-    if (!connected.has(providerInfo.id)) continue
-    for (const modelInfo of Object.values(providerInfo.models || {})) {
-      const id = `${providerInfo.id}/${modelInfo.id}`
-      const variants = Object.keys(modelInfo.variants || {}).filter(variant =>
-        modelInfo.variants[variant] && modelInfo.variants[variant].disabled !== true)
-      models.push({
-        id,
-        name: cleanText(modelInfo.name) || id,
-        provider: providerInfo.name || providerInfo.id,
-        isDefault: defaults[providerInfo.id] === modelInfo.id,
-        efforts: variants
-      })
-    }
-  }
-  models.sort((a, b) => Number(b.isDefault) - Number(a.isDefault)
-    || a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name))
-  return models
-}
-
-async function openCodeCapabilities() {
-  const cached = readJSON(openCodeCapabilitiesPath, null)
-  try {
-    const age = Date.now() - fs.statSync(openCodeCapabilitiesPath).mtimeMs
-    if (age < 60000 && cached && Array.isArray(cached.models)
-        && Array.isArray(cached.agents)) return cached
-  } catch { /* Fetch the capabilities below. */ }
-
-  try {
-    const [providerResponse, agentResponse] = await Promise.all([
-      requestOpenCode("/provider"),
-      requestOpenCode("/agent")
-    ])
-    const capabilities = {
-      models: normalizeOpenCodeCapabilities(providerResponse),
-      agents: (Array.isArray(agentResponse) ? agentResponse : [])
-        .filter(agent => agent && agent.hidden !== true
-          && (agent.mode === "primary" || agent.mode === "all"))
-        .map(agent => ({
-          id: String(agent.name || ""),
-          name: String(agent.name || ""),
-          description: cleanText(agent.description)
-        }))
-    }
-    fs.mkdirSync(path.dirname(openCodeCapabilitiesPath), { recursive: true, mode: 0o700 })
-    const temporary = `${openCodeCapabilitiesPath}.${process.pid}.tmp`
-    fs.writeFileSync(temporary, JSON.stringify(capabilities) + "\n", { mode: 0o600 })
-    fs.renameSync(temporary, openCodeCapabilitiesPath)
-    return capabilities
-  } catch (error) {
-    if (cached && Array.isArray(cached.models) && Array.isArray(cached.agents)) return cached
-    throw error
-  }
-}
-
-async function openCodeSnapshot() {
-  const [sessions, capabilities] = await Promise.all([
-    requestOpenCode("/experimental/session?roots=true&limit=1000&archived=false"),
-    openCodeCapabilities()
-  ])
-  const metadata = loadMetadata()
-  const statuses = {}
-  const directories = [...new Set(sessions.map(item => String(item.directory || "")).filter(Boolean))]
-  for (const directory of directories) {
-    try {
-      const scoped = await requestOpenCode(`/session/status?directory=${encodeURIComponent(directory)}`)
-      Object.assign(statuses, scoped || {})
-    } catch { /* A stale project directory should not hide the session history. */ }
-  }
-  Object.assign(statuses, await runtimeOpenCodeStatuses(sessions))
-  const threads = sessions.map(session => {
-    const id = String(session.id || "")
-    const status = statuses[id] || { type: "idle" }
-    const local = metadata[`opencode:${id}`] || {}
-    return {
-      id,
-      name: cleanText(session.title) || "Untitled OpenCode session",
-      preview: cleanText(session.title),
-      cwd: String(session.directory || home),
-      projectId: String(session.projectID || session.directory || home),
-      updatedAt: timestampSeconds(session.time && session.time.updated),
-      status: { type: status.type === "busy" || status.type === "retry" ? "active" : "idle" },
-      providerType: "opencode",
-      isPinned: local.pinned === true
-    }
-  }).sort((a, b) => b.updatedAt - a.updatedAt)
-  return {
-    hostId: "provider-opencode",
-    label: "OPENCODE",
-    providerType: "opencode",
-    type: "provider",
-    home,
-    threads,
-    projects: projectList(threads),
-    models: capabilities.models,
-    agents: capabilities.agents
+    rateLimits,
+    error: !runtime.available
+      ? "Claude CLI is not installed on this host"
+      : (!runtime.authenticated ? "Claude is not signed in; run: claude auth login" : "")
   }
 }
 
 async function main() {
   if (provider !== "claude" && provider !== "opencode") fail("unsupported provider")
+  const openCode = provider === "opencode"
+    ? await import("./lib/opencode-provider.mjs") : null
 
   if (action === "pin") {
     updateLocalMetadata("pin", actionValue)
@@ -606,18 +593,15 @@ async function main() {
   if (action === "archive") {
     if (provider === "claude") updateLocalMetadata("archive", "true")
     else {
-      if (!threadID) fail("missing session id")
-      await requestOpenCode(`/session/${encodeURIComponent(threadID)}?directory=${encodeURIComponent(threadPath || home)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ time: { archived: Date.now() } })
-      })
+      await openCode.archiveOpenCode(threadID, threadPath)
     }
     process.stdout.write(JSON.stringify({ ok: true }) + "\n")
     return
   }
 
   if (action !== "snapshot") fail("unsupported action")
-  const snapshot = provider === "claude" ? claudeSnapshot() : await openCodeSnapshot()
+  const snapshot = provider === "claude"
+    ? await claudeSnapshot() : await openCode.openCodeSnapshot()
   process.stdout.write(JSON.stringify(snapshot) + "\n")
 }
 

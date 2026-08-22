@@ -1,0 +1,115 @@
+#!/usr/bin/env node
+
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+
+const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
+const stateHome = process.env.XDG_STATE_HOME || path.join(home, ".local", "state")
+const statePath = process.env.OMARCHY_CLAUDE_RUNTIME_PATH
+  || path.join(stateHome, "omarchy", "claude-thread-runtime.json")
+const lockPath = statePath + ".lock"
+
+function readInput() {
+  try { return JSON.parse(fs.readFileSync(0, "utf8")) } catch { return null }
+}
+
+function readState() {
+  try {
+    const value = JSON.parse(fs.readFileSync(statePath, "utf8"))
+    return value && typeof value === "object" ? value : { version: 1, sessions: {} }
+  } catch { return { version: 1, sessions: {} } }
+}
+
+function acquireLock() {
+  fs.mkdirSync(path.dirname(statePath), { recursive: true, mode: 0o700 })
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try { fs.mkdirSync(lockPath, { mode: 0o700 }); return true } catch {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5)
+    }
+  }
+  return false
+}
+
+function saveState(value) {
+  const temporary = `${statePath}.${process.pid}.tmp`
+  fs.writeFileSync(temporary, JSON.stringify(value) + "\n", { mode: 0o600 })
+  fs.renameSync(temporary, statePath)
+}
+
+const input = readInput()
+if (!input || !input.session_id || !acquireLock()) process.exit(0)
+
+try {
+  const state = readState()
+  if (!state.sessions || typeof state.sessions !== "object") state.sessions = {}
+  const id = String(input.session_id)
+  const now = Date.now()
+  const event = String(input.hook_event_name || "")
+  const rateLimits = input.rate_limits && typeof input.rate_limits === "object"
+    ? input.rate_limits : null
+  if (rateLimits) {
+    state.rateLimits = {
+      updatedAt: now,
+      fiveHour: rateLimits.five_hour || null,
+      sevenDay: rateLimits.seven_day || null
+    }
+  }
+
+  if (event !== "") {
+    const previous = state.sessions[id] && typeof state.sessions[id] === "object"
+      ? state.sessions[id] : {}
+    const next = {
+      ...previous,
+      sessionId: id,
+      event,
+      cwd: String(input.cwd || previous.cwd || home),
+      transcriptPath: String(input.transcript_path || previous.transcriptPath || ""),
+      updatedAt: now
+    }
+
+    if (event === "SessionStart") {
+      next.alive = true
+      if (!next.state || next.state === "ended") next.state = "idle"
+    } else if (event === "UserPromptSubmit") {
+      next.alive = true
+      next.state = "busy"
+      next.startedAt = now
+      next.error = ""
+    } else if (event === "Notification") {
+      next.alive = true
+      next.state = "waiting"
+      next.attentionToken = String(now)
+      next.notificationType = String(input.notification_type || "")
+      next.message = String(input.message || "")
+    } else if (event === "Stop") {
+      next.alive = true
+      next.state = "done"
+      next.completedAt = now
+      next.completionToken = String(now)
+      next.error = ""
+    } else if (event === "StopFailure") {
+      next.alive = true
+      next.state = "failed"
+      next.completedAt = now
+      next.completionToken = String(now)
+      next.error = String(input.error || "unknown")
+      next.message = String(input.last_assistant_message || input.error_details || "")
+    } else if (event === "SessionEnd") {
+      next.alive = false
+      if (next.state === "busy" || next.state === "waiting") {
+        next.state = "interrupted"
+        next.completedAt = now
+        next.completionToken = String(now)
+      } else if (!next.state) next.state = "ended"
+    }
+    state.sessions[id] = next
+  }
+
+  state.version = 1
+  saveState(state)
+} catch {
+  // A status hook must never affect Claude itself.
+} finally {
+  try { fs.rmdirSync(lockPath) } catch { /* Best effort. */ }
+}

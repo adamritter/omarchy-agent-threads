@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "id": "adam.codex-threads",
-  "name": "Codex Threads",
-  "version": "1.2.0",
-  "author": "Adam",
-  "description": "Browse local and remote Codex threads and focus or open their terminal sessions.",
+  "name": "Agent Threads",
+  "version": "0.1.0",
+  "author": "Adam Ritter",
+  "description": "Browse, monitor, and open local or remote Codex, Claude Code, and OpenCode sessions.",
   "kinds": [
     "bar-widget"
   ],
@@ -12,8 +12,8 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Codex Threads",
-    "description": "A left-side browser for local, App Server, and SSH Codex threads.",
+    "displayName": "Agent Threads",
+    "description": "A keyboard-first session browser for Codex, Claude Code, and OpenCode.",
     "category": "AI",
     "aliases": [
       "codex-threads",

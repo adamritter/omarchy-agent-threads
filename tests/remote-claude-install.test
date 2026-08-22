@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-remote-install-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+stub_bin="$test_root/bin"
+mkdir -p -- "$stub_bin"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'tee "$REMOTE_INSTALL_CAPTURE" >/dev/null' \
+  'printf "%s\n" "2.1.999 (Claude Code)"' \
+  > "$stub_bin/ssh"
+chmod +x "$stub_bin/ssh"
+
+config="$test_root/remotes.json"
+jq -n '{version:2,remotes:[
+  {id:"lambda-claude",label:"Lambda",type:"ssh",providerType:"claude",sshHost:"lambda"},
+  {id:"lambda-codex",label:"Lambda",type:"ssh",sshHost:"lambda"}
+]}' > "$config"
+
+export PATH="$stub_bin:$PATH"
+export REMOTE_INSTALL_CAPTURE="$test_root/install-script"
+
+result="$($plugin_root/bin/omarchy-claude-remote-install "$config" lambda-claude)"
+[[ "$result" == "2.1.999 (Claude Code)" ]]
+grep -F 'https://claude.ai/install.sh' "$REMOTE_INSTALL_CAPTURE" >/dev/null
+grep -F 'command -v curl' "$REMOTE_INSTALL_CAPTURE" >/dev/null
+
+if "$plugin_root/bin/omarchy-claude-remote-install" \
+    "$config" lambda-codex >/dev/null 2>&1; then
+  echo "Codex remote unexpectedly accepted for Claude install" >&2
+  exit 1
+fi
+
+printf '%s\n' "remote-claude-install tests passed"

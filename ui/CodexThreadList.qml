@@ -32,6 +32,20 @@ ListView {
     readonly property bool sectionRow: remoteRow || projectRow
     readonly property bool threadRow: !sectionRow && !moreRow
     readonly property var threadData: threadRow ? modelData.thread : null
+    readonly property bool installableRemoteClaude: remoteRow
+      && String(modelData.host && modelData.host.providerType || "") === "claude"
+      && modelData.host.available === false
+    readonly property bool installingRemoteClaude: installableRemoteClaude
+      && panel.service.remoteClaudeInstallHostId === String(modelData.remoteId || "")
+    readonly property bool loginableRemoteClaude: remoteRow
+      && String(modelData.host && modelData.host.providerType || "") === "claude"
+      && modelData.host.available !== false
+      && modelData.host.authenticated === false
+    readonly property bool loggingInRemoteClaude: loginableRemoteClaude
+      && panel.service.remoteClaudeLoginHostId === String(modelData.remoteId || "")
+      && panel.service.remoteClaudeLoginRunning
+    readonly property bool needsRemoteClaudeAction: installableRemoteClaude
+      || loginableRemoteClaude
     readonly property bool groupedThread: threadRow && modelData.grouped === true
     readonly property bool activeThread: threadRow
       && panel.service.activeThreadId !== ""
@@ -67,6 +81,11 @@ ListView {
       && String(threadData.id || "") === panel.service.movingThreadId
 
     function openThreadMenu() {
+      if (remoteRow) {
+        panel.selectedIndex = row.index
+        remoteMenu.open()
+        return
+      }
       if (!threadRow) return
       panel.selectedIndex = row.index
       threadMenu.open()
@@ -502,7 +521,8 @@ ListView {
       visible: row.sectionRow
       anchors.left: parent.left
       anchors.leftMargin: Style.space(22 + Number(row.modelData.depth || 0) * 18)
-      anchors.right: sectionPinButton.left
+      anchors.right: row.needsRemoteClaudeAction
+        ? remoteClaudeActionButton.left : remoteManageButton.left
       anchors.rightMargin: Style.space(8)
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(1)
@@ -521,21 +541,199 @@ ListView {
         visible: !row.remoteRow || !row.modelData.host.loading
         width: parent.width
         text: row.remoteRow
-          ? (row.modelData.host.error !== "" ? row.modelData.host.error
+          ? (row.needsRemoteClaudeAction ? "CLAUDE"
+            : (row.modelData.host.error !== "" ? row.modelData.host.error
             : (row.modelData.host.providerType
               ? String(row.modelData.host.providerType).toUpperCase()
-              : (row.modelData.host.type === "ssh" ? "SSH" : "APP SERVER")))
+              : (row.modelData.host.type === "ssh" ? "SSH" : "APP SERVER"))))
           : row.modelData.path
-        color: panel.dim
+        color: row.remoteRow && row.modelData.host.error !== ""
+          && !row.needsRemoteClaudeAction ? Color.urgent : panel.dim
         font.family: panel.fontFamily
         font.pixelSize: Math.max(9, Style.font.caption - 1)
         elide: Text.ElideMiddle
       }
     }
 
+    Rectangle {
+      id: remoteClaudeActionButton
+      visible: row.needsRemoteClaudeAction
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(6)
+      anchors.verticalCenter: parent.verticalCenter
+      width: visible ? Style.space(92) : 0
+      height: Style.space(30)
+      radius: Style.cornerRadius
+      color: remoteClaudeActionMouse.containsMouse
+        ? Util.alpha(Color.accent, 0.28) : Util.alpha(Color.accent, 0.16)
+      border.width: 1
+      border.color: Color.accent
+      z: 4
+
+      Text {
+        anchors.centerIn: parent
+        text: row.installingRemoteClaude ? "INSTALLING…"
+          : (row.loggingInRemoteClaude ? "OPENING…"
+            : (row.installableRemoteClaude ? "INSTALL" : "LOGIN"))
+        color: Color.accent
+        font.family: panel.fontFamily
+        font.pixelSize: Math.max(8, Style.font.caption - 1)
+        font.bold: true
+      }
+
+      MouseArea {
+        id: remoteClaudeActionMouse
+        anchors.fill: parent
+        enabled: row.installableRemoteClaude
+          ? !panel.service.remoteClaudeInstallRunning
+          : !panel.service.remoteClaudeLoginRunning
+        hoverEnabled: enabled
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: {
+          panel.selectedIndex = row.index
+          if (row.installableRemoteClaude)
+            panel.service.installRemoteClaude(row.modelData.remoteId)
+          else panel.service.loginRemoteClaude(row.modelData.remoteId)
+        }
+      }
+    }
+
+    Item {
+      id: remoteManageButton
+      visible: row.remoteRow
+        && !row.needsRemoteClaudeAction
+        && (mouse.containsMouse || remoteManageMouse.containsMouse || remoteMenu.opened)
+      anchors.right: sectionPinButton.left
+      anchors.rightMargin: Style.space(2)
+      anchors.verticalCenter: parent.verticalCenter
+      width: visible ? Style.space(28) : 0
+      height: width
+      z: 3
+
+      Rectangle {
+        anchors.fill: parent
+        radius: Style.cornerRadius
+        color: remoteManageMouse.containsMouse
+          ? Util.alpha(panel.foreground, 0.14) : "transparent"
+      }
+
+      Text {
+        anchors.centerIn: parent
+        text: "⋯"
+        color: panel.dim
+        font.family: panel.fontFamily
+        font.pixelSize: Style.font.title
+      }
+
+      MouseArea {
+        id: remoteManageMouse
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton
+        cursorShape: Qt.PointingHandCursor
+        onClicked: {
+          panel.selectedIndex = row.index
+          remoteMenu.open()
+        }
+      }
+    }
+
+    Popup {
+      id: remoteMenu
+      x: Math.max(0, row.width - width - Style.space(6))
+      y: row.height - Style.space(4)
+      width: Style.space(210)
+      padding: Style.space(4)
+      modal: true
+      dim: false
+      focus: false
+      closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+      readonly property bool testingThis: panel.service.remoteTestRunning
+        && panel.service.remoteTestHostId === String(row.modelData.remoteId || "")
+      readonly property bool hasTestResult: panel.service.remoteTestHostId
+          === String(row.modelData.remoteId || "")
+        && String(panel.service.remoteTestMessage || "") !== ""
+
+      background: BorderSurface {
+        color: Color.background
+        borderSpec: Border.flat(panel.dim, 1)
+        radius: Style.cornerRadius
+      }
+
+      contentItem: Column {
+        spacing: 0
+
+        Repeater {
+          model: [
+            { label: remoteMenu.testingThis ? "Testing…" : "Test connection", action: "test" },
+            { label: "Edit connection…", action: "edit" },
+            { label: "Disable remote", action: "disable" }
+          ]
+
+          delegate: Rectangle {
+            id: remoteMenuChoice
+            required property var modelData
+            width: parent.width
+            height: Style.space(38)
+            radius: Style.cornerRadius
+            color: remoteMenuChoiceMouse.containsMouse ? panel.faint : "transparent"
+
+            Text {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              text: remoteMenuChoice.modelData.label
+              color: remoteMenuChoice.modelData.action === "disable"
+                ? Color.urgent : panel.foreground
+              font.family: panel.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            MouseArea {
+              id: remoteMenuChoiceMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              enabled: remoteMenuChoice.modelData.action !== "test"
+                || !remoteMenu.testingThis
+              cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onClicked: {
+                var action = String(remoteMenuChoice.modelData.action || "")
+                if (action === "test") {
+                  panel.service.testRemote(row.modelData.remoteId)
+                  return
+                }
+                remoteMenu.close()
+                if (action === "edit")
+                  panel.openRemoteSetup(row.modelData.remoteId)
+                else if (action === "disable")
+                  panel.disableRemote(row.modelData.remoteId)
+              }
+            }
+          }
+        }
+
+        Text {
+          visible: remoteMenu.hasTestResult
+          width: parent.width
+          topPadding: Style.space(5)
+          leftPadding: Style.space(10)
+          rightPadding: Style.space(10)
+          bottomPadding: Style.space(7)
+          text: panel.service.remoteTestMessage
+          color: remoteMenu.testingThis ? panel.dim
+            : (panel.service.remoteTestSucceeded ? Color.accent : Color.urgent)
+          font.family: panel.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.Wrap
+        }
+      }
+    }
+
     Item {
       id: sectionPinButton
       visible: row.sectionRow
+        && !row.needsRemoteClaudeAction
         && (mouse.containsMouse || sectionPinMouse.containsMouse || row.pinnedSection)
       anchors.right: newProjectButton.left
       anchors.rightMargin: Style.space(2)
@@ -575,7 +773,8 @@ ListView {
 
     Item {
       id: newProjectButton
-      visible: row.sectionRow && (mouse.containsMouse || newProjectMouse.containsMouse)
+      visible: row.sectionRow && !row.needsRemoteClaudeAction
+        && (mouse.containsMouse || newProjectMouse.containsMouse)
       anchors.right: parent.right
       anchors.rightMargin: Style.space(6)
       anchors.verticalCenter: parent.verticalCenter

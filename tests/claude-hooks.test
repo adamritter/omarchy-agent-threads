@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-claude-hooks-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+fixture_home="$test_root/home"
+runtime_path="$test_root/runtime.json"
+project_dir="$fixture_home/.claude/projects/fixture"
+mkdir -p -- "$project_dir" "$fixture_home/.local/state/omarchy"
+
+session_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+transcript="$project_dir/${session_id}.jsonl"
+printf '%s\n' \
+  "{\"type\":\"user\",\"sessionId\":\"$session_id\",\"cwd\":\"$test_root/project\",\"timestamp\":\"2026-08-22T20:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"Test hooks\"}}" \
+  > "$transcript"
+
+hook() {
+  OMARCHY_AGENT_PROVIDER_HOME="$fixture_home" \
+  OMARCHY_CLAUDE_RUNTIME_PATH="$runtime_path" \
+    "$plugin_root/bin/omarchy-claude-thread-hook"
+}
+
+snapshot() {
+  OMARCHY_AGENT_PROVIDER_HOME="$fixture_home" \
+  OMARCHY_CLAUDE_RUNTIME_PATH="$runtime_path" \
+  XDG_STATE_HOME="$fixture_home/.local/state" \
+  OMARCHY_CLAUDE_COMMAND="$test_root/missing-claude" \
+    "$plugin_root/bin/omarchy-agent-provider-query" claude snapshot
+}
+
+printf '%s\n' "{\"session_id\":\"$session_id\",\"transcript_path\":\"$transcript\",\"cwd\":\"$test_root/project\",\"hook_event_name\":\"SessionStart\"}" | hook
+printf '%s\n' "{\"session_id\":\"$session_id\",\"transcript_path\":\"$transcript\",\"cwd\":\"$test_root/project\",\"hook_event_name\":\"UserPromptSubmit\"}" | hook
+snapshot | jq -e --arg id "$session_id" '
+  .threads[] | select(.id == $id)
+  | .status.type == "active" and .lifecycle == "busy"' >/dev/null
+
+printf '%s\n' "{\"session_id\":\"$session_id\",\"transcript_path\":\"$transcript\",\"cwd\":\"$test_root/project\",\"hook_event_name\":\"Stop\"}" | hook
+done_snapshot="$(snapshot)"
+jq -e --arg id "$session_id" '
+  .threads[] | select(.id == $id)
+  | .status.type == "idle" and .lifecycle == "done"
+    and (.completionToken | length) > 0' <<<"$done_snapshot" >/dev/null
+completion_token="$(jq -r --arg id "$session_id" '.threads[] | select(.id == $id) | .completionToken' <<<"$done_snapshot")"
+
+printf '%s\n' "{\"session_id\":\"$session_id\",\"rate_limits\":{\"five_hour\":{\"used_percentage\":23,\"resets_at\":1999999999},\"seven_day\":{\"used_percentage\":41,\"resets_at\":1999999999}}}" | hook
+snapshot | jq -e '
+  .rateLimits.primary.windowDurationMins == 300
+  and .rateLimits.primary.usedPercent == 23
+  and .rateLimits.secondary.windowDurationMins == 10080
+  and .rateLimits.secondary.usedPercent == 41
+' >/dev/null
+test "$(snapshot | jq -r --arg id "$session_id" '.threads[] | select(.id == $id) | .completionToken')" = "$completion_token"
+
+printf '%s\n' "{\"session_id\":\"$session_id\",\"transcript_path\":\"$transcript\",\"cwd\":\"$test_root/project\",\"hook_event_name\":\"SessionEnd\"}" | hook
+test "$(snapshot | jq -r --arg id "$session_id" '.threads[] | select(.id == $id) | .completionToken')" = "$completion_token"
+
+printf '%s\n' "{\"session_id\":\"$session_id\",\"transcript_path\":\"$transcript\",\"cwd\":\"$test_root/project\",\"hook_event_name\":\"UserPromptSubmit\"}" | hook
+printf '%s\n' "{\"session_id\":\"$session_id\",\"transcript_path\":\"$transcript\",\"cwd\":\"$test_root/project\",\"hook_event_name\":\"SessionEnd\"}" | hook
+snapshot | jq -e --arg id "$session_id" '
+  .threads[] | select(.id == $id)
+  | .status.type == "idle" and .lifecycle == "interrupted"
+    and .completionToken != "'"$completion_token"'"' >/dev/null
+
+printf '%s\n' "{\"session_id\":\"$session_id\",\"transcript_path\":\"$transcript\",\"cwd\":\"$test_root/project\",\"hook_event_name\":\"Notification\",\"notification_type\":\"permission_prompt\",\"message\":\"Permission needed\"}" | hook
+snapshot | jq -e --arg id "$session_id" '
+  .threads[] | select(.id == $id)
+  | .lifecycle == "waiting" and (.attentionToken | length) > 0' >/dev/null
+
+printf '%s\n' "claude-hook tests passed"

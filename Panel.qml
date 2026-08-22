@@ -51,6 +51,8 @@ Panel {
   property bool helpOpen: false
   property bool remoteSetupOpen: false
   property string remoteSetupType: "ssh"
+  property string remoteSetupProvider: "codex"
+  property string editingRemoteId: ""
   property int focusAttemptsRemaining: 0
   property bool focusPrimed: false
   property bool internalFocusTransfer: false
@@ -185,8 +187,9 @@ Panel {
     return totalMinutes + "m"
   }
 
-  function rateLimitText() {
-    var limits = service.rateLimits || ({})
+  function rateLimitText(providerLimits) {
+    var hasProviderLimits = providerLimits && typeof providerLimits === "object"
+    var limits = hasProviderLimits ? providerLimits : (service.rateLimits || ({}))
     var windows = [
       rateLimitWindowText(limits.primary),
       rateLimitWindowText(limits.secondary)
@@ -196,11 +199,27 @@ Panel {
       ? limits.primary : limits.secondary
     var reset = Number(weekly && weekly.windowDurationMins) === 10080
       ? rateLimitResetText(weekly) : ""
-    var availableResets = Math.max(0, Math.floor(Number(
+    var availableResets = hasProviderLimits ? 0 : Math.max(0, Math.floor(Number(
       service.rateLimitResetCredits && service.rateLimitResetCredits.availableCount || 0)))
     return windows.join(" · ")
       + (reset !== "" ? " · reset " + reset : "")
       + (availableResets > 0 ? " · reset×" + availableResets : "")
+  }
+
+  function activeRateLimitText() {
+    if (activeProvider === "codex") return rateLimitText()
+    if (activeProvider !== "claude") return ""
+    var row = selectedIndex >= 0 && selectedIndex < viewRows.length
+      ? viewRows[selectedIndex] : null
+    var selectedHost = row && row.host
+      && String(row.host.providerType || "") === "claude" ? row.host : null
+    var selectedLimits = selectedHost && selectedHost.rateLimits
+      && typeof selectedHost.rateLimits === "object" ? selectedHost.rateLimits : ({})
+    var hasSelectedLimits = selectedLimits.primary || selectedLimits.secondary
+    var localLimits = activeProviderHost && activeProviderHost.rateLimits
+      && typeof activeProviderHost.rateLimits === "object"
+      ? activeProviderHost.rateLimits : ({})
+    return rateLimitText(hasSelectedLimits ? selectedLimits : localLimits)
   }
 
   function threadTitle(thread) {
@@ -301,55 +320,126 @@ Panel {
     if (searchField.activeFocus) leaveSearch()
   }
 
-  function openRemoteSetup() {
-    if (activeProvider !== "codex" && activeProvider !== "claude") return
+  function openRemoteSetup(remoteId) {
+    var id = String(remoteId || "")
+    var host = id !== "" ? service.remoteHostById(id) : null
+    var hostProvider = String(host && host.providerType || "").toLowerCase()
+    var provider = host ? (hostProvider || "codex") : activeProvider
+    if (provider !== "codex" && provider !== "claude" && provider !== "opencode") return
+    if (id !== "" && !host) return
     providerMenu.close()
     helpOpen = false
     searchOpen = false
+    editingRemoteId = id
+    remoteSetupProvider = provider
     remoteSetupOpen = true
-    if (activeProvider === "claude") remoteSetupType = "ssh"
+    remoteSetupType = host ? String(host.type || "ssh")
+      : (provider !== "codex" ? "ssh" : remoteSetupType)
     keyboardFocusRequested = true
     service.remoteAddError = ""
-    remoteSetup.resetFields()
-    service.refreshSshHosts()
+    if (host) remoteSetup.loadHost(host)
+    else {
+      remoteSetup.resetFields()
+      service.refreshSshHosts()
+    }
     Qt.callLater(remoteSetup.focusName)
   }
 
   function closeRemoteSetup() {
     remoteSetupOpen = false
     service.remoteAddError = ""
+    editingRemoteId = ""
     internalFocusTransfer = true
     remoteSetup.blurFields()
     keyCatcher.forceActiveFocus()
     Qt.callLater(function() { root.internalFocusTransfer = false })
   }
 
-  function saveRemoteSetup() {
-    var id = service.addRemote(
-      remoteSetup.nameText,
-      remoteSetupType,
-      remoteSetup.addressText,
-      remoteSetup.homeText,
-      remoteSetup.tokenText,
-      activeProvider)
+  function persistRemoteSetup(closeAfterSave) {
+    var id = editingRemoteId !== ""
+      ? service.updateRemote(
+          editingRemoteId,
+          remoteSetup.nameText,
+          remoteSetupType,
+          remoteSetup.addressText,
+          remoteSetup.homeText,
+          remoteSetup.tokenText,
+          remoteSetupProvider)
+      : service.addRemote(
+          remoteSetup.nameText,
+          remoteSetupType,
+          remoteSetup.addressText,
+          remoteSetup.homeText,
+          remoteSetup.tokenText,
+          remoteSetupProvider)
     if (id === "") return
-    var expanded = Object.assign({}, collapsedRemotes)
+    var expanded = Object.assign({}, service.collapsedRemotes)
     expanded[id] = false
     service.setCollapsedRemotes(expanded)
-    closeRemoteSetup()
+    editingRemoteId = id
+    if (closeAfterSave !== false) closeRemoteSetup()
     rebuildRows("remote:" + id)
+    return id
+  }
+
+  function saveRemoteSetup() {
+    persistRemoteSetup(true)
+  }
+
+  function testRemoteSetup() {
+    if (editingRemoteId === "") return
+    var id = persistRemoteSetup(false)
+    if (id) service.testRemote(id)
+  }
+
+  function disableRemote(remoteId) {
+    var id = String(remoteId || "")
+    if (id === "" || !service.removeRemote(id)) return
+
+    var collapsed = Object.assign({}, service.collapsedRemotes)
+    delete collapsed[id]
+    service.setCollapsedRemotes(collapsed)
+
+    var projects = Object.assign({}, service.collapsedProjects)
+    var projectPrefix = id + ":"
+    Object.keys(projects).forEach(function(key) {
+      if (key.indexOf(projectPrefix) === 0) delete projects[key]
+    })
+    service.setCollapsedProjects(projects)
+
+    var pins = Object.assign({}, service.pinnedSections)
+    delete pins["remote:" + id]
+    var pinPrefix = "project:" + id + ":"
+    Object.keys(pins).forEach(function(key) {
+      if (key.indexOf(pinPrefix) === 0) delete pins[key]
+    })
+    service.setPinnedSections(pins)
+
+    if (editingRemoteId === id) closeRemoteSetup()
+    rebuildRows()
+  }
+
+  function deleteRemoteSetup() {
+    disableRemote(editingRemoteId)
   }
 
   function enableSshHost(alias) {
     var host = String(alias || "")
-    if (host === "" || service.sshHostEnabled(host, activeProvider)) return
-    var id = service.addRemote(host, "ssh", host, "", "", activeProvider)
+    if (host === "" || service.sshHostEnabled(host, remoteSetupProvider)) return
+    var id = service.addRemote(host, "ssh", host, "", "", remoteSetupProvider)
     if (id === "") return
-    var expanded = Object.assign({}, collapsedRemotes)
+    var expanded = Object.assign({}, service.collapsedRemotes)
     expanded[id] = false
     service.setCollapsedRemotes(expanded)
-    closeRemoteSetup()
     rebuildRows("remote:" + id)
+  }
+
+  function toggleSshHost(alias) {
+    var host = String(alias || "")
+    if (host === "") return
+    var id = service.remoteIdForSshHost(host, remoteSetupProvider)
+    if (id !== "") disableRemote(id)
+    else enableSshHost(host)
   }
 
   function isProjectPath(path) {
@@ -417,12 +507,12 @@ Panel {
   }
 
   function sectionPinned(kind, path, remoteId) {
-    return pinnedSections[sectionPinKey(kind, path, remoteId)] === true
+    return service.pinnedSections[sectionPinKey(kind, path, remoteId)] === true
   }
 
   function toggleSectionPin(kind, path, remoteId) {
     var key = sectionPinKey(kind, path, remoteId)
-    var next = Object.assign({}, pinnedSections)
+    var next = Object.assign({}, service.pinnedSections)
     if (next[key] === true) delete next[key]
     else next[key] = true
     service.setPinnedSections(next)
@@ -434,7 +524,7 @@ Panel {
   function setProjectCollapsed(path, collapsed, selectHeader, remoteId) {
     var project = String(path || "")
     if (collapsed) resetGroupPreview("project", project, remoteId)
-    var next = Object.assign({}, collapsedProjects)
+    var next = Object.assign({}, service.collapsedProjects)
     next[projectCollapseKey(project, remoteId)] = !!collapsed
     service.setCollapsedProjects(next)
     rebuildRows(selectHeader
@@ -444,7 +534,7 @@ Panel {
   }
 
   function projectCollapsed(path, remoteId) {
-    return collapsedProjects[projectCollapseKey(path, remoteId)] !== false
+    return service.collapsedProjects[projectCollapseKey(path, remoteId)] !== false
   }
 
   function toggleProject(path, remoteId) {
@@ -452,12 +542,12 @@ Panel {
   }
 
   function remoteCollapsed(remoteId) {
-    return collapsedRemotes[String(remoteId || "")] !== false
+    return service.collapsedRemotes[String(remoteId || "")] !== false
   }
 
   function toggleRemote(remoteId) {
     var id = String(remoteId || "")
-    var next = Object.assign({}, collapsedRemotes)
+    var next = Object.assign({}, service.collapsedRemotes)
     next[id] = !remoteCollapsed(id)
     if (next[id]) resetGroupPreview("remote", "", id)
     service.setCollapsedRemotes(next)
@@ -628,6 +718,14 @@ Panel {
     function blur(): void { root.releaseSidebarFocus(true) }
     function help(): void { root.helpOpen = !root.helpOpen }
     function addRemote(): void { root.openRemoteSetup() }
+    function manageRemote(id: string): string {
+      root.open()
+      root.openRemoteSetup(id)
+      return root.editingRemoteId
+    }
+    function testRemote(id: string): string {
+      return root.service.testRemote(id) ? "started" : root.service.remoteAddError
+    }
     function provider(name: string): string {
       root.selectProvider(name)
       return root.activeProvider
@@ -669,7 +767,13 @@ Panel {
         pinnedThreadCount: root.sidebarActions.pinnedThreadCount(),
         availableSshHostCount: (root.service.sshHosts || []).length,
         remoteSetupOpen: root.remoteSetupOpen,
+        editingRemoteId: root.editingRemoteId,
+        remoteTestHostId: root.service.remoteTestHostId,
+        remoteTestRunning: root.service.remoteTestRunning,
+        remoteTestSucceeded: root.service.remoteTestSucceeded,
+        remoteTestMessage: root.service.remoteTestMessage,
         codexLimit: root.rateLimitText(),
+        providerLimit: root.activeRateLimitText(),
         modelCount: root.service.modelsForProvider(root.activeProvider).length,
         selectedModel: root.service.selectedModelForProvider(root.activeProvider) || "default",
         selectedEffort: root.service.selectedEffortForProvider(root.activeProvider) || "default",
@@ -792,6 +896,10 @@ Panel {
 
       onMoveRequested: function(dx, dy) {
         if (root.helpOpen) return
+        if (providerMenu.opened) {
+          if (dy !== 0) providerMenu.moveSelection(dy)
+          return
+        }
         if (root.viewRows.length === 0) return
         if (dx !== 0) {
           root.sidebarActions.handleHorizontalNavigation(dx)
@@ -804,7 +912,8 @@ Panel {
         }
       }
       onActivateRequested: {
-        if (root.helpOpen) root.helpOpen = false
+        if (providerMenu.opened) providerMenu.activateSelection()
+        else if (root.helpOpen) root.helpOpen = false
         else root.sidebarActions.openSelected()
       }
       onCloseRequested: {
@@ -829,7 +938,8 @@ Panel {
           return
         }
         if ((text === "r" || text === "R")
-            && (root.activeProvider === "codex" || root.activeProvider === "claude")) {
+            && (root.activeProvider === "codex" || root.activeProvider === "claude"
+                || root.activeProvider === "opencode")) {
           root.openRemoteSetup()
           return
         }
@@ -894,6 +1004,7 @@ Panel {
 
           Popup {
             id: providerMenu
+            property int selectedIndex: 0
             x: 0
             y: parent.height - Style.space(2)
             width: Math.min(parent.width - Style.space(8), Style.space(176))
@@ -903,6 +1014,29 @@ Panel {
             dim: false
             focus: false
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+            function resetSelection() {
+              selectedIndex = 0
+              for (var i = 0; i < root.providerChoices.length; i++) {
+                if (root.providerChoices[i].id === root.activeProvider) {
+                  selectedIndex = i
+                  return
+                }
+              }
+            }
+
+            function moveSelection(direction) {
+              var count = root.providerChoices.length
+              if (count === 0) return
+              selectedIndex = (selectedIndex + direction + count) % count
+            }
+
+            function activateSelection() {
+              if (selectedIndex < 0 || selectedIndex >= root.providerChoices.length) return
+              root.selectProvider(root.providerChoices[selectedIndex].id)
+            }
+
+            onOpened: resetSelection()
 
             background: Rectangle {
               color: Color.popups.background
@@ -920,10 +1054,12 @@ Panel {
 
                 Rectangle {
                   required property var modelData
+                  required property int index
                   width: providerMenu.availableWidth
                   height: Style.space(30)
                   radius: Math.max(2, Style.cornerRadius - Style.space(2))
                   color: providerChoiceMouse.containsMouse
+                    || index === providerMenu.selectedIndex
                     ? root.faint : "transparent"
 
                   Text {
@@ -954,6 +1090,9 @@ Panel {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onContainsMouseChanged: {
+                      if (containsMouse) providerMenu.selectedIndex = parent.index
+                    }
                     onClicked: root.selectProvider(modelData.id)
                   }
                 }
@@ -991,6 +1130,7 @@ Panel {
           Item {
             id: remoteButton
             visible: root.activeProvider === "codex" || root.activeProvider === "claude"
+              || root.activeProvider === "opencode"
             anchors.right: helpButton.left
             anchors.rightMargin: Style.space(4)
             anchors.top: parent.top
@@ -1195,8 +1335,7 @@ Panel {
 
           Item {
             id: codexLimitFooter
-            readonly property string label: root.activeProvider === "codex"
-              ? root.rateLimitText() : ""
+            readonly property string label: root.activeRateLimitText()
             readonly property bool hasSelector: root.service
               .modelsForProvider(root.activeProvider).length > 0
             anchors.left: parent.left

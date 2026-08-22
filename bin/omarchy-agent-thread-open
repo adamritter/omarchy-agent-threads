@@ -10,6 +10,7 @@ selected_model="${5:-}"
 selected_effort="${6:-}"
 selected_agent="${7:-}"
 new_session_id=""
+provider_server_url="$server_url"
 
 [[ "$provider" == "claude" || "$provider" == "opencode" ]] || {
   echo "Unsupported agent provider" >&2
@@ -38,6 +39,14 @@ focus_client() {
   hyprctl dispatch "hl.dsp.focus({ window = \"address:${address}\" })" >/dev/null
 }
 
+move_client_to_launch_workspace() {
+  local address="$1"
+
+  [[ "$launch_workspace" =~ ^[0-9]+$ ]] || return 0
+  hyprctl dispatch movetoworkspacesilent \
+    "${launch_workspace},address:${address}" >/dev/null
+}
+
 if [[ -n "$session_id" && -f "$mapping_file" ]]; then
   mapped_address="$(<"$mapping_file")"
   if [[ -n "$mapped_address" ]] && client_exists "$mapped_address"; then
@@ -63,11 +72,42 @@ if [[ "$provider" == "claude" ]]; then
   [[ -z "$selected_model" ]] || agent_command+=(--model "$selected_model")
   [[ -z "$selected_effort" ]] || agent_command+=(--effort "$selected_effort")
   [[ -z "$selected_agent" ]] || agent_command+=(--agent "$selected_agent")
+  helper_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  hook_command="${helper_dir}/omarchy-claude-thread-hook"
+  hook_settings="$(jq -cn --arg command "$hook_command" '{statusLine:{
+    type:"command",command:$command,refreshInterval:60
+  },hooks:{
+    SessionStart:[{matcher:"",hooks:[{type:"command",command:$command}]}],
+    UserPromptSubmit:[{matcher:"",hooks:[{type:"command",command:$command}]}],
+    Notification:[{matcher:"",hooks:[{type:"command",command:$command}]}],
+    Stop:[{matcher:"",hooks:[{type:"command",command:$command}]}],
+    StopFailure:[{matcher:"",hooks:[{type:"command",command:$command}]}],
+    SessionEnd:[{matcher:"",hooks:[{type:"command",command:$command}]}]
+  }}')"
+  agent_command+=(--settings "$hook_settings")
 else
   [[ "$server_url" == http://127.0.0.1:* || "$server_url" == http://localhost:* ]] || {
     echo "Invalid local OpenCode server URL" >&2
     exit 2
   }
+  provider_server_url="$server_url"
+  if [[ -z "$session_id" ]]; then
+    encoded_cwd="$(jq -rn --arg value "$session_cwd" '$value|@uri')"
+    if ! new_session="$(curl -fsS --max-time 5 -X POST \
+        "${provider_server_url}/session?directory=${encoded_cwd}" \
+        -H 'content-type: application/json' --data '{}')"; then
+      echo "OpenCode provider server is unavailable" >&2
+      exit 1
+    fi
+    new_session_id="$(jq -r '.id // empty' <<<"$new_session")"
+    [[ "$new_session_id" =~ ^[A-Za-z0-9._-]+$ ]] || {
+      echo "OpenCode did not create a valid session" >&2
+      exit 1
+    }
+    session_id="$new_session_id"
+    mapping_file="${state_dir}/provider-${provider}--${session_id}.address"
+    server_file="${state_dir}/provider-${provider}--${session_id}.server"
+  fi
   opencode_port=""
   for _ in $(seq 1 80); do
     candidate_port=$((44000 + RANDOM % 1500))
@@ -81,12 +121,16 @@ else
     exit 1
   }
   server_url="http://127.0.0.1:${opencode_port}"
-  agent_command=(opencode "$session_cwd" --hostname 127.0.0.1 --port "$opencode_port")
+  agent_command=(env -u OPENCODE_SERVER_PASSWORD -u OPENCODE_SERVER_USERNAME
+    opencode "$session_cwd" --hostname 127.0.0.1 --port "$opencode_port")
   [[ -z "$selected_model" ]] || agent_command+=(--model "$selected_model")
+  [[ -z "$selected_effort" ]] || agent_command+=(--variant "$selected_effort")
   [[ -z "$selected_agent" ]] || agent_command+=(--agent "$selected_agent")
-  [[ -z "$session_id" ]] || agent_command+=(--session "$session_id")
+  agent_command+=(--session "$session_id")
 fi
 
+launch_workspace="$(hyprctl -j activeworkspace 2>/dev/null \
+  | jq -r '.id // empty')"
 before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
 omarchy launch terminal bash -lc 'cd -- "$1" && shift && exec "$@"' \
   _ "$session_cwd" "${agent_command[@]}" >/dev/null 2>&1 &
@@ -101,27 +145,8 @@ for _ in $(seq 1 80); do
       printf '%s\n' "$new_address" > "$mapping_file"
       [[ "$provider" != "opencode" ]] || printf '%s\n' "$server_url" > "$server_file"
     fi
+    move_client_to_launch_workspace "$new_address"
     focus_client "$new_address"
-    if [[ "$provider" == "opencode" && -n "$selected_effort" && -n "$selected_model" ]]; then
-      for _ in $(seq 1 30); do
-        curl -fsS "${server_url}/global/health" >/dev/null 2>&1 && break
-        sleep 0.1
-      done
-      provider_id="${selected_model%%/*}"
-      model_id="${selected_model#*/}"
-      variant_index="$(curl -fsS "${server_url}/provider" 2>/dev/null \
-        | jq -r --arg provider "$provider_id" --arg model "$model_id" \
-          --arg variant "$selected_effort" '
-            [.all[] | select(.id == $provider) | .models[$model].variants // {}
-              | keys | index($variant)][0] // -1' 2>/dev/null || printf '%s' -1)"
-      if [[ "$variant_index" =~ ^[0-9]+$ ]]; then
-        for _ in $(seq 0 "$variant_index"); do
-          curl -fsS -X POST "${server_url}/tui/execute-command" \
-            -H 'content-type: application/json' \
-            --data '{"command":"variant_cycle"}' >/dev/null 2>&1 || break
-        done
-      fi
-    fi
     output_server_url=""
     [[ "$provider" != "opencode" ]] || output_server_url="$server_url"
     jq -cn --arg address "$new_address" --arg serverUrl "$output_server_url" \
@@ -132,5 +157,11 @@ for _ in $(seq 1 80); do
   sleep 0.1
 done
 
+if [[ "$provider" == "opencode" && -n "$new_session_id" ]]; then
+  encoded_cwd="$(jq -rn --arg value "$session_cwd" '$value|@uri')"
+  curl -fsS --max-time 3 -X DELETE \
+    "${provider_server_url}/session/${new_session_id}?directory=${encoded_cwd}" \
+    >/dev/null 2>&1 || true
+fi
 echo "The agent terminal started, but its Hyprland window could not be identified" >&2
 exit 1

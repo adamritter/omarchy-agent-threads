@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url"
 
 const [configPath = "", hostId = "", action = "snapshot", actionValue = "",
   actionExtra = ""] = process.argv.slice(2)
-const timeoutMs = 20000
+const timeoutMs = 60000
 const pinnedSectionId = "01984de2-8f74-7c91-a3b2-5c5e937cf318"
 let nextRequestId = 1
 
@@ -136,8 +136,8 @@ function createSshTransport(host) {
 }
 
 function providerTypeForHost(host) {
-  return String(host && host.providerType || "").toLowerCase() === "claude"
-    ? "claude" : "codex"
+  const value = String(host && host.providerType || "").toLowerCase()
+  return value === "claude" || value === "opencode" ? value : "codex"
 }
 
 function runRemoteClaude(host) {
@@ -172,13 +172,20 @@ function runRemoteClaude(host) {
     child.stdout.on("data", chunk => { stdout += String(chunk) })
     child.stderr.on("data", chunk => { stderr += String(chunk) })
     child.on("error", reject)
-    child.on("exit", code => {
+    child.on("close", code => {
       if (code !== 0) {
         reject(new Error(stderr.trim() || `remote Claude query exited with status ${code}`))
         return
       }
       try {
-        const result = JSON.parse(stdout.trim() || "{}")
+        const response = stdout.trim()
+        if (response === "") {
+          reject(new Error(stderr.trim() || "remote Claude helper returned no response"))
+          return
+        }
+        const result = JSON.parse(response)
+        if (!result || typeof result !== "object" || Array.isArray(result))
+          throw new Error("invalid remote Claude response")
         if (action === "snapshot") {
           process.stdout.write(JSON.stringify({
             ...result,
@@ -199,6 +206,118 @@ function runRemoteClaude(host) {
   })
 }
 
+function runRemoteOpenCode(host) {
+  if (host.type !== "ssh") fail("OpenCode remotes require SSH")
+  const sshHost = String(host.sshHost || "").trim()
+  if (!/^[A-Za-z0-9_.@:-]+$/.test(sshHost)) fail("invalid SSH host or alias")
+  const openCodeCommand = String(host.opencodeCommand || "opencode").trim()
+  if (!/^[A-Za-z0-9_./-]+$/.test(openCodeCommand)) fail("invalid remote OpenCode command")
+  const openCodePort = Number(host.opencodePort || 43962)
+  if (!Number.isInteger(openCodePort) || openCodePort < 1024 || openCodePort > 65535)
+    fail("invalid remote OpenCode port")
+  if (!["snapshot", "archive", "pin"].includes(action)) fail("unsupported OpenCode action")
+  if ((action === "archive" || action === "pin")
+      && !/^[A-Za-z0-9._-]+$/.test(actionValue)) fail("invalid OpenCode session id")
+  if (action === "pin" && actionExtra !== "true" && actionExtra !== "false")
+    fail("invalid pin value")
+
+  const helperPath = path.join(path.dirname(fileURLToPath(import.meta.url)),
+    "lib", "opencode-provider.mjs")
+  const providerSource = fs.readFileSync(helperPath, "utf8").replace(/^export /gm, "")
+  const launcherSource = `
+const [, requestedAction = "snapshot", sessionID = "", sessionPath = "", pinValue = ""] = process.argv.slice(2)
+async function runRemoteOpenCodeHelper() {
+  if (requestedAction === "snapshot") {
+    process.stdout.write(JSON.stringify(await openCodeSnapshot()) + "\\n")
+    return
+  }
+  if (requestedAction === "archive") {
+    await archiveOpenCode(sessionID, sessionPath)
+    process.stdout.write(JSON.stringify({ ok: true }) + "\\n")
+    return
+  }
+  if (requestedAction === "pin") {
+    if (!sessionID) throw new Error("missing session id")
+    const metadata = loadMetadata()
+    const key = \`opencode:\${sessionID}\`
+    const entry = metadata[key] && typeof metadata[key] === "object" ? metadata[key] : {}
+    entry.pinned = pinValue === "true"
+    metadata[key] = entry
+    fs.mkdirSync(path.dirname(metadataPath), { recursive: true, mode: 0o700 })
+    const temporary = \`\${metadataPath}.\${process.pid}.tmp\`
+    fs.writeFileSync(temporary, JSON.stringify(metadata) + "\\n", { mode: 0o600 })
+    fs.renameSync(temporary, metadataPath)
+    process.stdout.write(JSON.stringify({ ok: true }) + "\\n")
+    return
+  }
+  throw new Error("unsupported action")
+}
+runRemoteOpenCodeHelper().catch(error => {
+  process.stderr.write(String(error && error.message || error) + "\\n")
+  process.exit(2)
+})
+`
+  const helperSource = providerSource + launcherSource
+
+  const serverURL = `http://127.0.0.1:${openCodePort}`
+  const stateDirectory = '"$HOME/.local/state/omarchy/codex-threads"'
+  const logPath = '"$HOME/.local/state/omarchy/codex-threads/opencode-remote-server.log"'
+  const ensureServer = `set -eu; mkdir -p ${stateDirectory}; `
+    + `if ! curl -fsS --max-time 2 ${shellQuote(serverURL + "/global/health")} >/dev/null 2>&1; then `
+    + `nohup env -u OPENCODE_SERVER_PASSWORD -u OPENCODE_SERVER_USERNAME `
+    + `${shellQuote(openCodeCommand)} serve --hostname 127.0.0.1 --port ${openCodePort} `
+    + `</dev/null >>${logPath} 2>&1 & `
+    + `i=0; while [ "$i" -lt 120 ]; do `
+    + `curl -fsS --max-time 2 ${shellQuote(serverURL + "/global/health")} >/dev/null 2>&1 && break; `
+    + `i=$((i + 1)); sleep 0.25; done; fi; `
+    + `curl -fsS --max-time 2 ${shellQuote(serverURL + "/global/health")} >/dev/null 2>&1 `
+    + `|| { echo 'OpenCode API did not become ready within 30 seconds' >&2; exit 70; }; `
+  const threadPath = action === "archive" ? actionExtra : ""
+  const pinValue = action === "pin" ? actionExtra : ""
+  const remoteCommand = ensureServer
+    + `XDG_RUNTIME_DIR="$HOME/.cache/omarchy-codex-threads-runtime" `
+    + `OMARCHY_OPENCODE_URL=${shellQuote(serverURL)} node --input-type=module - opencode `
+    + `${shellQuote(action)} ${shellQuote(actionValue)} ${shellQuote(threadPath)} ${shellQuote(pinValue)}`
+  const child = spawn("ssh", [
+    "-T",
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=8",
+    sshHost,
+    remoteCommand
+  ], { stdio: ["pipe", "pipe", "pipe"] })
+
+  return new Promise((resolve, reject) => {
+    let stdout = ""
+    let stderr = ""
+    child.stdout.on("data", chunk => { stdout += String(chunk) })
+    child.stderr.on("data", chunk => { stderr += String(chunk) })
+    child.on("error", reject)
+    child.on("close", code => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `remote OpenCode query exited with status ${code}`))
+        return
+      }
+      try {
+        const result = JSON.parse(stdout.trim() || "{}")
+        if (!result || typeof result !== "object" || Array.isArray(result))
+          throw new Error("invalid remote OpenCode response")
+        const envelope = action === "snapshot" ? {
+          ...result,
+          hostId,
+          label: String(host.label || host.id || "Remote"),
+          providerType: "opencode",
+          type: "ssh"
+        } : { ...result, hostId, action }
+        process.stdout.write(JSON.stringify(envelope) + "\n")
+        resolve()
+      } catch {
+        reject(new Error(stderr.trim() || "invalid remote OpenCode response"))
+      }
+    })
+    child.stdin.end(helperSource)
+  })
+}
+
 async function connect(host) {
   return host.type === "ssh" ? createSshTransport(host) : createWebSocketTransport(host)
 }
@@ -207,6 +326,10 @@ async function main() {
   const host = loadHost()
   if (providerTypeForHost(host) === "claude") {
     await runRemoteClaude(host)
+    return
+  }
+  if (providerTypeForHost(host) === "opencode") {
+    await runRemoteOpenCode(host)
     return
   }
   const transport = await connect(host)

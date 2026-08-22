@@ -20,8 +20,8 @@ Item {
     "../bin/omarchy-codex-active-thread").toString().replace(/^file:\/\//, "")
   readonly property string newProjectHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-project-new").toString().replace(/^file:\/\//, "")
-  readonly property string mapThreadWindowHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-codex-map-thread-window").toString().replace(/^file:\/\//, "")
+
+  ThreadLaunchCoordinator { id: launchCoordinator }
 
   function openThread(thread, cwdOverride) {
     if (!thread || !thread.id || openProcess.running) return
@@ -86,12 +86,7 @@ Item {
       }
     }
     if (pendingNewThreadId === "" || pendingNewWindowAddress === "") return
-    if (!mapThreadWindowProcess.running) {
-      mapThreadWindowProcess.command = [
-        mapThreadWindowHelperPath, pendingNewThreadId, pendingNewWindowAddress
-      ]
-      mapThreadWindowProcess.running = true
-    }
+    launchCoordinator.map(pendingNewThreadId, pendingNewWindowAddress, "", "")
     clearPendingNew()
   }
 
@@ -146,8 +141,6 @@ Item {
     stdout: StdioCollector { id: newProjectStdout; waitForEnd: true }
     stderr: StdioCollector { id: newProjectStderr; waitForEnd: true }
   }
-
-  Process { id: mapThreadWindowProcess; running: false }
 
   Connections {
     target: ToplevelManager

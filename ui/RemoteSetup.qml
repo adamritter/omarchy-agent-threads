@@ -14,12 +14,20 @@ Rectangle {
   property alias addressText: remoteAddressField.text
   property alias homeText: remoteHomeField.text
   property alias tokenText: remoteTokenField.text
+  readonly property bool editing: panel.editingRemoteId !== ""
 
   function resetFields() {
     nameText = ""
     addressText = ""
     homeText = ""
     tokenText = ""
+  }
+
+  function loadHost(host) {
+    nameText = String(host && host.label || "")
+    addressText = String(host && (host.type === "ssh" ? host.sshHost : host.url) || "")
+    homeText = String(host && host.home || "")
+    tokenText = String(host && host.authTokenFile || "")
   }
 
   function focusName() {
@@ -52,7 +60,8 @@ Rectangle {
 
       Text {
         width: parent.width
-        text: panel.providerLabel() + " REMOTE KAPCSOLAT"
+        text: root.editing ? "EDIT REMOTE"
+          : panel.providerLabel(panel.remoteSetupProvider) + " REMOTE CONNECTION"
         color: Color.accent
         font.family: panel.fontFamily
         font.pixelSize: Style.font.caption
@@ -64,7 +73,7 @@ Rectangle {
         spacing: Style.space(6)
 
         Repeater {
-          model: panel.activeProvider === "codex"
+          model: panel.remoteSetupProvider === "codex"
             ? [
                 { value: "ssh", label: "SSH" },
                 { value: "app-server", label: "APP SERVER" }
@@ -73,7 +82,7 @@ Rectangle {
 
           delegate: Rectangle {
             required property var modelData
-            width: panel.activeProvider === "codex"
+            width: panel.remoteSetupProvider === "codex"
               ? (remoteSetupContent.width - Style.space(6)) / 2
               : remoteSetupContent.width
             height: Style.space(34)
@@ -103,9 +112,9 @@ Rectangle {
       }
 
       Text {
-        visible: panel.remoteSetupType === "ssh"
+        visible: !root.editing && panel.remoteSetupType === "ssh"
         width: parent.width
-        text: "SSH CONFIG HOSTOK"
+        text: "SSH CONFIG HOSTS"
         color: Color.accent
         font.family: panel.fontFamily
         font.pixelSize: Style.font.caption
@@ -113,15 +122,15 @@ Rectangle {
       }
 
       Text {
-        visible: panel.remoteSetupType === "ssh"
+        visible: !root.editing && panel.remoteSetupType === "ssh"
           && (panel.service.sshHostsLoading === true
               || String(panel.service.sshHostsError || "") !== ""
               || (panel.service.sshHosts || []).length === 0)
         width: parent.width
-        text: panel.service.sshHostsLoading === true ? "SSH hostok betöltése…"
+        text: panel.service.sshHostsLoading === true ? "Loading SSH hosts…"
           : (String(panel.service.sshHostsError || "") !== ""
             ? String(panel.service.sshHostsError || "")
-            : "Nincs konkrét Host bejegyzés a ~/.ssh/config fájlban")
+            : "No explicit Host entries found in ~/.ssh/config")
         color: String(panel.service.sshHostsError || "") !== ""
           ? Color.urgent : panel.dim
         font.family: panel.fontFamily
@@ -130,17 +139,18 @@ Rectangle {
       }
 
       Repeater {
-        model: panel.remoteSetupType === "ssh" ? (panel.service.sshHosts || []) : []
+        model: !root.editing && panel.remoteSetupType === "ssh"
+          ? (panel.service.sshHosts || []) : []
 
         delegate: Rectangle {
           id: sshConfigHost
           required property var modelData
           readonly property bool enabledHost: panel.service.sshHostEnabled(
-            modelData, panel.activeProvider)
+            modelData, panel.remoteSetupProvider)
           width: remoteSetupContent.width
           height: Style.space(34)
           radius: Style.cornerRadius
-          color: sshHostMouse.containsMouse && !enabledHost ? panel.faint : "transparent"
+          color: sshHostMouse.containsMouse ? panel.faint : "transparent"
           border.width: 1
           border.color: enabledHost ? Util.alpha(Color.accent, 0.45) : panel.dim
 
@@ -149,7 +159,7 @@ Rectangle {
             anchors.leftMargin: Style.space(10)
             anchors.verticalCenter: parent.verticalCenter
             text: String(parent.modelData || "")
-            color: parent.enabledHost ? panel.dim : panel.foreground
+            color: parent.enabledHost ? Color.accent : panel.foreground
             font.family: panel.fontFamily
             font.pixelSize: Style.font.body
             font.bold: true
@@ -159,8 +169,11 @@ Rectangle {
             anchors.right: parent.right
             anchors.rightMargin: Style.space(10)
             anchors.verticalCenter: parent.verticalCenter
-            text: parent.enabledHost ? "Bekapcsolva" : "+ Bekapcsolás"
-            color: parent.enabledHost ? panel.dim : Color.accent
+            text: parent.enabledHost
+              ? (sshHostMouse.containsMouse ? "− Disable" : "Enabled")
+              : "+ Enable"
+            color: parent.enabledHost && !sshHostMouse.containsMouse
+              ? panel.dim : Color.accent
             font.family: panel.fontFamily
             font.pixelSize: Style.font.caption
           }
@@ -168,16 +181,16 @@ Rectangle {
           MouseArea {
             id: sshHostMouse
             anchors.fill: parent
-            enabled: !parent.enabledHost
-            hoverEnabled: enabled
-            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: panel.enableSshHost(parent.modelData)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: panel.toggleSshHost(parent.modelData)
           }
         }
       }
 
       Text {
-        text: panel.remoteSetupType === "ssh" ? "MÁS SSH HOST" : "KAPCSOLAT ADATAI"
+        text: root.editing ? "CONNECTION DETAILS"
+          : (panel.remoteSetupType === "ssh" ? "OTHER SSH HOST" : "CONNECTION DETAILS")
         color: Color.accent
         font.family: panel.fontFamily
         font.pixelSize: Style.font.caption
@@ -185,7 +198,7 @@ Rectangle {
       }
 
       Text {
-        text: "Név"
+        text: "Name"
         color: panel.dim
         font.family: panel.fontFamily
         font.pixelSize: Style.font.caption
@@ -195,7 +208,7 @@ Rectangle {
         id: remoteNameField
         width: parent.width
         height: Style.space(34)
-        placeholderText: "pl. bee vagy szerver"
+        placeholderText: "e.g. bee or server"
         foreground: panel.foreground
         accent: Color.accent
         font.family: panel.fontFamily
@@ -218,7 +231,7 @@ Rectangle {
         width: parent.width
         height: Style.space(34)
         placeholderText: panel.remoteSetupType === "ssh"
-          ? "user@host vagy ~/.ssh/config alias"
+          ? "user@host or ~/.ssh/config alias"
           : "wss://host:4500"
         foreground: panel.foreground
         accent: Color.accent
@@ -231,7 +244,7 @@ Rectangle {
       }
 
       Text {
-        text: "Remote home (opcionális)"
+        text: "Remote home (optional)"
         color: panel.dim
         font.family: panel.fontFamily
         font.pixelSize: Style.font.caption
@@ -255,7 +268,7 @@ Rectangle {
 
       Text {
         visible: panel.remoteSetupType === "app-server"
-        text: "Token fájl ezen a gépen (opcionális)"
+        text: "Token file on this machine (optional)"
         color: panel.dim
         font.family: panel.fontFamily
         font.pixelSize: Style.font.caption
@@ -280,9 +293,12 @@ Rectangle {
       Text {
         width: parent.width
         text: panel.remoteSetupType === "ssh"
-          ? "Az SSH config kezeli a kulcsot, portot és jumphostot. Jelszó nélküli kulcsos belépés és a távoli "
-            + panel.providerLabel() + " CLI szükséges."
-          : "Távoli hálózaton használj wss:// címet; ws:// csak localhosthoz vagy biztonságos tunnelhez való."
+          ? (panel.remoteSetupProvider === "claude"
+            ? "The status bridge is installed automatically. Passwordless SSH plus an installed and authenticated remote Claude CLI are required (claude auth login)."
+            : (panel.remoteSetupProvider === "opencode"
+              ? "The headless OpenCode API starts automatically on the remote machine. Passwordless SSH, Node.js, curl, and an installed and authenticated OpenCode CLI are required. The first launch can take up to 30 seconds."
+              : "Your SSH config manages keys, ports, and jump hosts. Passwordless key authentication and a remote Codex CLI are required."))
+          : "Use wss:// over remote networks; use ws:// only for localhost or a secure tunnel."
         color: panel.dim
         font.family: panel.fontFamily
         font.pixelSize: Style.font.caption
@@ -294,6 +310,19 @@ Rectangle {
         width: parent.width
         text: panel.service.remoteAddError
         color: Color.urgent
+        font.family: panel.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.Wrap
+      }
+
+      Text {
+        visible: root.editing
+          && panel.service.remoteTestHostId === panel.editingRemoteId
+          && panel.service.remoteTestMessage !== ""
+        width: parent.width
+        text: panel.service.remoteTestMessage
+        color: panel.service.remoteTestRunning ? panel.dim
+          : (panel.service.remoteTestSucceeded ? Color.accent : Color.urgent)
         font.family: panel.fontFamily
         font.pixelSize: Style.font.caption
         wrapMode: Text.Wrap
@@ -313,7 +342,7 @@ Rectangle {
 
           Text {
             anchors.centerIn: parent
-            text: "Mégse"
+            text: "Cancel"
             color: panel.foreground
             font.family: panel.fontFamily
             font.pixelSize: Style.font.body
@@ -339,7 +368,7 @@ Rectangle {
 
           Text {
             anchors.centerIn: parent
-            text: "Hozzáadás"
+            text: root.editing ? "Save" : "Add"
             color: Color.accent
             font.family: panel.fontFamily
             font.pixelSize: Style.font.body
@@ -357,4 +386,5 @@ Rectangle {
       }
     }
   }
+
 }
