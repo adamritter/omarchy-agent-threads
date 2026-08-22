@@ -31,12 +31,12 @@ ssh_host="$(jq -r '.sshHost // ""' <<<"$remote_json")"
 ssh -T -o BatchMode=yes -o ConnectTimeout=8 "$ssh_host" bash -s <<'REMOTE_INSTALL'
 set -euo pipefail
 
-if ! command -v curl >/dev/null 2>&1; then
-  echo "Installing Claude requires curl on the remote machine" >&2
+if ! command -v npm >/dev/null 2>&1; then
+  echo "Installing Claude requires npm on the remote machine" >&2
   exit 1
 fi
 
-curl -fsSL https://claude.ai/install.sh | bash
+npm install --global @anthropic-ai/claude-code
 
 claude_path="$(command -v claude || true)"
 if [[ -z "$claude_path" && -x "$HOME/.local/bin/claude" ]]; then

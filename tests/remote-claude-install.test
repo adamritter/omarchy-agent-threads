@@ -27,8 +27,12 @@ export REMOTE_INSTALL_CAPTURE="$test_root/install-script"
 
 result="$($plugin_root/bin/omarchy-claude-remote-install "$config" lambda-claude)"
 [[ "$result" == "2.1.999 (Claude Code)" ]]
-grep -F 'https://claude.ai/install.sh' "$REMOTE_INSTALL_CAPTURE" >/dev/null
-grep -F 'command -v curl' "$REMOTE_INSTALL_CAPTURE" >/dev/null
+grep -F 'npm install --global @anthropic-ai/claude-code' "$REMOTE_INSTALL_CAPTURE" >/dev/null
+grep -F 'command -v npm' "$REMOTE_INSTALL_CAPTURE" >/dev/null
+if grep -F 'curl' "$REMOTE_INSTALL_CAPTURE" >/dev/null; then
+  echo "Remote Claude install unexpectedly downloads a shell script" >&2
+  exit 1
+fi
 
 if "$plugin_root/bin/omarchy-claude-remote-install" \
     "$config" lambda-codex >/dev/null 2>&1; then

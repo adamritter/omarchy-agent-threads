@@ -375,6 +375,7 @@ ListView {
                   Text {
                     width: parent.width
                     text: projectChoice.modelData.name
+                    textFormat: Text.PlainText
                     color: panel.foreground
                     font.family: panel.fontFamily
                     font.pixelSize: Style.font.body
@@ -385,6 +386,7 @@ ListView {
                   Text {
                     width: parent.width
                     text: projectChoice.modelData.path
+                    textFormat: Text.PlainText
                     color: panel.dim
                     font.family: panel.fontFamily
                     font.pixelSize: Math.max(9, Style.font.caption - 1)
@@ -494,6 +496,7 @@ ListView {
           : (row.moving ? "Moving…  " + panel.threadTitle(row.threadData)
           : (row.archiving ? "Archiving…  " + panel.threadTitle(row.threadData)
             : (row.pinned ? "󰐃  " : "") + panel.threadTitle(row.threadData)))
+        textFormat: Text.PlainText
         color: row.activeThread ? Color.accent : panel.foreground
         opacity: row.archiving || row.moving || row.pinning ? 0.58 : 1
         font.family: panel.fontFamily
@@ -532,6 +535,7 @@ ListView {
       Text {
         width: parent.width
         text: row.modelData.name + "  ·  " + row.modelData.count
+        textFormat: Text.PlainText
         color: row.activeProject ? Color.accent : panel.foreground
         font.family: panel.fontFamily
         font.pixelSize: Style.font.body
@@ -549,6 +553,7 @@ ListView {
               ? String(row.modelData.host.providerType).toUpperCase()
               : (row.modelData.host.type === "ssh" ? "SSH" : "APP SERVER"))))
           : row.modelData.path
+        textFormat: Text.PlainText
         color: row.remoteRow && row.modelData.host.error !== ""
           && !row.needsRemoteClaudeAction ? Color.urgent : panel.dim
         font.family: panel.fontFamily
@@ -723,6 +728,7 @@ ListView {
           rightPadding: Style.space(10)
           bottomPadding: Style.space(7)
           text: panel.service.remoteTestMessage
+          textFormat: Text.PlainText
           color: remoteMenu.testingThis ? panel.dim
             : (panel.service.remoteTestSucceeded ? Color.accent : Color.urgent)
           font.family: panel.fontFamily
