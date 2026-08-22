@@ -180,6 +180,7 @@ Item {
     id: selectorLabel
     anchors.fill: parent
     text: root.selectorText()
+    textFormat: Text.PlainText
     color: selectorMouse.containsMouse || picker.opened
       ? panel.foreground : Util.alpha(panel.foreground, 0.48)
     font.family: panel.fontFamily
@@ -248,6 +249,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: modelChoice.modelData.label
               + (modelChoice.modelData.isDefault ? "  · recommended" : "")
+            textFormat: Text.PlainText
             color: root.selectedModel() === modelChoice.modelData.id
               ? Color.accent : panel.foreground
             font.family: panel.fontFamily
@@ -311,6 +313,7 @@ Item {
             anchors.leftMargin: Style.space(9)
             anchors.verticalCenter: parent.verticalCenter
             text: effortChoice.modelData.label
+            textFormat: Text.PlainText
             color: root.selectedEffort() === effortChoice.modelData.id
               ? Color.accent : panel.foreground
             font.family: panel.fontFamily
@@ -377,6 +380,7 @@ Item {
             anchors.leftMargin: Style.space(9)
             anchors.verticalCenter: parent.verticalCenter
             text: agentChoice.modelData.label
+            textFormat: Text.PlainText
             color: root.selectedAgent() === agentChoice.modelData.id
               ? Color.accent : panel.foreground
             font.family: panel.fontFamily

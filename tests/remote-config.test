@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t agent-threads-remote-config-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+helper="$plugin_root/bin/omarchy-agent-remote-config"
+config="$test_root/state/omarchy/codex-thread-remotes.json"
+
+initial="$($helper read "$config")"
+jq -e '.version == 2 and .remotes == []' <<<"$initial" >/dev/null
+[[ "$(stat -c '%a' "$config")" == "600" ]]
+
+serialized='{"version":2,"remotes":[{"id":"fixture","type":"ssh","sshHost":"host"}]}'
+$helper write "$config" "$serialized"
+$helper read "$config" | jq -e '.remotes[0].id == "fixture"' >/dev/null
+
+target="$test_root/target.json"
+printf '%s\n' '{"preserved":true}' > "$target"
+rm -- "$config"
+ln -s -- "$target" "$config"
+if $helper read "$config" >/dev/null 2>&1; then
+  echo "Remote config reader unexpectedly followed a symbolic link" >&2
+  exit 1
+fi
+if $helper write "$config" "$serialized" >/dev/null 2>&1; then
+  echo "Remote config writer unexpectedly accepted a symbolic link" >&2
+  exit 1
+fi
+jq -e '.preserved == true' "$target" >/dev/null
+
+rm -- "$config"
+truncate -s 262145 "$config"
+if $helper read "$config" >/dev/null 2>&1; then
+  echo "Remote config reader unexpectedly accepted an oversized file" >&2
+  exit 1
+fi
+
+printf '%s\n' "remote-config tests passed"

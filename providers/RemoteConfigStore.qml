@@ -10,28 +10,30 @@ Item {
   property bool loaded: false
   property var config: ({})
   readonly property string path: controller.stateHome + "/omarchy/codex-thread-remotes.json"
+  readonly property string configHelper: Qt.resolvedUrl(
+    "../bin/omarchy-agent-remote-config").toString().replace(/^file:\/\//, "")
+  readonly property int maxConfigCharacters: 128 * 1024
+  property string pendingWrite: ""
+  property string persistedText: ""
 
-  function initialize(raw) {
-    if (loaded) return
-    var text = String(raw || "").trim()
-    if (text === "") {
-      text = JSON.stringify({ version: 1, remotes: [] }, null, 2)
-      configFile.setText(text + "\n")
-      Qt.callLater(root.secure)
-    }
-    load(text + "\n")
+  function requestRead() {
+    if (configRead.running || configWrite.running || pendingWrite !== "") return
+    configRead.running = true
   }
 
-  function loadPrimary(raw) {
-    if (loaded) load(raw)
-    else initialize(raw)
-    secure()
+  function applyRead(raw) {
+    var text = String(raw || "")
+    if (text === "" || text === persistedText) return
+    persistedText = text
+    load(text)
   }
 
-  function secure() {
-    if (permissionsProcess.running) return
-    permissionsProcess.command = ["chmod", "600", path]
-    permissionsProcess.running = true
+  function startWrite() {
+    if (configWrite.running || pendingWrite === "") return
+    var text = pendingWrite
+    pendingWrite = ""
+    configWrite.command = [configHelper, "write", path, text]
+    configWrite.running = true
   }
 
   function load(raw) {
@@ -97,9 +99,13 @@ Item {
   function write(remotes) {
     var nextConfig = { version: 2, remotes: remotes }
     var serialized = JSON.stringify(nextConfig, null, 2) + "\n"
-    configFile.setText(serialized)
-    Qt.callLater(root.secure)
+    if (serialized.length > maxConfigCharacters) {
+      provider.addError = "Remote config is too large"
+      return
+    }
+    pendingWrite = serialized
     load(serialized)
+    startWrite()
   }
 
   function validate(name, connectionType, endpoint) {
@@ -181,16 +187,42 @@ Item {
     return id
   }
 
-  FileView {
-    id: configFile
-    path: root.path
-    watchChanges: true
-    atomicWrites: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.loadPrimary(text())
-    onLoadFailed: root.initialize("")
+  Process {
+    id: configRead
+    command: [root.configHelper, "read", root.path]
+    running: false
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        var message = String(configReadStderr.text || "").trim()
+        provider.addError = message || "Could not read remote config"
+      }
+    }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyRead(text)
+    }
+    stderr: StdioCollector { id: configReadStderr; waitForEnd: true }
   }
 
-  Process { id: permissionsProcess; running: false }
+  Process {
+    id: configWrite
+    running: false
+    onExited: function(exitCode) {
+      if (exitCode === 0) persistedText = String(command[3] || "")
+      else {
+        var message = String(configWriteStderr.text || "").trim()
+        provider.addError = message || "Could not write remote config"
+      }
+      root.startWrite()
+    }
+    stderr: StdioCollector { id: configWriteStderr; waitForEnd: true }
+  }
+
+  Timer {
+    interval: 2000
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.requestRead()
+  }
 }

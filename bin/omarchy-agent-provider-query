@@ -16,6 +16,17 @@ const claudeThreadRuntimePath = process.env.OMARCHY_CLAUDE_RUNTIME_PATH
 const claudeUsageURL = process.env.OMARCHY_CLAUDE_USAGE_URL
   || "https://api.anthropic.com/api/oauth/usage"
 const claudeCommand = process.env.OMARCHY_CLAUDE_COMMAND || "claude"
+const MAX_CLAUDE_PROJECT_DIRECTORIES = 256
+const MAX_CLAUDE_DIRECTORY_ENTRIES = 1024
+const MAX_CLAUDE_DISCOVERED_TRANSCRIPTS = 2048
+const MAX_CLAUDE_TRANSCRIPTS = 512
+const MAX_CLAUDE_TRANSCRIPT_HEAD_BYTES = 64 * 1024
+const MAX_CLAUDE_TRANSCRIPT_TAIL_BYTES = 256 * 1024
+const MAX_CLAUDE_SNAPSHOT_BYTES = 32 * 1024 * 1024
+const MAX_PROVIDER_JSON_BYTES = 2 * 1024 * 1024
+const MAX_CLAUDE_JOBS = 512
+const MAX_CLAUDE_AGENT_FILES = 256
+const MAX_CLAUDE_AGENT_BYTES = 128 * 1024
 
 function fail(message) {
   process.stderr.write(`${provider || "agent"}: ${message}\n`)
@@ -23,7 +34,27 @@ function fail(message) {
 }
 
 function readJSON(filePath, fallback = null) {
-  try { return JSON.parse(fs.readFileSync(filePath, "utf8")) } catch { return fallback }
+  try { return JSON.parse(readBoundedText(filePath, MAX_PROVIDER_JSON_BYTES)) }
+  catch { return fallback }
+}
+
+function readBoundedText(filePath, maxBytes) {
+  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY)
+  try {
+    const stat = fs.fstatSync(descriptor)
+    if (!stat.isFile() || stat.size > maxBytes) throw new Error("file exceeds read limit")
+    const buffer = Buffer.alloc(stat.size)
+    let offset = 0
+    while (offset < buffer.length) {
+      const count = fs.readSync(descriptor, buffer, offset, buffer.length - offset, offset)
+      if (count === 0) break
+      offset += count
+    }
+    if (offset !== buffer.length) throw new Error("file changed while being read")
+    return buffer.toString("utf8")
+  } finally {
+    fs.closeSync(descriptor)
+  }
 }
 
 function writePrivateJSON(filePath, value) {
@@ -99,25 +130,75 @@ function timestampSeconds(value, fallback = 0) {
 
 function walkClaudeTranscripts(rootPath) {
   const files = []
-  let projectDirectories = []
-  try { projectDirectories = fs.readdirSync(rootPath, { withFileTypes: true }) } catch { return files }
+  const projectDirectories = boundedDirectoryEntries(rootPath, MAX_CLAUDE_PROJECT_DIRECTORIES)
   for (const projectDirectory of projectDirectories) {
     if (!projectDirectory.isDirectory()) continue
     const directoryPath = path.join(rootPath, projectDirectory.name)
-    let entries = []
-    try { entries = fs.readdirSync(directoryPath, { withFileTypes: true }) } catch { continue }
+    const entries = boundedDirectoryEntries(directoryPath, MAX_CLAUDE_DIRECTORY_ENTRIES)
     for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(path.join(directoryPath, entry.name))
+      if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue
+      const filePath = path.join(directoryPath, entry.name)
+      let stat
+      try { stat = fs.lstatSync(filePath) } catch { continue }
+      if (!stat.isFile()) continue
+      files.push({ path: filePath, size: stat.size, mtimeMs: stat.mtimeMs })
+      if (files.length >= MAX_CLAUDE_DISCOVERED_TRANSCRIPTS) break
     }
+    if (files.length >= MAX_CLAUDE_DISCOVERED_TRANSCRIPTS) break
   }
-  return files
+  return files.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, MAX_CLAUDE_TRANSCRIPTS)
+}
+
+function boundedDirectoryEntries(directoryPath, limit) {
+  const entries = []
+  let directory
+  try { directory = fs.opendirSync(directoryPath) } catch { return entries }
+  try {
+    while (entries.length < limit) {
+      const entry = directory.readSync()
+      if (!entry) break
+      entries.push(entry)
+    }
+  } finally {
+    try { directory.closeSync() } catch { /* Directory may already be closed. */ }
+  }
+  return entries
+}
+
+function readClaudeTranscript(candidate, budget) {
+  const descriptor = fs.openSync(candidate.path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
+  try {
+    const stat = fs.fstatSync(descriptor)
+    if (!stat.isFile()) return null
+    const readRange = (position, length) => {
+      const buffer = Buffer.alloc(length)
+      let offset = 0
+      while (offset < length) {
+        const count = fs.readSync(descriptor, buffer, offset, length - offset, position + offset)
+        if (count === 0) break
+        offset += count
+      }
+      return buffer.subarray(0, offset).toString("utf8")
+    }
+    const combinedLimit = MAX_CLAUDE_TRANSCRIPT_HEAD_BYTES
+      + MAX_CLAUDE_TRANSCRIPT_TAIL_BYTES
+    const readCost = Math.min(stat.size, combinedLimit)
+    if (readCost > budget.remaining) return null
+    budget.remaining -= readCost
+    if (stat.size <= combinedLimit) return { content: readRange(0, stat.size), stat }
+    const head = readRange(0, MAX_CLAUDE_TRANSCRIPT_HEAD_BYTES)
+    const tail = readRange(stat.size - MAX_CLAUDE_TRANSCRIPT_TAIL_BYTES,
+      MAX_CLAUDE_TRANSCRIPT_TAIL_BYTES)
+    return { content: `${head}\n${tail}`, stat }
+  } finally {
+    fs.closeSync(descriptor)
+  }
 }
 
 function claudeJobStates() {
   const states = new Map()
   const jobsPath = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"), "jobs")
-  let jobs = []
-  try { jobs = fs.readdirSync(jobsPath, { withFileTypes: true }) } catch { return states }
+  const jobs = boundedDirectoryEntries(jobsPath, MAX_CLAUDE_JOBS)
   for (const job of jobs) {
     if (!job.isDirectory()) continue
     const value = readJSON(path.join(jobsPath, job.name, "state.json"), null)
@@ -132,12 +213,12 @@ function claudeJobStates() {
   return states
 }
 
-function parseClaudeTranscript(filePath, jobs, runtimeStates, metadata) {
-  const fallbackID = path.basename(filePath, ".jsonl")
-  let stat
-  try { stat = fs.statSync(filePath) } catch { return null }
-  let content
-  try { content = fs.readFileSync(filePath, "utf8") } catch { return null }
+function parseClaudeTranscript(candidate, jobs, runtimeStates, metadata, budget) {
+  const fallbackID = path.basename(candidate.path, ".jsonl")
+  let transcript
+  try { transcript = readClaudeTranscript(candidate, budget) } catch { return null }
+  if (!transcript) return null
+  const { content, stat } = transcript
 
   let id = fallbackID
   let cwd = ""
@@ -332,13 +413,13 @@ function claudeModels(settings, state, configuredModels = []) {
 }
 
 function claudeAgentsInDirectory(directory, scope) {
-  let entries = []
-  try { entries = fs.readdirSync(directory, { withFileTypes: true }) } catch { return [] }
+  const entries = boundedDirectoryEntries(directory, MAX_CLAUDE_AGENT_FILES)
   const agents = []
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".md")) continue
     let content = ""
-    try { content = fs.readFileSync(path.join(directory, entry.name), "utf8") } catch { continue }
+    try { content = readBoundedText(path.join(directory, entry.name), MAX_CLAUDE_AGENT_BYTES) }
+    catch { continue }
     const frontmatter = /^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/.exec(content)
     if (!frontmatter) continue
     const field = name => {
@@ -532,10 +613,13 @@ async function claudeSnapshot() {
     runtimeValue.sessions && typeof runtimeValue.sessions === "object"
       ? runtimeValue.sessions : {}))
   const metadata = loadMetadata()
-  const threads = walkClaudeTranscripts(path.join(configRoot, "projects"))
-    .map(file => parseClaudeTranscript(file, jobs, runtimeStates, metadata))
-    .filter(Boolean)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
+  const readBudget = { remaining: MAX_CLAUDE_SNAPSHOT_BYTES }
+  const threads = []
+  for (const candidate of walkClaudeTranscripts(path.join(configRoot, "projects"))) {
+    const thread = parseClaudeTranscript(candidate, jobs, runtimeStates, metadata, readBudget)
+    if (thread) threads.push(thread)
+  }
+  threads.sort((a, b) => b.updatedAt - a.updatedAt)
   const projects = projectList(threads)
   const defaults = claudeDefaults(configRoot, threads, settings, state)
   const projectDefaults = {}

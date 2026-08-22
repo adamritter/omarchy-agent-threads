@@ -46,6 +46,10 @@ makes window mapping immediate and reliable even before the first prompt. Model,
 variant, and primary-agent choices are passed through OpenCode's native CLI
 flags, while live status is read from the TUI's per-session server.
 
+Local Claude discovery refreshes every five seconds and uses fixed directory,
+file-count, per-file, and 32 MiB total read limits so a large transcript history
+cannot block the long-running Shell process.
+
 ## Requirements
 
 - A current Omarchy release with the Shell plugin system.
@@ -151,6 +155,8 @@ $XDG_STATE_HOME/omarchy/codex-thread-remotes.json
 
 The default is `~/.local/state/omarchy/codex-thread-remotes.json`. A
 plugin-local `remote.json` is intentionally ignored and never published.
+The remote configuration is limited to 256 KiB, must be a regular file, and
+cannot be a symbolic link.
 
 Other UI state is stored in `~/.local/state/omarchy/codex-threads.json`.
 

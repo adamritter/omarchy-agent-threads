@@ -1,0 +1,94 @@
+#!/usr/bin/env node
+
+import fs from "node:fs"
+import path from "node:path"
+
+const MAX_CONFIG_BYTES = 256 * 1024
+const [action = "", configPath = "", serialized = ""] = process.argv.slice(2)
+
+function fail(message) {
+  process.stderr.write(`Remote config: ${message}\n`)
+  process.exit(2)
+}
+
+function validatePath() {
+  if (!path.isAbsolute(configPath)) fail("path must be absolute")
+  const existing = (() => {
+    try { return fs.lstatSync(configPath) } catch (error) {
+      if (error && error.code === "ENOENT") return null
+      fail("could not inspect the state file")
+    }
+  })()
+  if (existing && existing.isSymbolicLink()) fail("symbolic links are not allowed")
+  if (existing && !existing.isFile()) fail("state path is not a regular file")
+  return existing
+}
+
+function validateJSON(text) {
+  if (Buffer.byteLength(text, "utf8") > MAX_CONFIG_BYTES)
+    fail(`state file exceeds ${MAX_CONFIG_BYTES} bytes`)
+  let value
+  try { value = JSON.parse(text) } catch { fail("state file contains invalid JSON") }
+  if (!Array.isArray(value) && (!value || typeof value !== "object"))
+    fail("state file must contain a JSON object or array")
+  return text
+}
+
+function writePrivate(text) {
+  validateJSON(text)
+  validatePath()
+  const parent = path.dirname(configPath)
+  fs.mkdirSync(parent, { recursive: true, mode: 0o700 })
+  const temporary = path.join(parent, `.${path.basename(configPath)}.${process.pid}.tmp`)
+  let descriptor
+  try {
+    descriptor = fs.openSync(temporary,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL
+        | fs.constants.O_NOFOLLOW,
+      0o600)
+    fs.writeFileSync(descriptor, text, "utf8")
+    fs.fsyncSync(descriptor)
+    fs.closeSync(descriptor)
+    descriptor = undefined
+    // Recheck immediately before replacement so an existing symlink is never
+    // silently accepted, even though rename itself would not follow it.
+    validatePath()
+    fs.renameSync(temporary, configPath)
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor)
+    try { fs.unlinkSync(temporary) } catch { /* Already renamed or never created. */ }
+  }
+}
+
+function readPrivate() {
+  const existing = validatePath()
+  if (!existing) {
+    const initial = JSON.stringify({ version: 2, remotes: [] }, null, 2) + "\n"
+    writePrivate(initial)
+    return initial
+  }
+  if (existing.size > MAX_CONFIG_BYTES)
+    fail(`state file exceeds ${MAX_CONFIG_BYTES} bytes`)
+  const descriptor = fs.openSync(configPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
+  try {
+    const current = fs.fstatSync(descriptor)
+    if (!current.isFile()) fail("state path is not a regular file")
+    if (current.size > MAX_CONFIG_BYTES)
+      fail(`state file exceeds ${MAX_CONFIG_BYTES} bytes`)
+    const buffer = Buffer.alloc(current.size)
+    let offset = 0
+    while (offset < buffer.length) {
+      const count = fs.readSync(descriptor, buffer, offset, buffer.length - offset, offset)
+      if (count === 0) break
+      offset += count
+    }
+    if (offset !== buffer.length) fail("state file changed while being read")
+    return validateJSON(buffer.toString("utf8"))
+  } finally {
+    fs.closeSync(descriptor)
+  }
+}
+
+if (action === "read") process.stdout.write(readPrivate())
+else if (action === "write") writePrivate(serialized)
+else fail("expected read or write action")

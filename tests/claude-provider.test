@@ -84,11 +84,43 @@ jq -e '
   and .threads[0].lastEffort == "xhigh"
 ' <<<"$snapshot" >/dev/null
 
+large_session_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+large_transcript="$project_dir/${large_session_id}.jsonl"
+jq -cn --arg sessionId "$large_session_id" --arg cwd "$work_dir" '{
+  sessionId:$sessionId,
+  cwd:$cwd,
+  timestamp:"2026-08-22T20:00:10.000Z",
+  isSidechain:false,
+  type:"user",
+  message:{role:"user",content:"Bounded transcript fixture"}
+}' > "$large_transcript"
+truncate -s 8388608 "$large_transcript"
+printf '\n' >> "$large_transcript"
+jq -cn --arg sessionId "$large_session_id" --arg cwd "$work_dir" '{
+  sessionId:$sessionId,
+  cwd:$cwd,
+  timestamp:"2026-08-22T20:00:15.000Z",
+  isSidechain:false,
+  type:"assistant",
+  effort:"high",
+  message:{role:"assistant",model:"claude-sonnet-test",stop_reason:"end_turn"}
+}' >> "$large_transcript"
+run_helper snapshot | jq -e --arg id "$large_session_id" '
+  .threads[] | select(.id == $id)
+  | .name == "Bounded transcript fixture"
+    and .lifecycle == "done"
+    and .lastModel == "claude-sonnet-test"
+' >/dev/null
+
 run_helper pin "$session_id" "" true >/dev/null
-run_helper snapshot | jq -e '.threads[0].isPinned == true' >/dev/null
+run_helper snapshot | jq -e --arg id "$session_id" '
+  .threads[] | select(.id == $id) | .isPinned == true
+' >/dev/null
 
 run_helper archive "$session_id" >/dev/null
-run_helper snapshot | jq -e '.threads | length == 0' >/dev/null
+run_helper snapshot | jq -e --arg id "$session_id" '
+  (.threads | any(.id == $id)) == false
+' >/dev/null
 
 auth_fixture="$test_root/authenticated"
 fake_claude="$test_root/claude"
@@ -110,5 +142,12 @@ touch "$auth_fixture"
 OMARCHY_AGENT_PROVIDER_HOME="$fake_home" OMARCHY_CLAUDE_COMMAND="$fake_claude" \
   XDG_STATE_HOME="$state_home" node "$helper" claude snapshot \
   | jq -e '.available == true and .authenticated == true' >/dev/null
+
+for index in $(seq -w 1 520); do
+  printf '%s\n' \
+    "{\"cwd\":\"$work_dir\",\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Limit fixture $index\"}}" \
+    > "$project_dir/limit-$index.jsonl"
+done
+run_helper snapshot | jq -e '.threads | length <= 512' >/dev/null
 
 printf '%s\n' "claude-provider tests passed"

@@ -384,7 +384,7 @@ Item {
   }
 
   Timer {
-    interval: root.providerType === "claude" ? 750 : 5000
+    interval: 5000
     running: root.enabled
     repeat: true
     onTriggered: root.refresh()
