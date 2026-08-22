@@ -95,9 +95,11 @@ ListView {
     height: sectionRow ? Style.space(52)
       : (moreRow ? Style.space(38) : threadContent.implicitHeight + Style.space(8))
     radius: Style.cornerRadius
-    color: activeThread
+    color: panel.sidebarFocused && activeThread
       ? Style.selectedFillFor(panel.foreground, Color.accent)
-      : (mouse.containsMouse || index === panel.selectedIndex ? panel.faint : "transparent")
+      : (mouse.containsMouse
+          || (panel.sidebarFocused && index === panel.selectedIndex)
+          ? panel.faint : "transparent")
 
     Text {
       visible: row.threadRow && !row.busy && !row.unread
