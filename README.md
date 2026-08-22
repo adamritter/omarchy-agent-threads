@@ -3,7 +3,7 @@
 A keyboard-first Omarchy Shell sidebar for browsing, opening, organizing, and
 monitoring local and remote coding-agent sessions.
 
-![Agent Threads preview](preview.png)
+![Agent Threads preview](agent-threads-preview-v0.1.0.png)
 
 ## Highlights
 
