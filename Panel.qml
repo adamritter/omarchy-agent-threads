@@ -11,8 +11,8 @@ import "ui" as Ui
 
 Panel {
   id: root
-  moduleName: "adam.codex-threads"
-  ipcTarget: "adam.codex-threads"
+  moduleName: "agent-threads"
+  ipcTarget: "agent-threads"
   manageIpc: false
 
   readonly property var service: Services.ThreadStore

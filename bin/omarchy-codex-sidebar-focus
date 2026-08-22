@@ -2,7 +2,7 @@
 
 set -u
 
-target="adam.codex-threads"
+target="agent-threads"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Resolve the active terminal while it still owns the toplevel focus. A Codex
