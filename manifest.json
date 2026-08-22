@@ -4,7 +4,7 @@
   "name": "Agent Threads",
   "version": "0.1.0",
   "author": "Adam Ritter",
-  "description": "A keyboard-controlled sidebar for tracking and opening local or remote coding-agent threads in native windows.",
+  "description": "A keyboard-controlled sidebar for tracking and opening local or remote Codex, Claude Code, and OpenCode threads in native windows.",
   "kinds": [
     "bar-widget"
   ],
