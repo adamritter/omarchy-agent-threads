@@ -187,7 +187,7 @@ Item {
       followedActiveThreadId = ""
       return
     }
-    if (!force && (panel.sidebarFocused || followedActiveThreadId === activeId)) return
+    if (!force && panel.sidebarFocused) return
 
     var activeThread = threadForId(activeId)
     if (!activeThread) return
@@ -215,6 +215,7 @@ Item {
 
     var index = rowIndexForThread(activeId)
     if (index < 0) return
+    if (!force && followedActiveThreadId === activeId && panel.selectedIndex === index) return
     followedActiveThreadId = activeId
     panel.selectedIndex = index
     if (panel.opened) Qt.callLater(function() {

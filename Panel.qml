@@ -635,6 +635,9 @@ Panel {
     searchField.focus = false
     if (searchText === "") searchOpen = false
     keyCatcher.focus = false
+    Qt.callLater(function() {
+      if (!root.sidebarFocused) root.sidebarActions.followActiveThread(true)
+    })
   }
 
   function escapeSidebarFocus() {
