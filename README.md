@@ -71,6 +71,24 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable adam.codex-threads --section left
 ```
 
+## Recommended shortcuts
+
+Add these bindings to `~/.config/hypr/bindings.lua`:
+
+```lua
+-- Open Agent Threads, follow the active session, and give the sidebar keyboard focus.
+o.bind("SUPER + A", "Focus Agent Threads", "$HOME/.config/omarchy/plugins/adam.codex-threads/bin/omarchy-codex-sidebar-focus")
+
+-- SUPER + S is Omarchy's default scratchpad shortcut, so unbind it first.
+hl.unbind("SUPER + S")
+o.bind("SUPER + S", "Toggle Agent Threads", "omarchy-shell -q adam.codex-threads toggle")
+```
+
+`Super+A` is the fast keyboard-navigation entry point. `Super+S` only opens or
+closes the sidebar and does not force keyboard focus. Rebinding `Super+S`
+replaces its default scratchpad action; the scratchpad remains available with
+`Super+grave` in the standard Omarchy bindings.
+
 ## Controls
 
 | Key | Action |
