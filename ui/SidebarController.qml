@@ -1,0 +1,240 @@
+import QtQuick
+
+Item {
+  id: root
+
+  required property var panel
+  required property var listView
+  readonly property var service: panel.service
+  property string followedActiveThreadId: ""
+
+  function rowIndexForThread(threadId, remoteId) {
+    var scope = remoteId !== undefined
+      ? String(remoteId || "local")
+      : String(threadScopeForId(threadId) || "local")
+    return panel.rowIndexForKey("thread:" + scope + ":" + String(threadId || ""))
+  }
+
+  function projectHeaderIndex(path, remoteId) {
+    return panel.rowIndexForKey(
+      "project:" + String(remoteId || "local") + ":" + String(path || ""))
+  }
+
+  function remoteHeaderIndex(remoteId) {
+    return panel.rowIndexForKey("remote:" + String(remoteId || ""))
+  }
+
+  function openSelected() {
+    if (panel.selectedIndex < 0 || panel.selectedIndex >= panel.viewRows.length) return
+    var row = panel.viewRows[panel.selectedIndex]
+    if (row.kind === "more")
+      panel.showAllGroup(row.groupKind, row.path, row.remoteId)
+    else if (row.kind === "remote") panel.toggleRemote(row.remoteId)
+    else if (row.kind === "project") panel.toggleProject(row.path, row.remoteId)
+    else if (row.remoteId)
+      service.openRemoteThread(row.remoteId, row.thread, row.path)
+    else service.openThread(row.thread, row.path)
+  }
+
+  function newSelectedThread() {
+    var path = panel.homePath
+    if (panel.selectedIndex >= 0 && panel.selectedIndex < panel.viewRows.length) {
+      var row = panel.viewRows[panel.selectedIndex]
+      path = String(row.path || (row.host ? row.host.home : "") || panel.homePath)
+      if (row.remoteId) {
+        service.newRemoteThread(row.remoteId, path)
+        return
+      }
+    }
+    if (panel.activeProvider !== "codex") {
+      var host = panel.providerHost(panel.activeProvider)
+      if (!host) {
+        service.launchError = panel.providerLabel(panel.activeProvider) + " provider is not ready"
+        return
+      }
+      service.newRemoteThread(host.id, path)
+      return
+    }
+    service.newProjectThread(path)
+  }
+
+  function archiveSelected() {
+    if (panel.selectedIndex < 0 || panel.selectedIndex >= panel.viewRows.length) return
+    var row = panel.viewRows[panel.selectedIndex]
+    if (row.kind !== "thread") return
+    if (row.remoteId) service.archiveRemoteThread(row.remoteId, row.thread)
+    else service.archiveThread(row.thread)
+  }
+
+  function togglePin(remoteId, thread) {
+    if (!thread || !thread.id) return
+    if (remoteId) service.toggleRemoteThreadPin(remoteId, thread)
+    else service.toggleThreadPin(thread)
+  }
+
+  function togglePinSelected() {
+    if (panel.selectedIndex < 0 || panel.selectedIndex >= panel.viewRows.length) return
+    var row = panel.viewRows[panel.selectedIndex]
+    if (row.kind === "thread") togglePin(row.remoteId, row.thread)
+    else if (row.kind === "remote")
+      panel.toggleSectionPin("remote", "", row.remoteId)
+    else if (row.kind === "project")
+      panel.toggleSectionPin("project", row.path, row.remoteId)
+  }
+
+  function pinnedThreadCount() {
+    var count = 0
+    if (panel.activeProvider === "codex") {
+      for (var i = 0; i < service.threads.length; i++)
+        if (service.threads[i] && service.threads[i].isPinned === true) count++
+    }
+    var hosts = service.remoteHosts || []
+    for (var hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
+      var hostProvider = String(hosts[hostIndex].providerType || "")
+      if (panel.activeProvider === "codex" ? hostProvider !== ""
+          : hostProvider !== panel.activeProvider) continue
+      var remoteThreads = hosts[hostIndex].threads || []
+      for (var threadIndex = 0; threadIndex < remoteThreads.length; threadIndex++)
+        if (remoteThreads[threadIndex]
+            && remoteThreads[threadIndex].isPinned === true) count++
+    }
+    return count
+  }
+
+  function threadForId(threadId) {
+    var wanted = String(threadId || "")
+    if (wanted === "") return null
+    for (var i = 0; i < service.threads.length; i++) {
+      if (String(service.threads[i].id || "") === wanted) return service.threads[i]
+    }
+    var configuredRemoteHosts = service.remoteHosts || []
+    for (var hostIndex = 0; hostIndex < configuredRemoteHosts.length; hostIndex++) {
+      var host = configuredRemoteHosts[hostIndex]
+      var hostThreads = host.threads || []
+      for (var threadIndex = 0; threadIndex < hostThreads.length; threadIndex++) {
+        if (String(hostThreads[threadIndex].id || "") === wanted)
+          return hostThreads[threadIndex]
+      }
+    }
+    return null
+  }
+
+  function threadScopeForId(threadId) {
+    var wanted = String(threadId || "")
+    if (wanted === "") return ""
+    for (var localIndex = 0; localIndex < service.threads.length; localIndex++) {
+      if (String(service.threads[localIndex].id || "") === wanted) return ""
+    }
+    var configuredRemoteHosts = service.remoteHosts || []
+    for (var hostIndex = 0; hostIndex < configuredRemoteHosts.length; hostIndex++) {
+      var host = configuredRemoteHosts[hostIndex]
+      var hostThreads = host.threads || []
+      for (var threadIndex = 0; threadIndex < hostThreads.length; threadIndex++) {
+        if (String(hostThreads[threadIndex].id || "") === wanted)
+          return String(host.id || "")
+      }
+    }
+    return ""
+  }
+
+  function handleHorizontalNavigation(direction) {
+    if (panel.selectedIndex < 0 || panel.selectedIndex >= panel.viewRows.length) return
+    var row = panel.viewRows[panel.selectedIndex]
+
+    if (direction < 0) {
+      if (row.kind === "thread") {
+        if (row.grouped !== true) return
+        panel.selectedIndex = row.depth > 1
+          ? projectHeaderIndex(row.path, row.remoteId)
+          : remoteHeaderIndex(row.remoteId)
+        listView.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
+      } else if (row.kind === "remote") {
+        if (!panel.remoteCollapsed(row.remoteId)) panel.toggleRemote(row.remoteId)
+      } else if (!panel.projectCollapsed(row.path, row.remoteId)) {
+        panel.setProjectCollapsed(row.path, true, true, row.remoteId)
+      } else if (row.remoteId) {
+        panel.selectedIndex = remoteHeaderIndex(row.remoteId)
+        listView.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
+      }
+      return
+    }
+
+    if (row.kind === "remote") {
+      if (panel.remoteCollapsed(row.remoteId)) panel.toggleRemote(row.remoteId)
+      else if (panel.selectedIndex + 1 < panel.viewRows.length) panel.selectedIndex++
+      listView.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
+      return
+    }
+    if (row.kind !== "project") return
+    if (panel.projectCollapsed(row.path, row.remoteId)) {
+      panel.setProjectCollapsed(row.path, false, true, row.remoteId)
+    } else if (panel.selectedIndex + 1 < panel.viewRows.length
+               && panel.viewRows[panel.selectedIndex + 1].kind === "thread"
+               && panel.viewRows[panel.selectedIndex + 1].path === row.path) {
+      panel.selectedIndex++
+      listView.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
+    }
+  }
+
+  function followActiveThread(force) {
+    // Refreshes must not overwrite a selection made while the sidebar is focused.
+    var activeId = String(service.activeThreadId || "")
+    if (activeId === "") {
+      followedActiveThreadId = ""
+      return
+    }
+    if (!force && (panel.sidebarFocused || followedActiveThreadId === activeId)) return
+
+    var activeThread = threadForId(activeId)
+    if (!activeThread) return
+    var path = panel.projectPath(activeThread)
+    var activeRemoteId = threadScopeForId(activeId)
+    var activeHost = activeRemoteId !== "" ? service.remoteHostById(activeRemoteId) : null
+    var activeThreadProvider = activeHost
+      ? String(activeHost.providerType || "codex") : "codex"
+    if (activeThreadProvider !== panel.activeProvider) return
+    if (activeRemoteId !== "") {
+      path = service.remotePathForThread(activeHost, activeThread)
+      if (force && panel.remoteCollapsed(activeRemoteId)) {
+        var expandedRemotes = Object.assign({}, panel.collapsedRemotes)
+        expandedRemotes[activeRemoteId] = false
+        service.setCollapsedRemotes(expandedRemotes)
+      }
+    }
+    if (path !== "" && (activeRemoteId !== "" || panel.isProjectPath(path))
+        && panel.projectCollapsed(path, activeRemoteId) && force) {
+      var expanded = Object.assign({}, panel.collapsedProjects)
+      expanded[panel.projectCollapseKey(path, activeRemoteId)] = false
+      service.setCollapsedProjects(expanded)
+    }
+    panel.rebuildRows("thread:" + String(activeRemoteId || "local") + ":" + activeId)
+
+    var index = rowIndexForThread(activeId)
+    if (index < 0) return
+    followedActiveThreadId = activeId
+    panel.selectedIndex = index
+    if (panel.opened) Qt.callLater(function() {
+      listView.positionViewAtIndex(index, ListView.Contain)
+    })
+  }
+
+  function activeThreadCursorPoint() {
+    var activeThread = threadForId(service.activeThreadId)
+    if (!activeThread) return ""
+    followActiveThread(true)
+
+    var index = rowIndexForThread(service.activeThreadId)
+    if (index < 0) return ""
+
+    followedActiveThreadId = String(service.activeThreadId || "")
+    panel.selectedIndex = index
+    listView.positionViewAtIndex(index, ListView.Center)
+    listView.forceLayout()
+
+    var row = listView.itemAtIndex(index)
+    if (!row) return ""
+
+    var point = row.mapToItem(null, row.width / 2, row.height / 2)
+    return JSON.stringify({ x: Math.round(point.x), y: Math.round(point.y) })
+  }
+}

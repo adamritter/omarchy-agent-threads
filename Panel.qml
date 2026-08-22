@@ -24,7 +24,6 @@ Panel {
   readonly property string codexScratchRoot: homePath + "/Documents/Codex/"
   readonly property int sidebarContentWidth: Style.space(380)
   readonly property int sidebarReserveWidth: sidebarContentWidth + Style.gapsOut * 2
-  readonly property bool sidebarWindowActive: keyCatcher.Window.active
   readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
     || remoteSetup.inputFocused
   readonly property bool sidebarFocused: keyboardFocusRequested && sidebarItemFocused
@@ -45,8 +44,8 @@ Panel {
   readonly property alias projectCount: threadListModel.projectCount
   readonly property alias visibleThreadCount: threadListModel.visibleThreadCount
   property alias selectedIndex: threadListModel.selectedIndex
+  readonly property var sidebarActions: sidebarController
   property double nowMs: Date.now()
-  property string followedActiveThreadId: ""
   property string searchText: ""
   property bool searchOpen: false
   property bool helpOpen: false
@@ -79,10 +78,15 @@ Panel {
   ]
   // Mapping or reloading the sidebar must never request keyboard focus.
   property bool keyboardFocusRequested: false
-
   Ui.ThreadListModel {
     id: threadListModel
     controller: root
+  }
+
+  Ui.SidebarController {
+    id: sidebarController
+    panel: root
+    listView: threadList
   }
 
   visible: true
@@ -373,21 +377,6 @@ Panel {
     return -1
   }
 
-  function rowIndexForThread(threadId, remoteId) {
-    var scope = remoteId !== undefined
-      ? String(remoteId || "local")
-      : String(threadScopeForId(threadId) || "local")
-    return rowIndexForKey("thread:" + scope + ":" + String(threadId || ""))
-  }
-
-  function projectHeaderIndex(path, remoteId) {
-    return rowIndexForKey("project:" + String(remoteId || "local") + ":" + String(path || ""))
-  }
-
-  function remoteHeaderIndex(remoteId) {
-    return rowIndexForKey("remote:" + String(remoteId || ""))
-  }
-
   function groupPreviewKey(kind, path, remoteId) {
     return kind === "remote"
       ? "remote:" + String(remoteId || "")
@@ -505,225 +494,6 @@ Panel {
     return count
   }
 
-  function openSelected() {
-    if (selectedIndex < 0 || selectedIndex >= viewRows.length) return
-    var row = viewRows[selectedIndex]
-    if (row.kind === "more")
-      showAllGroup(row.groupKind, row.path, row.remoteId)
-    else if (row.kind === "remote") toggleRemote(row.remoteId)
-    else if (row.kind === "project") toggleProject(row.path, row.remoteId)
-    else if (row.remoteId)
-      service.openRemoteThread(row.remoteId, row.thread, row.path)
-    else service.openThread(row.thread, row.path)
-  }
-
-  function newSelectedThread() {
-    var path = homePath
-    if (selectedIndex >= 0 && selectedIndex < viewRows.length) {
-      var row = viewRows[selectedIndex]
-      path = String(row.path || (row.host ? row.host.home : "") || homePath)
-      if (row.remoteId) {
-        service.newRemoteThread(row.remoteId, path)
-        return
-      }
-    }
-    if (activeProvider !== "codex") {
-      var host = providerHost(activeProvider)
-      if (!host) {
-        service.launchError = providerLabel(activeProvider) + " provider is not ready"
-        return
-      }
-      service.newRemoteThread(host.id, path)
-      return
-    }
-    service.newProjectThread(path)
-  }
-
-  function archiveSelected() {
-    if (selectedIndex < 0 || selectedIndex >= viewRows.length) return
-    var row = viewRows[selectedIndex]
-    if (row.kind !== "thread") return
-    if (row.remoteId) service.archiveRemoteThread(row.remoteId, row.thread)
-    else service.archiveThread(row.thread)
-  }
-
-  function togglePin(remoteId, thread) {
-    if (!thread || !thread.id) return
-    if (remoteId) service.toggleRemoteThreadPin(remoteId, thread)
-    else service.toggleThreadPin(thread)
-  }
-
-  function togglePinSelected() {
-    if (selectedIndex < 0 || selectedIndex >= viewRows.length) return
-    var row = viewRows[selectedIndex]
-    if (row.kind === "thread") togglePin(row.remoteId, row.thread)
-    else if (row.kind === "remote") toggleSectionPin("remote", "", row.remoteId)
-    else if (row.kind === "project")
-      toggleSectionPin("project", row.path, row.remoteId)
-  }
-
-  function pinnedThreadCount() {
-    var count = 0
-    if (activeProvider === "codex") {
-      for (var i = 0; i < service.threads.length; i++)
-        if (service.threads[i] && service.threads[i].isPinned === true) count++
-    }
-    var hosts = service.remoteHosts || []
-    for (var hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
-      var hostProvider = String(hosts[hostIndex].providerType || "")
-      if (activeProvider === "codex" ? hostProvider !== ""
-          : hostProvider !== activeProvider) continue
-      var remoteThreads = hosts[hostIndex].threads || []
-      for (var threadIndex = 0; threadIndex < remoteThreads.length; threadIndex++)
-        if (remoteThreads[threadIndex]
-            && remoteThreads[threadIndex].isPinned === true) count++
-    }
-    return count
-  }
-
-  function threadForId(threadId) {
-    var wanted = String(threadId || "")
-    if (wanted === "") return null
-    for (var i = 0; i < service.threads.length; i++) {
-      if (String(service.threads[i].id || "") === wanted) return service.threads[i]
-    }
-    var configuredRemoteHosts = service.remoteHosts || []
-    for (var hostIndex = 0; hostIndex < configuredRemoteHosts.length; hostIndex++) {
-      var host = configuredRemoteHosts[hostIndex]
-      for (var threadIndex = 0; threadIndex < host.threads.length; threadIndex++) {
-        if (String(host.threads[threadIndex].id || "") === wanted)
-          return host.threads[threadIndex]
-      }
-    }
-    return null
-  }
-
-  function threadScopeForId(threadId) {
-    var wanted = String(threadId || "")
-    if (wanted === "") return ""
-    for (var localIndex = 0; localIndex < service.threads.length; localIndex++) {
-      if (String(service.threads[localIndex].id || "") === wanted) return ""
-    }
-    var configuredRemoteHosts = service.remoteHosts || []
-    for (var hostIndex = 0; hostIndex < configuredRemoteHosts.length; hostIndex++) {
-      var host = configuredRemoteHosts[hostIndex]
-      var hostThreads = host.threads || []
-      for (var threadIndex = 0; threadIndex < hostThreads.length; threadIndex++) {
-        if (String(hostThreads[threadIndex].id || "") === wanted)
-          return String(host.id || "")
-      }
-    }
-    return ""
-  }
-
-  function handleHorizontalNavigation(direction) {
-    if (selectedIndex < 0 || selectedIndex >= viewRows.length) return
-    var row = viewRows[selectedIndex]
-
-    if (direction < 0) {
-      if (row.kind === "thread") {
-        if (row.grouped !== true) return
-        selectedIndex = row.depth > 1
-          ? projectHeaderIndex(row.path, row.remoteId)
-          : remoteHeaderIndex(row.remoteId)
-        threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
-      } else if (row.kind === "remote") {
-        if (!remoteCollapsed(row.remoteId)) toggleRemote(row.remoteId)
-      } else if (!projectCollapsed(row.path, row.remoteId)) {
-        setProjectCollapsed(row.path, true, true, row.remoteId)
-      } else if (row.remoteId) {
-        selectedIndex = remoteHeaderIndex(row.remoteId)
-        threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
-      }
-      return
-    }
-
-    if (row.kind === "remote") {
-      if (remoteCollapsed(row.remoteId)) toggleRemote(row.remoteId)
-      else if (selectedIndex + 1 < viewRows.length) selectedIndex++
-      threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
-      return
-    }
-    if (row.kind !== "project") return
-    if (projectCollapsed(row.path, row.remoteId)) {
-      setProjectCollapsed(row.path, false, true, row.remoteId)
-    } else if (selectedIndex + 1 < viewRows.length
-               && viewRows[selectedIndex + 1].kind === "thread"
-               && viewRows[selectedIndex + 1].path === row.path) {
-      selectedIndex++
-      threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
-    }
-  }
-
-  function followActiveThread(force) {
-    // Once the user is inside the sidebar, automatic list/app-server refreshes
-    // must not overwrite a selection made with j/k or the mouse. The ACTIVE
-    // marker still follows service.activeThreadId independently.
-    var activeId = String(service.activeThreadId || "")
-    if (activeId === "") {
-      followedActiveThreadId = ""
-      return
-    }
-    if (!force && (sidebarFocused || followedActiveThreadId === activeId)) return
-
-    var activeThread = threadForId(activeId)
-    if (!activeThread) return
-    var path = projectPath(activeThread)
-    var activeRemoteId = threadScopeForId(activeId)
-    var activeHost = activeRemoteId !== "" ? service.remoteHostById(activeRemoteId) : null
-    var activeThreadProvider = activeHost
-      ? String(activeHost.providerType || "codex") : "codex"
-    if (activeThreadProvider !== activeProvider) return
-    if (activeRemoteId !== "") {
-      path = service.remotePathForThread(activeHost, activeThread)
-      if (force && remoteCollapsed(activeRemoteId)) {
-        var expandedRemotes = Object.assign({}, collapsedRemotes)
-        expandedRemotes[activeRemoteId] = false
-        service.setCollapsedRemotes(expandedRemotes)
-      }
-    }
-    if (path !== "" && (activeRemoteId !== "" || isProjectPath(path))
-        && projectCollapsed(path, activeRemoteId) && force) {
-      var expanded = Object.assign({}, collapsedProjects)
-      expanded[projectCollapseKey(path, activeRemoteId)] = false
-      service.setCollapsedProjects(expanded)
-    }
-    rebuildRows("thread:" + String(activeRemoteId || "local") + ":" + activeId)
-
-    var index = rowIndexForThread(activeId)
-    if (index < 0) return
-    followedActiveThreadId = activeId
-    selectedIndex = index
-    if (opened) Qt.callLater(function() {
-      threadList.positionViewAtIndex(index, ListView.Contain)
-    })
-  }
-
-  function activeThreadCursorPoint() {
-    var activeThread = threadForId(service.activeThreadId)
-    if (!activeThread) return ""
-    followActiveThread(true)
-
-    var index = rowIndexForThread(service.activeThreadId)
-    if (index < 0) return ""
-
-    followedActiveThreadId = String(service.activeThreadId || "")
-    selectedIndex = index
-    threadList.positionViewAtIndex(index, ListView.Center)
-    threadList.forceLayout()
-
-    var row = threadList.itemAtIndex(index)
-    if (!row) return ""
-
-    // mapToItem(null, ...) returns surface-local coordinates. The hotkey
-    // helper adds the layer surface's global position before moving the cursor.
-    var point = row.mapToItem(null, row.width / 2, row.height / 2)
-    return JSON.stringify({
-      x: Math.round(point.x),
-      y: Math.round(point.y)
-    })
-  }
-
   function applySidebarOpenState() {
     if (!bar) return
     applyingPersistedSidebarState = true
@@ -770,7 +540,7 @@ Panel {
       nowMs = Date.now()
       service.refreshThreads()
       service.refreshActiveThread()
-      if (!applyingPersistedSidebarState) followActiveThread(true)
+      if (!applyingPersistedSidebarState) sidebarActions.followActiveThread(true)
     } else {
       keyboardFocusRequested = false
       focusPrimed = false
@@ -788,12 +558,12 @@ Panel {
     ignoreUnknownSignals: true
     function onThreadsChanged() {
       root.rebuildRows()
-      root.followActiveThread(false)
+      root.sidebarActions.followActiveThread(false)
     }
     function onProjectsChanged() { root.rebuildRows() }
     function onRemoteHostsChanged() {
       root.rebuildRows()
-      root.followActiveThread(false)
+      root.sidebarActions.followActiveThread(false)
     }
     function onCollapsedProjectsChanged() { root.rebuildRows() }
     function onCollapsedRemotesChanged() { root.rebuildRows() }
@@ -801,7 +571,7 @@ Panel {
     function onSelectedProviderChanged() {
       root.restoreProviderViewState(root.activeProvider)
     }
-    function onActiveThreadIdChanged() { root.followActiveThread(false) }
+    function onActiveThreadIdChanged() { root.sidebarActions.followActiveThread(false) }
     function onSidebarOpenChanged() { root.applySidebarOpenState() }
   }
 
@@ -862,7 +632,7 @@ Panel {
       root.selectProvider(name)
       return root.activeProvider
     }
-    function cursorPoint(): string { return root.activeThreadCursorPoint() }
+    function cursorPoint(): string { return root.sidebarActions.activeThreadCursorPoint() }
     function refresh(): string {
       root.service.refreshThreads()
       root.service.refreshRemotes()
@@ -896,7 +666,7 @@ Panel {
         sidebarFocused: root.sidebarFocused,
         sidebarOpen: root.service.sidebarOpen,
         remoteCount: (root.service.remoteHosts || []).length,
-        pinnedThreadCount: root.pinnedThreadCount(),
+        pinnedThreadCount: root.sidebarActions.pinnedThreadCount(),
         availableSshHostCount: (root.service.sshHosts || []).length,
         remoteSetupOpen: root.remoteSetupOpen,
         codexLimit: root.rateLimitText(),
@@ -1024,7 +794,7 @@ Panel {
         if (root.helpOpen) return
         if (root.viewRows.length === 0) return
         if (dx !== 0) {
-          root.handleHorizontalNavigation(dx)
+          root.sidebarActions.handleHorizontalNavigation(dx)
           return
         }
         if (dy !== 0) {
@@ -1035,7 +805,7 @@ Panel {
       }
       onActivateRequested: {
         if (root.helpOpen) root.helpOpen = false
-        else root.openSelected()
+        else root.sidebarActions.openSelected()
       }
       onCloseRequested: {
         if (providerMenu.opened) providerMenu.close()
@@ -1070,18 +840,18 @@ Panel {
           return
         }
         if (text === "o" || text === "O") {
-          root.openSelected()
+          root.sidebarActions.openSelected()
           return
         }
         if (text === "y" || text === "Y") {
-          root.archiveSelected()
+          root.sidebarActions.archiveSelected()
           return
         }
         if (text === "p") {
-          root.togglePinSelected()
+          root.sidebarActions.togglePinSelected()
           return
         }
-        if (text === "n" || text === "N") root.newSelectedThread()
+        if (text === "n" || text === "N") root.sidebarActions.newSelectedThread()
       }
 
       Column {
@@ -1214,7 +984,7 @@ Panel {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: root.newSelectedThread()
+              onClicked: root.sidebarActions.newSelectedThread()
             }
           }
 

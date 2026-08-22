@@ -37,8 +37,9 @@ ListView {
       && panel.service.activeThreadId !== ""
       && String(threadData.id || "") === panel.service.activeThreadId
       && String(modelData.remoteId || "")
-        === String(panel.threadScopeForId(panel.service.activeThreadId) || "")
-    readonly property var activeThreadData: panel.threadForId(panel.service.activeThreadId)
+        === String(panel.sidebarActions.threadScopeForId(panel.service.activeThreadId) || "")
+    readonly property var activeThreadData: panel.sidebarActions.threadForId(
+      panel.service.activeThreadId)
     readonly property bool activeProject: projectRow
       && !modelData.remoteId
       && activeThreadData !== null
@@ -274,7 +275,7 @@ ListView {
                   }
                   threadMenu.close()
                   if (action === "pin") {
-                    panel.togglePin(row.modelData.remoteId, row.threadData)
+                    panel.sidebarActions.togglePin(row.modelData.remoteId, row.threadData)
                   } else if (action === "open") {
                     if (row.modelData.remoteId)
                       panel.service.openRemoteThread(row.modelData.remoteId,
@@ -434,7 +435,7 @@ ListView {
         cursorShape: Qt.PointingHandCursor
         onClicked: {
           panel.selectedIndex = row.index
-          panel.togglePin(row.modelData.remoteId, row.threadData)
+          panel.sidebarActions.togglePin(row.modelData.remoteId, row.threadData)
         }
       }
     }
