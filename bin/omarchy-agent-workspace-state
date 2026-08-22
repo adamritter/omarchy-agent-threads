@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+active_workspace="$(hyprctl activeworkspace -j)"
+monitors="$(hyprctl monitors -j)"
+clients="$(hyprctl clients -j)"
+
+jq -cn \
+  --argjson workspace "$active_workspace" \
+  --argjson monitors "$monitors" \
+  --argjson clients "$clients" '
+    ($workspace.id // 0) as $workspace_id
+    | ($workspace.monitorID // -1) as $monitor_id
+    | ($monitors | map(select(.id == $monitor_id)) | first // {}) as $monitor
+    | (($monitor.width // 0) / ($monitor.scale // 1)) as $width
+    | (($monitor.height // 0) / ($monitor.scale // 1)) as $height
+    | ($clients | any(
+        (.workspace.id // 0) == $workspace_id
+        and (.monitor // -1) == $monitor_id
+        and .floating == true
+        and ((.at[0] // 999999) <= (($monitor.x // 0) + 3))
+        and ((.at[1] // 999999) <= (($monitor.y // 0) + 3))
+        and ((.size[0] // 0) >= ($width - 4))
+        and ((.size[1] // 0) >= ($height - 4)))) as $geometry_fullscreen
+    | {
+        workspaceId: $workspace_id,
+        nativeFullscreen: ($workspace.hasfullscreen == true),
+        geometryFullscreen: $geometry_fullscreen,
+        hasfullscreen: (($workspace.hasfullscreen == true) or $geometry_fullscreen)
+      }
+  '

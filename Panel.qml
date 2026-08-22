@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
@@ -22,9 +23,11 @@ Panel {
   readonly property string homePath: Quickshell.env("HOME") || "/tmp"
   readonly property string workPath: homePath + "/Work"
   readonly property string codexScratchRoot: homePath + "/Documents/Codex/"
+  readonly property string workspaceStateHelperPath: Qt.resolvedUrl(
+    "bin/omarchy-agent-workspace-state").toString().replace(/^file:\/\//, "")
   readonly property int sidebarContentWidth: Style.space(380)
   readonly property int sidebarReserveWidth: sidebarContentWidth + Style.gapsOut
-  readonly property bool fullscreenSuppressed: fullscreenInternalState >= 2
+  readonly property bool fullscreenSuppressed: activeWorkspaceHasFullscreen
   readonly property bool sidebarPresented: opened && !fullscreenSuppressed
   readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
     || remoteSetup.inputFocused
@@ -61,6 +64,9 @@ Panel {
   property int cursorReturnY: -1
   property int fullscreenInternalState: 0
   property int fullscreenClientState: 0
+  property bool activeWorkspaceHasFullscreen: false
+  property bool activeWorkspaceGeometryFullscreen: false
+  property bool fullscreenProbeQueued: false
   property bool internalFocusTransfer: false
   property bool applyingPersistedSidebarState: false
 
@@ -626,15 +632,22 @@ Panel {
   }
 
   function queryFullscreenState() {
-    if (!fullscreenProbe.running) fullscreenProbe.running = true
+    if (fullscreenProbe.running) {
+      fullscreenProbeQueued = true
+      return
+    }
+    fullscreenProbe.running = true
   }
 
   function applyFullscreenState(text) {
     var state
     try { state = JSON.parse(String(text || "{}")) } catch (e) { return }
-    var internalState = Number(state.fullscreen || 0)
-    var clientState = Number(state.fullscreenClient || 0)
+    var workspaceFullscreen = state.hasfullscreen === true
+    var internalState = workspaceFullscreen ? 2 : 0
+    var clientState = 0
     var wasSuppressed = fullscreenSuppressed
+    activeWorkspaceHasFullscreen = workspaceFullscreen
+    activeWorkspaceGeometryFullscreen = state.geometryFullscreen === true
     fullscreenInternalState = internalState
     fullscreenClientState = clientState
     if (!wasSuppressed && fullscreenSuppressed) releaseSidebarFocus(true)
@@ -739,6 +752,19 @@ Panel {
     }
   }
 
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      var name = String(event && (event.name || event.event || event.type) || "")
+      if (name === "workspace" || name === "workspacev2"
+          || name === "focusedmon" || name === "focusedmonv2"
+          || name === "fullscreen" || name === "fullscreenv2"
+          || name === "activewindow" || name === "activewindowv2"
+          || name === "openwindow" || name === "closewindow")
+        fullscreenProbeDebounce.restart()
+    }
+  }
+
   Timer {
     id: focusPrimeTimer
     interval: 75
@@ -769,7 +795,14 @@ Panel {
   }
 
   Timer {
-    interval: 250
+    id: fullscreenProbeDebounce
+    interval: 40
+    repeat: false
+    onTriggered: root.queryFullscreenState()
+  }
+
+  Timer {
+    interval: 5000
     running: true
     repeat: true
     triggeredOnStart: true
@@ -778,8 +811,14 @@ Panel {
 
   Process {
     id: fullscreenProbe
-    command: ["hyprctl", "activewindow", "-j"]
+    command: [root.workspaceStateHelperPath]
     running: false
+    onRunningChanged: {
+      if (!running && root.fullscreenProbeQueued) {
+        root.fullscreenProbeQueued = false
+        fullscreenProbeDebounce.restart()
+      }
+    }
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyFullscreenState(text)
@@ -862,6 +901,8 @@ Panel {
         fullscreenSuppressed: root.fullscreenSuppressed,
         fullscreenInternalState: root.fullscreenInternalState,
         fullscreenClientState: root.fullscreenClientState,
+        activeWorkspaceHasFullscreen: root.activeWorkspaceHasFullscreen,
+        activeWorkspaceGeometryFullscreen: root.activeWorkspaceGeometryFullscreen,
         remoteCount: (root.service.remoteHosts || []).length,
         pinnedThreadCount: root.sidebarActions.pinnedThreadCount(),
         availableSshHostCount: (root.service.sshHosts || []).length,
