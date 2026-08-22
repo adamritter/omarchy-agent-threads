@@ -14,6 +14,7 @@ monitoring local and remote coding-agent sessions.
 - Create a new thread from the current project, remote, or selected thread with
   the global `n` shortcut or a visible `+` button.
 - See live session state and a distinct highlight for the active thread.
+- Temporarily hide while the active window is in true fullscreen mode.
 - Search threads and projects without leaving the keyboard.
 - Pin threads, projects, and remotes; pinned items stay at the front.
 - Collapse projects and remotes, with their state restored after a Shell

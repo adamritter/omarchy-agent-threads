@@ -24,6 +24,8 @@ Panel {
   readonly property string codexScratchRoot: homePath + "/Documents/Codex/"
   readonly property int sidebarContentWidth: Style.space(380)
   readonly property int sidebarReserveWidth: sidebarContentWidth + Style.gapsOut
+  readonly property bool fullscreenSuppressed: fullscreenInternalState >= 2
+  readonly property bool sidebarPresented: opened && !fullscreenSuppressed
   readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
     || remoteSetup.inputFocused
   readonly property bool sidebarFocused: keyboardFocusRequested && sidebarItemFocused
@@ -57,6 +59,8 @@ Panel {
   property bool focusPrimed: false
   property int cursorReturnX: -1
   property int cursorReturnY: -1
+  property int fullscreenInternalState: 0
+  property int fullscreenClientState: 0
   property bool internalFocusTransfer: false
   property bool applyingPersistedSidebarState: false
 
@@ -595,19 +599,45 @@ Panel {
   }
 
   function focusSidebar() {
+    if (!opened) open()
+    if (fullscreenSuppressed) return
     keyboardFocusRequested = true
     focusPrimed = false
-    if (!opened) {
-      open()
-      Qt.callLater(root.focusSidebar)
-      return
-    }
     // Briefly use Exclusive so Hyprland transfers the compositor keyboard
     // focus, then settle on OnDemand so normal window clicks keep working.
     focusPrimeTimer.restart()
     focusAttemptsRemaining = 10
     focusReleaseGuard.restart()
     focusAcquireTimer.restart()
+  }
+
+  function requestOpen() {
+    open()
+    queryFullscreenState()
+  }
+
+  function requestClose() {
+    close()
+  }
+
+  function requestToggle() {
+    if (opened) requestClose()
+    else requestOpen()
+  }
+
+  function queryFullscreenState() {
+    if (!fullscreenProbe.running) fullscreenProbe.running = true
+  }
+
+  function applyFullscreenState(text) {
+    var state
+    try { state = JSON.parse(String(text || "{}")) } catch (e) { return }
+    var internalState = Number(state.fullscreen || 0)
+    var clientState = Number(state.fullscreenClient || 0)
+    var wasSuppressed = fullscreenSuppressed
+    fullscreenInternalState = internalState
+    fullscreenClientState = clientState
+    if (!wasSuppressed && fullscreenSuppressed) releaseSidebarFocus(true)
   }
 
   function focusSidebarFrom(x, y) {
@@ -659,6 +689,7 @@ Panel {
       service.refreshThreads()
       service.refreshActiveThread()
       if (!applyingPersistedSidebarState) sidebarActions.followActiveThread(true)
+      queryFullscreenState()
     } else {
       keyboardFocusRequested = false
       focusPrimed = false
@@ -698,6 +729,7 @@ Panel {
   Connections {
     target: ToplevelManager
     function onActiveToplevelChanged() {
+      root.queryFullscreenState()
       // The cursor warp used by Super+A may deliver a delayed toplevel event
       // after focus has already reached the layer surface. Keep the requested
       // sidebar focus while the pointer is still inside it; moving or clicking
@@ -737,6 +769,24 @@ Panel {
   }
 
   Timer {
+    interval: 250
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.queryFullscreenState()
+  }
+
+  Process {
+    id: fullscreenProbe
+    command: ["hyprctl", "activewindow", "-j"]
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyFullscreenState(text)
+    }
+  }
+
+  Timer {
     interval: 30000
     running: root.opened
     repeat: true
@@ -746,18 +796,18 @@ Panel {
   IpcHandler {
     enabled: root.bar !== null
     target: root.ipcTarget
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
-    function toggle(): void { root.toggle() }
+    function open(): void { root.requestOpen() }
+    function close(): void { root.requestClose() }
+    function show(): void { root.requestOpen() }
+    function hide(): void { root.requestClose() }
+    function toggle(): void { root.requestToggle() }
     function focus(): void { root.focusSidebar() }
     function focusFrom(x: string, y: string): void { root.focusSidebarFrom(x, y) }
     function blur(): void { root.releaseSidebarFocus(true) }
     function help(): void { root.helpOpen = !root.helpOpen }
     function addRemote(): void { root.openRemoteSetup() }
     function manageRemote(id: string): string {
-      root.open()
+      root.requestOpen()
       root.openRemoteSetup(id)
       return root.editingRemoteId
     }
@@ -808,6 +858,10 @@ Panel {
         helpOpen: root.helpOpen,
         sidebarFocused: root.sidebarFocused,
         sidebarOpen: root.service.sidebarOpen,
+        sidebarPresented: root.sidebarPresented,
+        fullscreenSuppressed: root.fullscreenSuppressed,
+        fullscreenInternalState: root.fullscreenInternalState,
+        fullscreenClientState: root.fullscreenClientState,
         remoteCount: (root.service.remoteHosts || []).length,
         pinnedThreadCount: root.sidebarActions.pinnedThreadCount(),
         availableSshHostCount: (root.service.sshHosts || []).length,
@@ -840,13 +894,15 @@ Panel {
     bar: root.bar
     text: "󰚩"
     active: root.sidebarFocused
-    tooltipText: root.opened
+    tooltipText: root.fullscreenSuppressed
+      ? "Agent Threads is hidden while fullscreen"
+      : root.opened
       ? (root.sidebarFocused
           ? "Codex thread sidebar · focused · click to close"
           : "Codex thread sidebar · click to close")
       : "Open Codex thread sidebar"
     onPressed: function(buttonCode) {
-      if (buttonCode === Qt.LeftButton) root.toggle()
+      if (buttonCode === Qt.LeftButton) root.requestToggle()
     }
   }
 
@@ -855,7 +911,7 @@ Panel {
     id: sidebarReservation
 
     screen: button.QsWindow.window ? button.QsWindow.window.screen : null
-    visible: root.opened
+    visible: root.sidebarPresented
     color: "transparent"
     implicitWidth: root.sidebarReserveWidth
     exclusionMode: ExclusionMode.Normal
@@ -883,14 +939,14 @@ Panel {
     id: panel
 
     screen: button.QsWindow.window ? button.QsWindow.window.screen : null
-    visible: root.opened
+    visible: root.sidebarPresented
     color: "transparent"
     implicitWidth: root.sidebarReserveWidth
     exclusionMode: ExclusionMode.Ignore
 
     WlrLayershell.namespace: "omarchy-codex-threads"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: root.opened && root.keyboardFocusRequested
+    WlrLayershell.keyboardFocus: root.sidebarPresented && root.keyboardFocusRequested
       ? (root.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
       : WlrKeyboardFocus.None
 
