@@ -1,0 +1,339 @@
+#!/usr/bin/env node
+
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import readline from "node:readline"
+import { spawn } from "node:child_process"
+import { fileURLToPath } from "node:url"
+
+const [configPath = "", hostId = "", action = "snapshot", actionValue = "",
+  actionExtra = ""] = process.argv.slice(2)
+const timeoutMs = 20000
+const pinnedSectionId = "01984de2-8f74-7c91-a3b2-5c5e937cf318"
+let nextRequestId = 1
+
+function fail(message) {
+  process.stderr.write(`Codex remote ${hostId || "host"}: ${message}\n`)
+  process.exit(2)
+}
+
+function expandHome(path) {
+  return path === "~" ? os.homedir()
+    : path.startsWith("~/") ? os.homedir() + path.slice(1)
+      : path
+}
+
+function loadHost() {
+  let config
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, "utf8"))
+  } catch (error) {
+    fail(`could not read remotes config: ${error.message}`)
+  }
+  const remotes = Array.isArray(config) ? config : (Array.isArray(config.remotes) ? config.remotes : [])
+  const host = remotes.find(item => String(item && item.id || "") === hostId)
+  if (!host) fail("remote entry not found")
+  return host
+}
+
+function bearerToken(host) {
+  const tokenEnv = String(host.authTokenEnv || "")
+  let token = tokenEnv === "" ? "" : String(process.env[tokenEnv] || "").trim()
+  const tokenFile = String(host.authTokenFile || "")
+  if (token === "" && tokenFile !== "") {
+    try {
+      token = fs.readFileSync(expandHome(tokenFile), "utf8").trim()
+    } catch (error) {
+      fail(`could not read token file: ${error.message}`)
+    }
+  }
+  if (tokenEnv !== "" && token === "" && tokenFile === "")
+    fail(`environment variable ${tokenEnv} is empty`)
+  return token
+}
+
+function createWebSocketTransport(host) {
+  const remoteUrl = String(host.url || "")
+  let endpoint
+  try {
+    endpoint = new URL(remoteUrl)
+  } catch {
+    fail("invalid WebSocket URL")
+  }
+  if (endpoint.protocol !== "ws:" && endpoint.protocol !== "wss:")
+    fail("App Server URL must use ws:// or wss://")
+
+  const token = bearerToken(host)
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
+  if (token !== "" && endpoint.protocol === "ws:" && !localHosts.has(endpoint.hostname))
+    fail("refusing to send a bearer token over non-local ws://; use wss://")
+
+  const socket = new WebSocket(endpoint, token === "" ? {} : {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+
+  return new Promise((resolve, reject) => {
+    socket.onopen = () => resolve({
+      send(message) { socket.send(JSON.stringify(message)) },
+      close() { socket.close(1000, "snapshot complete") },
+      setMessageHandler(handler) {
+        socket.onmessage = async event => {
+          let value = event.data
+          if (value instanceof Blob) value = await value.text()
+          else if (value instanceof ArrayBuffer) value = Buffer.from(value).toString("utf8")
+          handler(String(value))
+        }
+      }
+    })
+    socket.onerror = event => reject(new Error(event && event.error && event.error.message
+      ? event.error.message : "WebSocket connection failed"))
+  })
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'"'"'`)}'`
+}
+
+function createSshTransport(host) {
+  const sshHost = String(host.sshHost || "").trim()
+  if (!/^[A-Za-z0-9_.@:-]+$/.test(sshHost)) fail("invalid SSH host or alias")
+  const codexCommand = String(host.codexCommand || "codex").trim()
+  if (!/^[A-Za-z0-9_./-]+$/.test(codexCommand)) fail("invalid remote Codex command")
+
+  const remoteCommand = `${shellQuote(codexCommand)} app-server`
+  const child = spawn("ssh", [
+    "-T",
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=8",
+    sshHost,
+    remoteCommand
+  ], { stdio: ["pipe", "pipe", "pipe"] })
+  let stderr = ""
+  child.stderr.on("data", chunk => { stderr += String(chunk) })
+
+  return new Promise((resolve, reject) => {
+    let settled = false
+    child.on("spawn", () => {
+      settled = true
+      const lines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity })
+      let handler = () => {}
+      lines.on("line", line => handler(line))
+      resolve({
+        send(message) { child.stdin.write(JSON.stringify(message) + "\n") },
+        close() {
+          child.stdin.end()
+          setTimeout(() => { if (!child.killed) child.kill("SIGTERM") }, 100)
+        },
+        setMessageHandler(nextHandler) { handler = nextHandler }
+      })
+    })
+    child.on("error", error => { if (!settled) reject(error) })
+    child.on("exit", code => {
+      if (!settled) reject(new Error(stderr.trim() || `ssh exited with status ${code}`))
+    })
+  })
+}
+
+function providerTypeForHost(host) {
+  return String(host && host.providerType || "").toLowerCase() === "claude"
+    ? "claude" : "codex"
+}
+
+function runRemoteClaude(host) {
+  if (host.type !== "ssh") fail("Claude remotes require SSH")
+  const sshHost = String(host.sshHost || "").trim()
+  if (!/^[A-Za-z0-9_.@:-]+$/.test(sshHost)) fail("invalid SSH host or alias")
+  const claudeCommand = String(host.claudeCommand || "claude").trim()
+  if (!/^[A-Za-z0-9_./-]+$/.test(claudeCommand)) fail("invalid remote Claude command")
+  if (!["snapshot", "archive", "pin"].includes(action)) fail("unsupported Claude action")
+  if ((action === "archive" || action === "pin")
+      && !/^[A-Za-z0-9._-]+$/.test(actionValue)) fail("invalid Claude session id")
+  if (action === "pin" && actionExtra !== "true" && actionExtra !== "false")
+    fail("invalid pin value")
+
+  const helperPath = path.join(path.dirname(fileURLToPath(import.meta.url)),
+    "omarchy-agent-provider-query")
+  const helperSource = fs.readFileSync(helperPath, "utf8")
+  const remoteCommand = `OMARCHY_CLAUDE_COMMAND=${shellQuote(claudeCommand)} `
+    + `node --input-type=module - claude ${shellQuote(action)} `
+    + `${shellQuote(actionValue)} '' ${shellQuote(actionExtra)}`
+  const child = spawn("ssh", [
+    "-T",
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=8",
+    sshHost,
+    remoteCommand
+  ], { stdio: ["pipe", "pipe", "pipe"] })
+
+  return new Promise((resolve, reject) => {
+    let stdout = ""
+    let stderr = ""
+    child.stdout.on("data", chunk => { stdout += String(chunk) })
+    child.stderr.on("data", chunk => { stderr += String(chunk) })
+    child.on("error", reject)
+    child.on("exit", code => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `remote Claude query exited with status ${code}`))
+        return
+      }
+      try {
+        const result = JSON.parse(stdout.trim() || "{}")
+        if (action === "snapshot") {
+          process.stdout.write(JSON.stringify({
+            ...result,
+            hostId,
+            label: String(host.label || host.id || "Remote"),
+            providerType: "claude",
+            type: "ssh"
+          }) + "\n")
+        } else {
+          process.stdout.write(JSON.stringify({ ...result, hostId, action }) + "\n")
+        }
+        resolve()
+      } catch {
+        reject(new Error("invalid remote Claude response"))
+      }
+    })
+    child.stdin.end(helperSource)
+  })
+}
+
+async function connect(host) {
+  return host.type === "ssh" ? createSshTransport(host) : createWebSocketTransport(host)
+}
+
+async function main() {
+  const host = loadHost()
+  if (providerTypeForHost(host) === "claude") {
+    await runRemoteClaude(host)
+    return
+  }
+  const transport = await connect(host)
+  const pending = new Map()
+  transport.setMessageHandler(line => {
+    const text = String(line || "").trim()
+    if (text === "") return
+    let message
+    try { message = JSON.parse(text) } catch { return }
+    if (message.id === undefined || message.id === null) return
+    const callback = pending.get(Number(message.id))
+    if (!callback) return
+    pending.delete(Number(message.id))
+    if (message.error) callback.reject(new Error(String(message.error.message || "App Server request failed")))
+    else callback.resolve(message.result || {})
+  })
+
+  function request(method, params = {}) {
+    const id = nextRequestId++
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject })
+      transport.send({ method, id, params })
+    })
+  }
+
+  await request("initialize", {
+    clientInfo: {
+      name: "omarchy_codex_threads",
+      title: "Omarchy Codex Threads",
+      version: "1.0.0"
+    },
+    capabilities: { experimentalApi: true }
+  })
+  transport.send({ method: "initialized" })
+
+  if (action === "archive") {
+    if (!/^[A-Za-z0-9._-]+$/.test(actionValue)) fail("invalid thread id")
+    await request("thread/archive", { threadId: actionValue })
+    process.stdout.write(JSON.stringify({ hostId, action, ok: true }) + "\n")
+    transport.close()
+    return
+  }
+
+  if (action === "pin") {
+    if (!/^[A-Za-z0-9._-]+$/.test(actionValue)) fail("invalid thread id")
+    if (actionExtra !== "true" && actionExtra !== "false") fail("invalid pin value")
+    const pinned = actionExtra === "true"
+    let result = {}
+    try {
+      result = await request("thread/section/move", {
+        threadId: actionValue,
+        sectionId: pinned ? pinnedSectionId : null
+      })
+    } catch (sectionError) {
+      // Compatibility with App Servers from before built-in thread sections.
+      try {
+        result = await request("thread/metadata/update", {
+          threadId: actionValue,
+          isPinned: pinned
+        })
+      } catch (metadataError) {
+        throw new Error(`${sectionError.message}; legacy fallback: ${metadataError.message}`)
+      }
+    }
+    process.stdout.write(JSON.stringify({
+      hostId,
+      action,
+      ok: true,
+      thread: result.thread || null
+    }) + "\n")
+    transport.close()
+    return
+  }
+
+  async function listAll(method, firstParams) {
+    const items = []
+    let cursor = null
+    for (let page = 0; page < 20; page++) {
+      const params = { ...firstParams }
+      if (cursor) params.cursor = cursor
+      const result = await request(method, params)
+      items.push(...(Array.isArray(result.data) ? result.data : []))
+      cursor = result.nextCursor || null
+      if (!cursor) break
+    }
+    return items
+  }
+
+  const listedThreads = await listAll("thread/list", {
+    limit: 100,
+    sortKey: "updated_at",
+    sortDirection: "desc"
+  })
+  const threads = listedThreads.map(thread => {
+    const section = thread && thread.section
+    const isPinned = thread && thread.isPinned === true
+      || section && (String(section.id || "") === pinnedSectionId
+        || String(section.name || "").toLowerCase() === "pinned")
+    return { ...thread, isPinned: !!isPinned }
+  })
+  let projects = []
+  try {
+    projects = await listAll("project/list", { limit: 100 })
+  } catch {
+    // Older App Servers do not expose projects; cwd grouping still works.
+  }
+
+  let remoteHome = String(host.home || "")
+  if (remoteHome === "") {
+    for (const thread of threads) {
+      const cwd = String(thread && thread.cwd || "")
+      const match = cwd.match(/^(\/home\/[^/]+|\/Users\/[^/]+)(?:\/|$)/)
+      if (match) { remoteHome = match[1]; break }
+      if (cwd === "/root" || cwd.startsWith("/root/")) { remoteHome = "/root"; break }
+    }
+  }
+
+  process.stdout.write(JSON.stringify({
+    hostId,
+    label: String(host.label || host.id || "Remote"),
+    type: host.type === "ssh" ? "ssh" : "app-server",
+    home: remoteHome,
+    threads,
+    projects
+  }) + "\n")
+  transport.close()
+}
+
+const timeout = setTimeout(() => fail("connection timed out"), timeoutMs)
+main().then(() => clearTimeout(timeout)).catch(error => fail(error.message))

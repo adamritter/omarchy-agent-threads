@@ -1,0 +1,177 @@
+#!/bin/bash
+
+set -euo pipefail
+
+thread_id="${1:-}"
+thread_cwd="${2:-${PWD}}"
+remote_url="${3:-}"
+remote_auth_env="${4:-}"
+remote_auth_file="${5:-}"
+mapping_namespace="${6:-}"
+selected_model="${7:-}"
+selected_effort="${8:-}"
+
+if [[ ! "$thread_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Invalid Codex thread id" >&2
+  exit 2
+fi
+if [[ -n "$mapping_namespace" && ! "$mapping_namespace" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Invalid Codex mapping namespace" >&2
+  exit 2
+fi
+if [[ -n "$selected_model" && ! "$selected_model" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Invalid Codex model" >&2
+  exit 2
+fi
+if [[ -n "$selected_effort" && ! "$selected_effort" =~ ^(none|minimal|low|medium|high|xhigh|max)$ ]]; then
+  echo "Invalid Codex reasoning effort" >&2
+  exit 2
+fi
+
+if [[ -z "$remote_url" && ! -d "$thread_cwd" ]]; then
+  thread_cwd="${HOME}"
+fi
+
+prepare_remote_auth() {
+  [[ -n "$remote_auth_file" ]] || return 0
+  if [[ "$remote_auth_file" == "~/"* ]]; then
+    remote_auth_file="${HOME}/${remote_auth_file#~/}"
+  fi
+  [[ -r "$remote_auth_file" ]] || {
+    echo "Codex remote token file is not readable" >&2
+    exit 2
+  }
+  [[ -n "$remote_auth_env" ]] || remote_auth_env="CODEX_REMOTE_TOKEN"
+  [[ "$remote_auth_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+    echo "Invalid Codex remote token environment variable" >&2
+    exit 2
+  }
+  remote_token="$(<"$remote_auth_file")"
+  export "${remote_auth_env}=${remote_token}"
+}
+
+codex_command=(codex)
+if [[ -n "$remote_url" ]]; then
+  prepare_remote_auth
+  codex_command+=(--remote "$remote_url")
+  [[ -z "$remote_auth_env" ]] || codex_command+=(--remote-auth-token-env "$remote_auth_env")
+fi
+[[ -z "$selected_model" ]] || codex_command+=(--model "$selected_model")
+[[ -z "$selected_effort" ]] \
+  || codex_command+=(-c "model_reasoning_effort=\"${selected_effort}\"")
+codex_command+=(-C "$thread_cwd" resume "$thread_id")
+
+runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
+mapping_prefix="${mapping_namespace:+${mapping_namespace}--}"
+mapping_file="${state_dir}/${mapping_prefix}${thread_id}.address"
+mkdir -p -m 700 "$state_dir"
+
+client_exists() {
+  local address="$1"
+  hyprctl -j clients 2>/dev/null \
+    | jq -e --arg address "$address" '.[] | select(.address == $address)' >/dev/null
+}
+
+focus_client() {
+  local address="$1"
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:${address}\" })" >/dev/null
+}
+
+codex_process_matches_thread() {
+  local pid="$1"
+  local cmdline fd fd_target
+
+  if [[ -r "/proc/${pid}/cmdline" ]]; then
+    cmdline="$(tr '\0' ' ' < "/proc/${pid}/cmdline")"
+    if [[ "$cmdline" == *"$thread_id"* \
+      && ( -n "$remote_url" && "$cmdline" == *"--remote $remote_url"* \
+        || -z "$remote_url" && "$cmdline" != *"--remote "* ) ]]; then
+      return 0
+    fi
+  fi
+
+  # A running Codex process keeps its rollout JSONL open. This identifies
+  # sessions started with plain `codex` as well as `codex resume <id>`.
+  if [[ -z "$remote_url" && -d "/proc/${pid}/fd" ]]; then
+    for fd in "/proc/${pid}/fd/"*; do
+      [[ -e "$fd" || -L "$fd" ]] || continue
+      fd_target="$(readlink "$fd" 2>/dev/null || true)"
+      if [[ "$fd_target" == *"/rollout-"*"-${thread_id}.jsonl" ]]; then
+        return 0
+      fi
+    done
+  fi
+
+  return 1
+}
+
+find_existing_client() {
+  local address pid codex_pid current_pid parent_pid
+  declare -A client_by_pid=()
+
+  while IFS=$'\t' read -r address pid; do
+    [[ -n "$address" && "$pid" =~ ^[0-9]+$ ]] || continue
+    client_by_pid["$pid"]="$address"
+  done < <(hyprctl -j clients 2>/dev/null | jq -r '.[] | [.address, .pid] | @tsv')
+
+  while read -r codex_pid; do
+    [[ "$codex_pid" =~ ^[0-9]+$ ]] || continue
+    codex_process_matches_thread "$codex_pid" || continue
+
+    current_pid="$codex_pid"
+    while [[ "$current_pid" =~ ^[0-9]+$ && "$current_pid" -gt 1 ]]; do
+      if [[ -n "${client_by_pid[$current_pid]:-}" ]]; then
+        printf '%s\n' "${client_by_pid[$current_pid]}"
+        return 0
+      fi
+      parent_pid="$(ps -o ppid= -p "$current_pid" 2>/dev/null | tr -d ' ' || true)"
+      [[ "$parent_pid" =~ ^[0-9]+$ ]] || break
+      current_pid="$parent_pid"
+    done
+  done < <(pgrep -x codex 2>/dev/null || true)
+
+  return 1
+}
+
+if [[ -f "$mapping_file" ]]; then
+  mapped_address="$(<"$mapping_file")"
+  if [[ -n "$mapped_address" ]] && client_exists "$mapped_address"; then
+    focus_client "$mapped_address"
+    exit 0
+  fi
+  rm -f -- "$mapping_file"
+fi
+
+if existing_address="$(find_existing_client)"; then
+  printf '%s\n' "$existing_address" > "$mapping_file"
+  focus_client "$existing_address"
+  exit 0
+fi
+
+before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
+omarchy launch terminal "${codex_command[@]}" >/dev/null 2>&1 &
+
+for _ in $(seq 1 80); do
+  new_address="$(hyprctl -j clients 2>/dev/null | jq -r --arg before "$before_addresses" '
+    .[] | .address as $address
+    | select((($before | split("\n")) | index($address)) == null)
+    | $address' | head -n 1)"
+  if [[ -n "$new_address" ]]; then
+    printf '%s\n' "$new_address" > "$mapping_file"
+    focus_client "$new_address"
+    exit 0
+  fi
+  sleep 0.1
+done
+
+# Some terminal emulators reuse a running process/window. In that case there
+# is no new Hyprland address, so make one final process-to-rollout lookup.
+if existing_address="$(find_existing_client)"; then
+  printf '%s\n' "$existing_address" > "$mapping_file"
+  focus_client "$existing_address"
+  exit 0
+fi
+
+echo "The Codex terminal started, but its Hyprland window could not be identified" >&2
+exit 1

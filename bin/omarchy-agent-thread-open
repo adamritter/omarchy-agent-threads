@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+provider="${1:-}"
+session_cwd="${2:-${HOME}}"
+session_id="${3:-}"
+server_url="${4:-http://127.0.0.1:43962}"
+selected_model="${5:-}"
+selected_effort="${6:-}"
+selected_agent="${7:-}"
+new_session_id=""
+
+[[ "$provider" == "claude" || "$provider" == "opencode" ]] || {
+  echo "Unsupported agent provider" >&2
+  exit 2
+}
+if [[ -n "$session_id" && ! "$session_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Invalid agent session id" >&2
+  exit 2
+fi
+[[ -d "$session_cwd" ]] || session_cwd="${HOME}"
+
+runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
+mapping_file="${state_dir}/provider-${provider}--${session_id}.address"
+server_file="${state_dir}/provider-${provider}--${session_id}.server"
+mkdir -p -m 700 "$state_dir"
+
+client_exists() {
+  local address="$1"
+  hyprctl -j clients 2>/dev/null \
+    | jq -e --arg address "$address" '.[] | select(.address == $address)' >/dev/null
+}
+
+focus_client() {
+  local address="$1"
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:${address}\" })" >/dev/null
+}
+
+if [[ -n "$session_id" && -f "$mapping_file" ]]; then
+  mapped_address="$(<"$mapping_file")"
+  if [[ -n "$mapped_address" ]] && client_exists "$mapped_address"; then
+    focus_client "$mapped_address"
+    mapped_server=""
+    [[ -f "$server_file" ]] && mapped_server="$(<"$server_file")"
+    jq -cn --arg address "$mapped_address" --arg serverUrl "$mapped_server" \
+      '{address:$address,serverUrl:$serverUrl}'
+    exit 0
+  fi
+  rm -f -- "$mapping_file"
+  rm -f -- "$server_file"
+fi
+
+if [[ "$provider" == "claude" ]]; then
+  agent_command=(claude)
+  if [[ -n "$session_id" ]]; then
+    agent_command+=(--resume "$session_id")
+  else
+    IFS= read -r new_session_id < /proc/sys/kernel/random/uuid
+    agent_command+=(--session-id "$new_session_id")
+  fi
+  [[ -z "$selected_model" ]] || agent_command+=(--model "$selected_model")
+  [[ -z "$selected_effort" ]] || agent_command+=(--effort "$selected_effort")
+  [[ -z "$selected_agent" ]] || agent_command+=(--agent "$selected_agent")
+else
+  [[ "$server_url" == http://127.0.0.1:* || "$server_url" == http://localhost:* ]] || {
+    echo "Invalid local OpenCode server URL" >&2
+    exit 2
+  }
+  opencode_port=""
+  for _ in $(seq 1 80); do
+    candidate_port=$((44000 + RANDOM % 1500))
+    if ! ss -Hln "sport = :${candidate_port}" 2>/dev/null | grep -q .; then
+      opencode_port="$candidate_port"
+      break
+    fi
+  done
+  [[ -n "$opencode_port" ]] || {
+    echo "Could not allocate a local OpenCode port" >&2
+    exit 1
+  }
+  server_url="http://127.0.0.1:${opencode_port}"
+  agent_command=(opencode "$session_cwd" --hostname 127.0.0.1 --port "$opencode_port")
+  [[ -z "$selected_model" ]] || agent_command+=(--model "$selected_model")
+  [[ -z "$selected_agent" ]] || agent_command+=(--agent "$selected_agent")
+  [[ -z "$session_id" ]] || agent_command+=(--session "$session_id")
+fi
+
+before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
+omarchy launch terminal bash -lc 'cd -- "$1" && shift && exec "$@"' \
+  _ "$session_cwd" "${agent_command[@]}" >/dev/null 2>&1 &
+
+for _ in $(seq 1 80); do
+  new_address="$(hyprctl -j clients 2>/dev/null | jq -r --arg before "$before_addresses" '
+    .[] | .address as $address
+    | select((($before | split("\n")) | index($address)) == null)
+    | $address' | head -n 1)"
+  if [[ -n "$new_address" ]]; then
+    if [[ -n "$session_id" ]]; then
+      printf '%s\n' "$new_address" > "$mapping_file"
+      [[ "$provider" != "opencode" ]] || printf '%s\n' "$server_url" > "$server_file"
+    fi
+    focus_client "$new_address"
+    if [[ "$provider" == "opencode" && -n "$selected_effort" && -n "$selected_model" ]]; then
+      for _ in $(seq 1 30); do
+        curl -fsS "${server_url}/global/health" >/dev/null 2>&1 && break
+        sleep 0.1
+      done
+      provider_id="${selected_model%%/*}"
+      model_id="${selected_model#*/}"
+      variant_index="$(curl -fsS "${server_url}/provider" 2>/dev/null \
+        | jq -r --arg provider "$provider_id" --arg model "$model_id" \
+          --arg variant "$selected_effort" '
+            [.all[] | select(.id == $provider) | .models[$model].variants // {}
+              | keys | index($variant)][0] // -1' 2>/dev/null || printf '%s' -1)"
+      if [[ "$variant_index" =~ ^[0-9]+$ ]]; then
+        for _ in $(seq 0 "$variant_index"); do
+          curl -fsS -X POST "${server_url}/tui/execute-command" \
+            -H 'content-type: application/json' \
+            --data '{"command":"variant_cycle"}' >/dev/null 2>&1 || break
+        done
+      fi
+    fi
+    output_server_url=""
+    [[ "$provider" != "opencode" ]] || output_server_url="$server_url"
+    jq -cn --arg address "$new_address" --arg serverUrl "$output_server_url" \
+      --arg sessionId "${new_session_id:-$session_id}" \
+      '{address:$address,serverUrl:$serverUrl,sessionId:$sessionId}'
+    exit 0
+  fi
+  sleep 0.1
+done
+
+echo "The agent terminal started, but its Hyprland window could not be identified" >&2
+exit 1

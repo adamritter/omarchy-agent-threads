@@ -1,0 +1,41 @@
+#!/bin/bash
+
+set -u
+
+target="adam.codex-threads"
+
+# Mapping the sidebar does not take keyboard focus by itself. This lets us
+# locate the current thread while the Codex terminal is still the active app.
+omarchy-shell -q "$target" open >/dev/null
+
+point=""
+layer=""
+for _ in {1..40}; do
+  point="$(omarchy-shell "$target" cursorPoint 2>/dev/null || true)"
+  layer="$(hyprctl layers -j 2>/dev/null \
+    | jq -c '[.. | objects | select(.namespace? == "omarchy-codex-threads")] | first // empty' \
+      2>/dev/null || true)"
+
+  if jq -e '.x | numbers' >/dev/null 2>&1 <<<"$point" \
+      && jq -e '.y | numbers' >/dev/null 2>&1 <<<"$point" \
+      && jq -e '.x | numbers' >/dev/null 2>&1 <<<"$layer" \
+      && jq -e '.y | numbers' >/dev/null 2>&1 <<<"$layer"; then
+    break
+  fi
+
+  sleep 0.025
+done
+
+if [[ -n "$point" && -n "$layer" ]]; then
+  target_x="$(jq -nr --argjson point "$point" --argjson layer "$layer" \
+    '$layer.x + $point.x | round')"
+  target_y="$(jq -nr --argjson point "$point" --argjson layer "$layer" \
+    '$layer.y + $point.y | round')"
+
+  hyprctl dispatch \
+    "hl.dsp.cursor.move({ x = ${target_x}, y = ${target_y} })" >/dev/null 2>&1 || true
+fi
+
+# Acquire keyboard focus only after the cursor is inside the active row, so
+# input:follow_mouse cannot immediately return focus to the previous window.
+omarchy-shell -q "$target" focus >/dev/null

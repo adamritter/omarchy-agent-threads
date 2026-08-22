@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+config_file="${1:-}"
+host_id="${2:-}"
+remote_cwd="${3:-}"
+thread_id="${4:-}"
+selected_model="${5:-}"
+selected_effort="${6:-}"
+selected_agent="${7:-}"
+
+[[ -r "$config_file" && -n "$host_id" && -n "$remote_cwd" ]] || {
+  echo "Invalid remote agent launch arguments" >&2
+  exit 2
+}
+remote_json="$(jq -cer --arg id "$host_id" '.remotes[] | select(.id == $id)' "$config_file")" || {
+  echo "Remote agent entry not found" >&2
+  exit 2
+}
+provider_type="$(jq -r 'if .providerType == "claude" then "claude" else "codex" end' \
+  <<<"$remote_json")"
+remote_type="$(jq -r '.type // "app-server"' <<<"$remote_json")"
+if [[ -n "$thread_id" && ! "$thread_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Invalid remote session id" >&2
+  exit 2
+fi
+if (( ${#selected_model} > 256 )) || [[ "$selected_model" == *$'\n'* \
+    || "$selected_model" == *$'\r'* || "$selected_model" == *$'\t'* ]]; then
+  echo "Invalid remote model" >&2
+  exit 2
+fi
+if [[ -n "$selected_effort" && ! "$selected_effort" =~ ^(none|minimal|low|medium|high|xhigh|max|auto)$ ]]; then
+  echo "Invalid remote effort" >&2
+  exit 2
+fi
+if (( ${#selected_agent} > 256 )) || [[ "$selected_agent" == *$'\n'* \
+    || "$selected_agent" == *$'\r'* || "$selected_agent" == *$'\t'* ]]; then
+  echo "Invalid remote agent name" >&2
+  exit 2
+fi
+
+if [[ "$remote_type" != "ssh" ]]; then
+  [[ "$provider_type" == "codex" ]] || {
+    echo "Remote Claude requires SSH" >&2
+    exit 2
+  }
+  remote_url="$(jq -r '.url // ""' <<<"$remote_json")"
+  token_env="$(jq -r '.authTokenEnv // ""' <<<"$remote_json")"
+  token_file="$(jq -r '.authTokenFile // ""' <<<"$remote_json")"
+  helper_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -n "$thread_id" ]]; then
+    exec "${helper_dir}/omarchy-codex-thread-open" \
+      "$thread_id" "$remote_cwd" "$remote_url" "$token_env" "$token_file" "$host_id" \
+      "$selected_model" "$selected_effort"
+  fi
+  exec "${helper_dir}/omarchy-codex-project-new" \
+    "$remote_cwd" "$remote_url" "$token_env" "$token_file" \
+    "$selected_model" "$selected_effort"
+fi
+
+ssh_host="$(jq -r '.sshHost // ""' <<<"$remote_json")"
+[[ "$ssh_host" =~ ^[A-Za-z0-9_.@:-]+$ ]] || {
+  echo "Invalid SSH host or alias" >&2
+  exit 2
+}
+focus_client() {
+  local address="$1"
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:${address}\" })" >/dev/null
+}
+
+runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
+mapping_file="${state_dir}/${host_id}--${thread_id}.address"
+if [[ -n "$thread_id" && -f "$mapping_file" ]]; then
+  mapped_address="$(<"$mapping_file")"
+  if [[ -n "$mapped_address" ]] && hyprctl -j clients 2>/dev/null \
+      | jq -e --arg address "$mapped_address" \
+        '.[] | select(.address == $address)' >/dev/null; then
+    focus_client "$mapped_address"
+    jq -cn --arg address "$mapped_address" --arg sessionId "$thread_id" \
+      '{address:$address,sessionId:$sessionId}'
+    exit 0
+  fi
+  rm -f -- "$mapping_file"
+fi
+
+new_session_id=""
+if [[ "$provider_type" == "claude" ]]; then
+  claude_command="$(jq -r '.claudeCommand // "claude"' <<<"$remote_json")"
+  [[ "$claude_command" =~ ^[A-Za-z0-9_./-]+$ ]] || {
+    echo "Invalid remote Claude command" >&2
+    exit 2
+  }
+  remote_args=("$claude_command")
+  if [[ -n "$thread_id" ]]; then
+    remote_args+=(--resume "$thread_id")
+  else
+    IFS= read -r new_session_id < /proc/sys/kernel/random/uuid
+    remote_args+=(--session-id "$new_session_id")
+  fi
+  [[ -z "$selected_model" ]] || remote_args+=(--model "$selected_model")
+  [[ -z "$selected_effort" ]] || remote_args+=(--effort "$selected_effort")
+  [[ -z "$selected_agent" ]] || remote_args+=(--agent "$selected_agent")
+  printf -v quoted_cwd '%q' "$remote_cwd"
+  printf -v quoted_args '%q ' "${remote_args[@]}"
+  remote_command="cd -- ${quoted_cwd} && exec ${quoted_args}"
+else
+  codex_command="$(jq -r '.codexCommand // "codex"' <<<"$remote_json")"
+  [[ "$codex_command" =~ ^[A-Za-z0-9_./-]+$ ]] || {
+    echo "Invalid remote Codex command" >&2
+    exit 2
+  }
+  remote_args=("$codex_command")
+  [[ -z "$selected_model" ]] || remote_args+=(--model "$selected_model")
+  [[ -z "$selected_effort" ]] \
+    || remote_args+=(-c "model_reasoning_effort=\"${selected_effort}\"")
+  remote_args+=(-C "$remote_cwd")
+  [[ -z "$thread_id" ]] || remote_args+=(resume "$thread_id")
+  printf -v remote_command '%q ' "${remote_args[@]}"
+fi
+
+before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
+omarchy launch terminal ssh -t -o BatchMode=yes -o ConnectTimeout=8 \
+  "$ssh_host" "$remote_command" >/dev/null 2>&1 &
+
+for _ in $(seq 1 80); do
+  new_address="$(hyprctl -j clients 2>/dev/null | jq -r --arg before "$before_addresses" '
+    .[] | .address as $address
+    | select((($before | split("\n")) | index($address)) == null)
+    | $address' | head -n 1)"
+  if [[ -n "$new_address" ]]; then
+    focus_client "$new_address"
+    mapped_session_id="${thread_id:-$new_session_id}"
+    if [[ -n "$mapped_session_id" ]]; then
+      mkdir -p -m 700 "$state_dir"
+      printf '%s\n' "$new_address" > "${state_dir}/${host_id}--${mapped_session_id}.address"
+    fi
+    jq -cn --arg address "$new_address" --arg sessionId "$mapped_session_id" \
+      '{address:$address,sessionId:$sessionId}'
+    exit 0
+  fi
+  sleep 0.1
+done
+
+echo "The remote agent terminal started, but its Hyprland window could not be identified" >&2
+exit 1

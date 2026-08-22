@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-claude-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+fake_home="$test_root/home"
+state_home="$test_root/state"
+project_dir="$fake_home/.claude/projects/-work"
+work_dir="$fake_home/work"
+session_id="11111111-2222-4333-8444-555555555555"
+transcript="$project_dir/${session_id}.jsonl"
+helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/bin/omarchy-agent-provider-query"
+
+mkdir -p -- "$project_dir" "$work_dir/.claude/agents" "$fake_home/.claude/agents"
+printf '%s\n' '{"model":"opus","effortLevel":"xhigh","agent":"global-reviewer"}' \
+  > "$fake_home/.claude/settings.json"
+printf '%s\n' \
+  '{"additionalModelOptionsCache":[{"value":"claude-fable-test","label":"Fable Test","description":"Fixture model"}]}' \
+  > "$fake_home/.claude.json"
+printf '%s\n' '{"model":"sonnet","effortLevel":"medium","agent":"project-reviewer"}' \
+  > "$work_dir/.claude/settings.local.json"
+printf '%s\n' '---' 'name: global-reviewer' 'description: Global review agent' '---' \
+  'Review globally.' > "$fake_home/.claude/agents/global-reviewer.md"
+printf '%s\n' '---' 'name: project-reviewer' 'description: Project review agent' '---' \
+  'Review this project.' > "$work_dir/.claude/agents/project-reviewer.md"
+jq -cn --arg sessionId "$session_id" --arg cwd "$work_dir" '{
+  sessionId:$sessionId,
+  cwd:$cwd,
+  timestamp:"2026-08-22T20:00:00.000Z",
+  isSidechain:false,
+  type:"user",
+  message:{role:"user",content:"Implement the provider"}
+}' > "$transcript"
+
+run_helper() {
+  OMARCHY_AGENT_PROVIDER_HOME="$fake_home" \
+    OMARCHY_CLAUDE_COMMAND=/definitely/missing/claude \
+    XDG_STATE_HOME="$state_home" \
+    node "$helper" claude "$@"
+}
+
+snapshot="$(run_helper snapshot)"
+jq -e --arg cwd "$work_dir" '
+  .defaultModel == "opus"
+  and .defaultEffort == "xhigh"
+  and .defaultAgent == "global-reviewer"
+  and .available == false
+  and (.models | any(.id == "claude-fable-test"))
+  and (.threads | length == 1)
+  and .threads[0].status.type == "active"
+  and .threads[0].name == "Implement the provider"
+  and .projectDefaults[$cwd].model == "sonnet"
+  and .projectDefaults[$cwd].effort == "medium"
+  and .projectDefaults[$cwd].agent == "project-reviewer"
+  and (.agents | any(.id == "global-reviewer"))
+  and (.projectAgents[$cwd] | any(.id == "project-reviewer"))
+' <<<"$snapshot" >/dev/null
+
+jq -cn --arg sessionId "$session_id" --arg cwd "$work_dir" '{
+  sessionId:$sessionId,
+  cwd:$cwd,
+  timestamp:"2026-08-22T20:00:05.000Z",
+  isSidechain:false,
+  type:"assistant",
+  effort:"xhigh",
+  message:{role:"assistant",model:"claude-opus-test",stop_reason:"end_turn"}
+}' >> "$transcript"
+snapshot="$(run_helper snapshot)"
+jq -e '
+  .threads[0].status.type == "idle"
+  and .threads[0].lastModel == "claude-opus-test"
+  and .threads[0].lastEffort == "xhigh"
+' <<<"$snapshot" >/dev/null
+
+run_helper pin "$session_id" "" true >/dev/null
+run_helper snapshot | jq -e '.threads[0].isPinned == true' >/dev/null
+
+run_helper archive "$session_id" >/dev/null
+run_helper snapshot | jq -e '.threads | length == 0' >/dev/null
+
+printf '%s\n' "claude-provider tests passed"

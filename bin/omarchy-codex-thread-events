@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+sessions_root="${CODEX_HOME:-${HOME}/.codex}/sessions"
+mkdir -p "$sessions_root"
+
+# Stay alive and emit the event kind plus path whenever a rollout is created or
+# appended. Quickshell uses the kind to avoid rebuilding the full list for each
+# write made by an active Codex turn.
+exec inotifywait --monitor --recursive --quiet \
+  --event modify --event close_write --event create --event moved_to \
+  --format '%e\t%w%f' "$sessions_root"

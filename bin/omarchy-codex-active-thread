@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+set -u
+
+active_json="$(hyprctl -j activewindow 2>/dev/null || true)"
+active_address="$(jq -r '.address // empty' <<<"$active_json" 2>/dev/null)"
+active_pid="$(jq -r '.pid // empty' <<<"$active_json" 2>/dev/null)"
+
+[[ -n "$active_address" && "$active_pid" =~ ^[0-9]+$ ]] || exit 0
+
+thread_id_from_process() {
+  local process_id="$1"
+  local fd_target
+
+  [[ -d "/proc/${process_id}/fd" ]] || return 1
+  while IFS= read -r fd_target; do
+    if [[ "$fd_target" =~ /rollout-.*-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.jsonl$ ]]; then
+      printf '%s\n' "${BASH_REMATCH[1]}"
+      return 0
+    fi
+  done < <(find "/proc/${process_id}/fd" -maxdepth 1 -type l -printf '%l\n' 2>/dev/null)
+
+  return 1
+}
+
+# Walk only the active window's process subtree using procfs files and shell
+# builtins. This avoids pgrep plus a ps/tr chain for every Codex process.
+queue=("$active_pid")
+queue_index=0
+while (( queue_index < ${#queue[@]} )); do
+  process_id="${queue[$queue_index]}"
+  ((queue_index += 1))
+
+  process_name=""
+  [[ -r "/proc/${process_id}/comm" ]] && IFS= read -r process_name < "/proc/${process_id}/comm"
+  if [[ "$process_name" == "codex" ]] && thread_id_from_process "$process_id"; then
+    exit 0
+  fi
+
+  children=""
+  if [[ -r "/proc/${process_id}/task/${process_id}/children" ]]; then
+    IFS= read -r children < "/proc/${process_id}/task/${process_id}/children" || true
+    for child_pid in $children; do
+      [[ "$child_pid" =~ ^[0-9]+$ ]] && queue+=("$child_pid")
+    done
+  fi
+done
+
+# A freshly launched session may be focused before Codex opens its rollout.
+runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
+if [[ -d "$state_dir" ]]; then
+  for mapping_file in "$state_dir"/*.address; do
+    [[ -f "$mapping_file" ]] || continue
+    [[ "$(<"$mapping_file")" == "$active_address" ]] || continue
+    mapping_name="$(basename "$mapping_file" .address)"
+    printf '%s\n' "${mapping_name##*--}"
+    exit 0
+  done
+fi
+
+exit 0

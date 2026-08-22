@@ -1,0 +1,100 @@
+#!/usr/bin/env node
+
+import fs from "node:fs"
+import os from "node:os"
+import readline from "node:readline"
+
+const [remoteUrl = "", tokenEnv = "", configuredTokenFile = ""] = process.argv.slice(2)
+
+function fail(message) {
+  process.stderr.write(`Codex remote transport: ${message}\n`)
+  process.exit(2)
+}
+
+function expandHome(path) {
+  return path === "~" ? os.homedir()
+    : path.startsWith("~/") ? os.homedir() + path.slice(1)
+      : path
+}
+
+let endpoint
+try {
+  endpoint = new URL(remoteUrl)
+} catch {
+  fail("invalid WebSocket URL")
+}
+
+if (endpoint.protocol !== "ws:" && endpoint.protocol !== "wss:")
+  fail("the sidebar transport requires a ws:// or wss:// URL")
+
+let token = tokenEnv === "" ? "" : String(process.env[tokenEnv] || "").trim()
+if (token === "" && configuredTokenFile !== "") {
+  try {
+    token = fs.readFileSync(expandHome(configuredTokenFile), "utf8").trim()
+  } catch (error) {
+    fail(`could not read token file: ${error.message}`)
+  }
+}
+
+if (tokenEnv !== "" && token === "" && configuredTokenFile === "")
+  fail(`environment variable ${tokenEnv} is empty`)
+
+const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
+if (token !== "" && endpoint.protocol === "ws:" && !localHosts.has(endpoint.hostname))
+  fail("refusing to send a bearer token over non-local ws://; use wss://")
+
+const options = token === "" ? {} : {
+  headers: { Authorization: `Bearer ${token}` }
+}
+const socket = new WebSocket(endpoint, options)
+const pending = []
+let closing = false
+
+const input = readline.createInterface({
+  input: process.stdin,
+  crlfDelay: Infinity,
+  terminal: false
+})
+
+input.on("line", line => {
+  if (line.trim() === "") return
+  if (socket.readyState === WebSocket.OPEN) socket.send(line)
+  else if (socket.readyState === WebSocket.CONNECTING) pending.push(line)
+})
+
+input.on("close", () => {
+  closing = true
+  if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+    socket.close(1000, "stdin closed")
+})
+
+socket.onopen = () => {
+  while (pending.length > 0) socket.send(pending.shift())
+}
+
+socket.onmessage = async event => {
+  let message = event.data
+  if (message instanceof Blob) message = await message.text()
+  else if (message instanceof ArrayBuffer) message = Buffer.from(message).toString("utf8")
+  process.stdout.write(String(message) + "\n")
+}
+
+socket.onerror = event => {
+  const detail = event && event.error && event.error.message
+    ? `: ${event.error.message}` : ""
+  process.stderr.write(`Codex remote transport: WebSocket error${detail}\n`)
+}
+
+socket.onclose = event => {
+  if (!closing) {
+    const reason = event.reason ? ` (${event.reason})` : ""
+    process.stderr.write(`Codex remote transport: connection closed ${event.code}${reason}\n`)
+    process.exitCode = 1
+  }
+}
+
+process.on("SIGTERM", () => {
+  closing = true
+  if (socket.readyState === WebSocket.OPEN) socket.close(1000, "terminated")
+  setTimeout(() => process.exit(0), 100)
+})

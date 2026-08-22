@@ -1,0 +1,624 @@
+#!/usr/bin/env node
+
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import { spawnSync } from "node:child_process"
+
+const [provider = "", action = "snapshot", threadID = "", threadPath = "", actionValue = ""] = process.argv.slice(2)
+const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
+const stateHome = process.env.XDG_STATE_HOME || path.join(home, ".local", "state")
+const metadataPath = path.join(stateHome, "omarchy", "codex-thread-providers.json")
+const openCodeCapabilitiesPath = path.join(stateHome, "omarchy", "opencode-capabilities.json")
+const claudeRuntimePath = path.join(stateHome, "omarchy", "claude-runtime.json")
+const openCodeURL = process.env.OMARCHY_OPENCODE_URL || "http://127.0.0.1:43962"
+const claudeCommand = process.env.OMARCHY_CLAUDE_COMMAND || "claude"
+
+function fail(message) {
+  process.stderr.write(`${provider || "agent"}: ${message}\n`)
+  process.exit(2)
+}
+
+function readJSON(filePath, fallback = null) {
+  try { return JSON.parse(fs.readFileSync(filePath, "utf8")) } catch { return fallback }
+}
+
+function writePrivateJSON(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 })
+  const temporary = `${filePath}.${process.pid}.tmp`
+  fs.writeFileSync(temporary, JSON.stringify(value) + "\n", { mode: 0o600 })
+  fs.renameSync(temporary, filePath)
+}
+
+function loadMetadata() {
+  const value = readJSON(metadataPath, {})
+  return value && typeof value === "object" ? value : {}
+}
+
+function saveMetadata(value) {
+  writePrivateJSON(metadataPath, value)
+}
+
+function metadataKey(id) {
+  return `${provider}:${id}`
+}
+
+function updateLocalMetadata(kind, value) {
+  if (!threadID) fail("missing session id")
+  const metadata = loadMetadata()
+  const key = metadataKey(threadID)
+  const entry = metadata[key] && typeof metadata[key] === "object" ? metadata[key] : {}
+  if (kind === "pin") entry.pinned = value === "true"
+  if (kind === "archive") entry.archived = true
+  metadata[key] = entry
+  saveMetadata(metadata)
+}
+
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim()
+}
+
+function textContent(content) {
+  if (typeof content === "string") return cleanText(content)
+  if (!Array.isArray(content)) return ""
+  return cleanText(content.map(item => {
+    if (typeof item === "string") return item
+    return item && item.type === "text" ? item.text : ""
+  }).join(" "))
+}
+
+function projectName(directory) {
+  if (!directory) return "Unknown folder"
+  return path.basename(directory.replace(/\/$/, "")) || directory
+}
+
+function projectList(threads) {
+  const seen = new Set()
+  const projects = []
+  for (const thread of threads) {
+    const directory = String(thread.cwd || "")
+    if (!directory || seen.has(directory)) continue
+    seen.add(directory)
+    projects.push({
+      id: directory,
+      name: projectName(directory),
+      roots: [{ path: directory }]
+    })
+  }
+  return projects
+}
+
+function timestampSeconds(value, fallback = 0) {
+  if (typeof value === "number") return value > 100000000000 ? value / 1000 : value
+  const parsed = Date.parse(String(value || ""))
+  return Number.isFinite(parsed) ? parsed / 1000 : fallback
+}
+
+function walkClaudeTranscripts(rootPath) {
+  const files = []
+  let projectDirectories = []
+  try { projectDirectories = fs.readdirSync(rootPath, { withFileTypes: true }) } catch { return files }
+  for (const projectDirectory of projectDirectories) {
+    if (!projectDirectory.isDirectory()) continue
+    const directoryPath = path.join(rootPath, projectDirectory.name)
+    let entries = []
+    try { entries = fs.readdirSync(directoryPath, { withFileTypes: true }) } catch { continue }
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(path.join(directoryPath, entry.name))
+    }
+  }
+  return files
+}
+
+function claudeJobStates() {
+  const states = new Map()
+  const jobsPath = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"), "jobs")
+  let jobs = []
+  try { jobs = fs.readdirSync(jobsPath, { withFileTypes: true }) } catch { return states }
+  for (const job of jobs) {
+    if (!job.isDirectory()) continue
+    const value = readJSON(path.join(jobsPath, job.name, "state.json"), null)
+    if (!value || typeof value !== "object") continue
+    const id = String(value.sessionId || value.sessionID || value.session_id || value.id || "")
+    if (!id) continue
+    const raw = String(value.status || value.state || "").toLowerCase()
+    const busy = ["working", "running", "active", "starting"].includes(raw)
+    const attention = ["needs_input", "needs-input", "waiting", "blocked"].includes(raw)
+    states.set(id, { busy, attention, raw, value })
+  }
+  return states
+}
+
+function parseClaudeTranscript(filePath, jobs, metadata) {
+  const fallbackID = path.basename(filePath, ".jsonl")
+  let stat
+  try { stat = fs.statSync(filePath) } catch { return null }
+  let content
+  try { content = fs.readFileSync(filePath, "utf8") } catch { return null }
+
+  let id = fallbackID
+  let cwd = ""
+  let title = ""
+  let summary = ""
+  let firstPrompt = ""
+  let lastModel = ""
+  let lastEffort = ""
+  let inferredBusy = false
+  let updatedAt = stat.mtimeMs / 1000
+  for (const line of content.split(/\r?\n/)) {
+    if (!line.trim()) continue
+    let entry
+    try { entry = JSON.parse(line) } catch { continue }
+    id = String(entry.sessionId || entry.sessionID || id)
+    if (entry.cwd) cwd = String(entry.cwd)
+    if (entry.timestamp) updatedAt = Math.max(updatedAt, timestampSeconds(entry.timestamp))
+    if (entry.type === "custom-title" && entry.customTitle) title = cleanText(entry.customTitle)
+    if (entry.type === "summary" && entry.summary) summary = cleanText(entry.summary)
+    const role = entry.message && entry.message.role
+    if (!firstPrompt && (entry.type === "user" || role === "user"))
+      firstPrompt = textContent(entry.message ? entry.message.content : entry.content)
+    if (entry.isSidechain !== true && role === "user") inferredBusy = true
+    if (entry.isSidechain !== true && role === "assistant") {
+      if (entry.message.model) lastModel = String(entry.message.model)
+      if (entry.effort) lastEffort = String(entry.effort)
+      const stopReason = String(entry.message.stop_reason || "")
+      inferredBusy = stopReason !== "end_turn" && stopReason !== "stop_sequence"
+    }
+    if (entry.isSidechain !== true && entry.type === "system"
+        && ["turn_duration", "stop_failure", "api_error", "interrupted"]
+          .includes(String(entry.subtype || ""))) inferredBusy = false
+    if (entry.isSidechain !== true
+        && (entry.type === "last-prompt" || entry.type === "bridge-session"))
+      inferredBusy = false
+  }
+
+  const local = metadata[`claude:${id}`] || {}
+  if (local.archived === true) return null
+  const job = jobs.get(id)
+  const display = title || summary || firstPrompt || "Untitled Claude session"
+  return {
+    id,
+    name: display,
+    preview: firstPrompt || summary,
+    cwd: cwd || home,
+    projectId: cwd || home,
+    updatedAt,
+    status: { type: job && job.busy || inferredBusy ? "active" : "idle" },
+    attention: job && job.attention === true,
+    providerType: "claude",
+    isPinned: local.pinned === true,
+    lastModel,
+    lastEffort
+  }
+}
+
+function claudeDefaultEffort(model) {
+  const value = String(model || "").toLowerCase()
+  return /opus[-_ ]?4[-_ ]?7|opus[-_ ]?5/.test(value) ? "xhigh" : "high"
+}
+
+function claudeRuntimeInfo() {
+  const cached = readJSON(claudeRuntimePath, null)
+  try {
+    const age = Date.now() - fs.statSync(claudeRuntimePath).mtimeMs
+    if (age < 60000 && cached && typeof cached === "object" && cached.available === true)
+      return cached
+  } catch { /* Probe the CLI below. */ }
+
+  const candidates = [claudeCommand]
+  if (!claudeCommand.includes("/")) {
+    candidates.push(path.join(home, ".local", "bin", claudeCommand))
+    candidates.push(path.join(home, ".claude", "local", claudeCommand))
+  }
+  let resolvedCommand = claudeCommand
+  let versionResult = null
+  for (const candidate of [...new Set(candidates)]) {
+    const result = spawnSync(candidate, ["--version"], {
+      encoding: "utf8",
+      timeout: 3000,
+      windowsHide: true
+    })
+    // Some sandboxed launchers report a harmless EPERM alongside a successful
+    // child exit. A zero status and version output are authoritative here.
+    if (result.status === 0 && cleanText(result.stdout) !== "") {
+      resolvedCommand = candidate
+      versionResult = result
+      break
+    }
+  }
+  versionResult ||= { error: new Error("Claude CLI not found"), status: 127, stdout: "" }
+  const available = versionResult.status === 0 && cleanText(versionResult.stdout) !== ""
+  const info = {
+    available,
+    version: available ? cleanText(versionResult.stdout) : "",
+    commandPath: available ? resolvedCommand : "",
+    authenticated: false,
+    subscriptionType: ""
+  }
+  if (available) {
+    const authResult = spawnSync(resolvedCommand, ["auth", "status"], {
+      encoding: "utf8",
+      timeout: 4000,
+      windowsHide: true
+    })
+    try {
+      const auth = JSON.parse(String(authResult.stdout || "{}"))
+      info.authenticated = auth.loggedIn === true
+      info.subscriptionType = cleanText(auth.subscriptionType)
+    } catch { info.authenticated = authResult.status === 0 }
+  }
+  try { writePrivateJSON(claudeRuntimePath, info) } catch { /* Runtime info is best effort. */ }
+  return info
+}
+
+function claudeModelEfforts(model) {
+  const value = String(model || "").toLowerCase()
+  if (value.includes("haiku")) return []
+  return ["low", "medium", "high", "xhigh", "max"]
+}
+
+function claudeModels(settings, state) {
+  const entries = [
+    { id: "sonnet", name: "Sonnet", defaultEffort: "high" },
+    { id: "opus", name: "Opus", defaultEffort: "xhigh" },
+    { id: "haiku", name: "Haiku", defaultEffort: "" }
+  ]
+  const additional = Array.isArray(state.additionalModelOptionsCache)
+    ? state.additionalModelOptionsCache : []
+  for (const option of additional) {
+    const id = cleanText(option && option.value)
+    if (!id || entries.some(entry => entry.id === id)) continue
+    entries.push({
+      id,
+      name: cleanText(option.label) || id,
+      description: cleanText(option.description),
+      defaultEffort: claudeDefaultEffort(id)
+    })
+  }
+
+  const available = Array.isArray(settings.availableModels)
+    ? settings.availableModels.map(String) : null
+  if (available) {
+    for (const id of available) {
+      if (!entries.some(entry => entry.id === id))
+        entries.push({ id, name: id, defaultEffort: claudeDefaultEffort(id) })
+    }
+  }
+  return entries
+    .filter(entry => !available || available.includes(entry.id))
+    .map(entry => Object.assign({}, entry, { efforts: claudeModelEfforts(entry.id) }))
+}
+
+function claudeAgentsInDirectory(directory, scope) {
+  let entries = []
+  try { entries = fs.readdirSync(directory, { withFileTypes: true }) } catch { return [] }
+  const agents = []
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue
+    let content = ""
+    try { content = fs.readFileSync(path.join(directory, entry.name), "utf8") } catch { continue }
+    const frontmatter = /^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/.exec(content)
+    if (!frontmatter) continue
+    const field = name => {
+      const match = new RegExp(`^${name}:\\s*(.+?)\\s*$`, "mi").exec(frontmatter[1])
+      return match ? cleanText(match[1].replace(/^['"]|['"]$/g, "")) : ""
+    }
+    const id = field("name") || path.basename(entry.name, ".md")
+    if (!/^[A-Za-z0-9._:-]+$/.test(id)) continue
+    agents.push({
+      id,
+      name: id,
+      description: field("description"),
+      scope: String(scope || "")
+    })
+  }
+  return agents
+}
+
+function mergeClaudeAgents(...lists) {
+  const merged = new Map()
+  for (const list of lists) {
+    for (const agent of Array.isArray(list) ? list : []) merged.set(agent.id, agent)
+  }
+  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function claudeAgentsForDirectory(configRoot, directory) {
+  let agents = claudeAgentsInDirectory(path.join(configRoot, "agents"), "user")
+  const target = String(directory || "")
+  if (!path.isAbsolute(target)) return agents
+  const ancestors = []
+  let current = target
+  while (current && current !== path.dirname(current)) {
+    ancestors.push(current)
+    current = path.dirname(current)
+  }
+  ancestors.reverse()
+  for (const ancestor of ancestors) {
+    agents = mergeClaudeAgents(agents,
+      claudeAgentsInDirectory(path.join(ancestor, ".claude", "agents"), "project"))
+  }
+  return agents
+}
+
+function mergeClaudeSettings(base, override) {
+  const first = base && typeof base === "object" ? base : {}
+  const second = override && typeof override === "object" ? override : {}
+  return {
+    ...first,
+    ...second,
+    env: {
+      ...(first.env && typeof first.env === "object" ? first.env : {}),
+      ...(second.env && typeof second.env === "object" ? second.env : {})
+    }
+  }
+}
+
+function claudeSettingsForDirectory(configRoot, directory) {
+  let settings = readJSON(path.join(configRoot, "settings.json"), {}) || {}
+  const target = String(directory || "")
+  if (!path.isAbsolute(target)) return settings
+  settings = mergeClaudeSettings(settings,
+    readJSON(path.join(target, ".claude", "settings.json"), {}))
+  settings = mergeClaudeSettings(settings,
+    readJSON(path.join(target, ".claude", "settings.local.json"), {}))
+  return settings
+}
+
+function claudeDefaults(configRoot, threads, configuredSettings, configuredState) {
+  const settings = configuredSettings || readJSON(path.join(configRoot, "settings.json"), {}) || {}
+  const settingsEnv = settings.env && typeof settings.env === "object" ? settings.env : {}
+  const state = configuredState || readJSON(path.join(home, ".claude.json"), {}) || {}
+  const slots = state.clientDataCacheSlots && typeof state.clientDataCacheSlots === "object"
+    ? Object.values(state.clientDataCacheSlots) : []
+  const cachedModel = slots.map(slot => cleanText(slot && slot.model)).find(Boolean) || ""
+  const recent = threads.find(thread => thread.lastModel || thread.lastEffort) || {}
+  const model = cleanText(process.env.ANTHROPIC_MODEL
+    || settingsEnv.ANTHROPIC_MODEL
+    || settings.model
+    || cachedModel
+    || recent.lastModel
+    || "sonnet")
+  const configuredEffort = cleanText(process.env.CLAUDE_CODE_EFFORT_LEVEL
+    || settingsEnv.CLAUDE_CODE_EFFORT_LEVEL
+    || settings.effortLevel)
+  const modelFamily = value => {
+    const match = String(value || "").toLowerCase().match(/(sonnet|opus|haiku|fable)/)
+    return match ? match[1] : String(value || "").toLowerCase()
+  }
+  const recentEffort = modelFamily(recent.lastModel) === modelFamily(model)
+    ? cleanText(recent.lastEffort) : ""
+  const effort = configuredEffort && configuredEffort !== "auto"
+    ? configuredEffort
+    : (recentEffort || claudeDefaultEffort(model))
+  return { model, effort, agent: cleanText(settings.agent) }
+}
+
+function claudeSnapshot() {
+  const configRoot = process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude")
+  const settings = readJSON(path.join(configRoot, "settings.json"), {}) || {}
+  const state = readJSON(path.join(home, ".claude.json"), {}) || {}
+  const jobs = claudeJobStates()
+  const metadata = loadMetadata()
+  const threads = walkClaudeTranscripts(path.join(configRoot, "projects"))
+    .map(file => parseClaudeTranscript(file, jobs, metadata))
+    .filter(Boolean)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  const projects = projectList(threads)
+  const defaults = claudeDefaults(configRoot, threads, settings, state)
+  const projectDefaults = {}
+  const projectAgents = {}
+  for (const project of projects) {
+    const directory = String(project && project.id || "")
+    projectDefaults[directory] = claudeDefaults(
+      configRoot,
+      threads.filter(thread => String(thread.cwd || "") === directory),
+      claudeSettingsForDirectory(configRoot, directory),
+      state)
+    projectAgents[directory] = claudeAgentsForDirectory(configRoot, directory)
+  }
+  const runtime = claudeRuntimeInfo()
+  return {
+    hostId: "provider-claude",
+    label: "CLAUDE",
+    providerType: "claude",
+    type: "provider",
+    home,
+    threads,
+    projects,
+    projectDefaults,
+    projectAgents,
+    defaultModel: defaults.model,
+    defaultEffort: defaults.effort,
+    models: claudeModels(settings, state),
+    agents: claudeAgentsForDirectory(configRoot, ""),
+    defaultAgent: defaults.agent,
+    available: runtime.available,
+    authenticated: runtime.authenticated,
+    version: runtime.version,
+    subscriptionType: runtime.subscriptionType,
+    error: !runtime.available ? "Claude CLI is not installed"
+      : (!runtime.authenticated ? "Claude is not signed in" : "")
+  }
+}
+
+async function requestOpenCodeAt(baseURL, endpoint, options = {}) {
+  const response = await fetch(baseURL + endpoint, {
+    ...options,
+    signal: AbortSignal.timeout(options.timeout || 5000),
+    headers: { "content-type": "application/json", ...(options.headers || {}) }
+  })
+  if (!response.ok) throw new Error(`OpenCode HTTP ${response.status}`)
+  if (response.status === 204) return null
+  return response.json()
+}
+
+async function requestOpenCode(endpoint, options = {}) {
+  return requestOpenCodeAt(openCodeURL, endpoint, options)
+}
+
+function openCodeRuntimeServers() {
+  const runtimeRoot = process.env.XDG_RUNTIME_DIR || "/tmp"
+  const runtimeDirectory = path.join(runtimeRoot, `omarchy-codex-threads-${process.getuid()}`)
+  let entries = []
+  try { entries = fs.readdirSync(runtimeDirectory, { withFileTypes: true }) } catch { return [] }
+  return entries.flatMap(entry => {
+    const match = /^provider-opencode--(.+)\.server$/.exec(entry.name)
+    if (!entry.isFile() || !match) return []
+    let url = ""
+    try { url = fs.readFileSync(path.join(runtimeDirectory, entry.name), "utf8").trim() } catch { return [] }
+    if (!/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(url)) return []
+    return [{ id: match[1], url, file: path.join(runtimeDirectory, entry.name) }]
+  })
+}
+
+async function runtimeOpenCodeStatuses(sessions) {
+  const directories = new Map(sessions.map(session => [String(session.id || ""), String(session.directory || home)]))
+  const results = await Promise.all(openCodeRuntimeServers().map(async runtime => {
+    try {
+      const directory = directories.get(runtime.id) || home
+      const status = await requestOpenCodeAt(
+        runtime.url,
+        `/session/status?directory=${encodeURIComponent(directory)}`,
+        { timeout: 700 })
+      return [runtime.id, status && status[runtime.id]]
+    } catch {
+      try { fs.unlinkSync(runtime.file) } catch { /* The runtime entry may already be gone. */ }
+      return [runtime.id, null]
+    }
+  }))
+  return Object.fromEntries(results.filter(([, status]) => status))
+}
+
+function normalizeOpenCodeCapabilities(providerResponse) {
+  const connected = new Set(Array.isArray(providerResponse.connected) ? providerResponse.connected : [])
+  const defaults = providerResponse.default && typeof providerResponse.default === "object"
+    ? providerResponse.default : {}
+  const models = []
+  for (const providerInfo of Array.isArray(providerResponse.all) ? providerResponse.all : []) {
+    if (!connected.has(providerInfo.id)) continue
+    for (const modelInfo of Object.values(providerInfo.models || {})) {
+      const id = `${providerInfo.id}/${modelInfo.id}`
+      const variants = Object.keys(modelInfo.variants || {}).filter(variant =>
+        modelInfo.variants[variant] && modelInfo.variants[variant].disabled !== true)
+      models.push({
+        id,
+        name: cleanText(modelInfo.name) || id,
+        provider: providerInfo.name || providerInfo.id,
+        isDefault: defaults[providerInfo.id] === modelInfo.id,
+        efforts: variants
+      })
+    }
+  }
+  models.sort((a, b) => Number(b.isDefault) - Number(a.isDefault)
+    || a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name))
+  return models
+}
+
+async function openCodeCapabilities() {
+  const cached = readJSON(openCodeCapabilitiesPath, null)
+  try {
+    const age = Date.now() - fs.statSync(openCodeCapabilitiesPath).mtimeMs
+    if (age < 60000 && cached && Array.isArray(cached.models)
+        && Array.isArray(cached.agents)) return cached
+  } catch { /* Fetch the capabilities below. */ }
+
+  try {
+    const [providerResponse, agentResponse] = await Promise.all([
+      requestOpenCode("/provider"),
+      requestOpenCode("/agent")
+    ])
+    const capabilities = {
+      models: normalizeOpenCodeCapabilities(providerResponse),
+      agents: (Array.isArray(agentResponse) ? agentResponse : [])
+        .filter(agent => agent && agent.hidden !== true
+          && (agent.mode === "primary" || agent.mode === "all"))
+        .map(agent => ({
+          id: String(agent.name || ""),
+          name: String(agent.name || ""),
+          description: cleanText(agent.description)
+        }))
+    }
+    fs.mkdirSync(path.dirname(openCodeCapabilitiesPath), { recursive: true, mode: 0o700 })
+    const temporary = `${openCodeCapabilitiesPath}.${process.pid}.tmp`
+    fs.writeFileSync(temporary, JSON.stringify(capabilities) + "\n", { mode: 0o600 })
+    fs.renameSync(temporary, openCodeCapabilitiesPath)
+    return capabilities
+  } catch (error) {
+    if (cached && Array.isArray(cached.models) && Array.isArray(cached.agents)) return cached
+    throw error
+  }
+}
+
+async function openCodeSnapshot() {
+  const [sessions, capabilities] = await Promise.all([
+    requestOpenCode("/experimental/session?roots=true&limit=1000&archived=false"),
+    openCodeCapabilities()
+  ])
+  const metadata = loadMetadata()
+  const statuses = {}
+  const directories = [...new Set(sessions.map(item => String(item.directory || "")).filter(Boolean))]
+  for (const directory of directories) {
+    try {
+      const scoped = await requestOpenCode(`/session/status?directory=${encodeURIComponent(directory)}`)
+      Object.assign(statuses, scoped || {})
+    } catch { /* A stale project directory should not hide the session history. */ }
+  }
+  Object.assign(statuses, await runtimeOpenCodeStatuses(sessions))
+  const threads = sessions.map(session => {
+    const id = String(session.id || "")
+    const status = statuses[id] || { type: "idle" }
+    const local = metadata[`opencode:${id}`] || {}
+    return {
+      id,
+      name: cleanText(session.title) || "Untitled OpenCode session",
+      preview: cleanText(session.title),
+      cwd: String(session.directory || home),
+      projectId: String(session.projectID || session.directory || home),
+      updatedAt: timestampSeconds(session.time && session.time.updated),
+      status: { type: status.type === "busy" || status.type === "retry" ? "active" : "idle" },
+      providerType: "opencode",
+      isPinned: local.pinned === true
+    }
+  }).sort((a, b) => b.updatedAt - a.updatedAt)
+  return {
+    hostId: "provider-opencode",
+    label: "OPENCODE",
+    providerType: "opencode",
+    type: "provider",
+    home,
+    threads,
+    projects: projectList(threads),
+    models: capabilities.models,
+    agents: capabilities.agents
+  }
+}
+
+async function main() {
+  if (provider !== "claude" && provider !== "opencode") fail("unsupported provider")
+
+  if (action === "pin") {
+    updateLocalMetadata("pin", actionValue)
+    process.stdout.write(JSON.stringify({ ok: true }) + "\n")
+    return
+  }
+
+  if (action === "archive") {
+    if (provider === "claude") updateLocalMetadata("archive", "true")
+    else {
+      if (!threadID) fail("missing session id")
+      await requestOpenCode(`/session/${encodeURIComponent(threadID)}?directory=${encodeURIComponent(threadPath || home)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ time: { archived: Date.now() } })
+      })
+    }
+    process.stdout.write(JSON.stringify({ ok: true }) + "\n")
+    return
+  }
+
+  if (action !== "snapshot") fail("unsupported action")
+  const snapshot = provider === "claude" ? claudeSnapshot() : await openCodeSnapshot()
+  process.stdout.write(JSON.stringify(snapshot) + "\n")
+}
+
+main().catch(error => fail(error && error.message ? error.message : String(error)))

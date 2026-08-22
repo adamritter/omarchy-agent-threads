@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+
+const sshRoot = path.join(os.homedir(), ".ssh")
+const configPath = process.argv[2] || path.join(sshRoot, "config")
+const visited = new Set()
+const aliases = new Set()
+
+function tokens(value) {
+  const result = []
+  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g
+  let match
+  while ((match = pattern.exec(value)) !== null)
+    result.push(match[1] ?? match[2] ?? match[3])
+  return result
+}
+
+function expandTilde(value) {
+  return value === "~" ? os.homedir()
+    : value.startsWith("~/") ? path.join(os.homedir(), value.slice(2))
+      : value
+}
+
+function globPattern(value) {
+  let source = "^"
+  for (const character of value) {
+    if (character === "*") source += ".*"
+    else if (character === "?") source += "."
+    else source += character.replace(/[\\^$+?.()|{}[\]]/g, "\\$&")
+  }
+  return new RegExp(source + "$")
+}
+
+function expandInclude(value, fromFile) {
+  let candidate = expandTilde(value)
+  if (!path.isAbsolute(candidate)) candidate = path.resolve(sshRoot, candidate)
+  if (!candidate.includes("*") && !candidate.includes("?")) return [candidate]
+
+  const directory = path.dirname(candidate)
+  const pattern = globPattern(path.basename(candidate))
+  try {
+    return fs.readdirSync(directory, { withFileTypes: true })
+      .filter(entry => entry.isFile() && pattern.test(entry.name))
+      .map(entry => path.join(directory, entry.name))
+      .sort()
+  } catch {
+    process.stderr.write(`Could not expand SSH Include from ${fromFile}: ${value}\n`)
+    return []
+  }
+}
+
+function parseFile(filePath) {
+  let resolved
+  try { resolved = fs.realpathSync(filePath) } catch { return }
+  if (visited.has(resolved)) return
+  visited.add(resolved)
+
+  let content
+  try { content = fs.readFileSync(resolved, "utf8") } catch { return }
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.replace(/\s+#.*$/, "").trim()
+    if (line === "" || line.startsWith("#")) continue
+    const match = line.match(/^([^\s=]+)\s*(?:=\s*)?(.*)$/)
+    if (!match) continue
+    const key = match[1].toLowerCase()
+    const values = tokens(match[2])
+    if (key === "include") {
+      for (const include of values)
+        for (const includedPath of expandInclude(include, resolved)) parseFile(includedPath)
+      continue
+    }
+    if (key !== "host") continue
+    for (const alias of values) {
+      if (alias.startsWith("!") || /[*?]/.test(alias)) continue
+      if (/^[A-Za-z0-9_.@:-]+$/.test(alias)) aliases.add(alias)
+    }
+  }
+}
+
+parseFile(configPath)
+process.stdout.write(JSON.stringify([...aliases].sort((a, b) => a.localeCompare(b))) + "\n")

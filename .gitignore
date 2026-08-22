@@ -1,0 +1,12 @@
+# Per-user runtime configuration (legacy location; current releases migrate it).
+remote.json
+
+# Local editor and migration leftovers.
+*.bak.*
+*.swp
+*~
+
+# Generated runtime files must never be committed.
+*.address
+*.server
+.DS_Store

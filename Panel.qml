@@ -1,0 +1,1484 @@
+import QtQuick
+import QtQuick.Controls
+import Quickshell
+import Quickshell.Io
+import Quickshell.Wayland
+import qs.Commons
+import qs.Ui
+import "services" as Services
+import "ui" as Ui
+
+Panel {
+  id: root
+  moduleName: "adam.codex-threads"
+  ipcTarget: "adam.codex-threads"
+  manageIpc: false
+
+  readonly property var service: Services.ThreadStore
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color dim: Util.alpha(foreground, 0.58)
+  readonly property color faint: Util.alpha(foreground, 0.10)
+  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  readonly property string homePath: Quickshell.env("HOME") || "/tmp"
+  readonly property string workPath: homePath + "/Work"
+  readonly property string codexScratchRoot: homePath + "/Documents/Codex/"
+  readonly property int sidebarContentWidth: Style.space(380)
+  readonly property int sidebarReserveWidth: sidebarContentWidth + Style.gapsOut * 2
+  readonly property bool sidebarWindowActive: keyCatcher.Window.active
+  readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
+    || remoteSetup.inputFocused
+  readonly property bool sidebarFocused: keyboardFocusRequested && sidebarItemFocused
+  readonly property string activeProvider: service.selectedProvider || "codex"
+  readonly property var activeProviderHost: providerHost(activeProvider)
+  readonly property var providerChoices: [
+    { id: "codex", label: "CODEX" },
+    { id: "claude", label: "CLAUDE" },
+    { id: "opencode", label: "OPENCODE" }
+  ]
+  readonly property alias viewRows: threadListModel.viewRows
+  readonly property var collapsedProjects: service.collapsedProjects
+  readonly property var collapsedRemotes: service.collapsedRemotes
+  readonly property var pinnedSections: service.pinnedSections
+  property var expandedGroups: ({})
+  readonly property int groupPreviewLimit: 10
+  property var providerViewStates: ({})
+  readonly property alias projectCount: threadListModel.projectCount
+  readonly property alias visibleThreadCount: threadListModel.visibleThreadCount
+  property alias selectedIndex: threadListModel.selectedIndex
+  property double nowMs: Date.now()
+  property string followedActiveThreadId: ""
+  property string searchText: ""
+  property bool searchOpen: false
+  property bool helpOpen: false
+  property bool remoteSetupOpen: false
+  property string remoteSetupType: "ssh"
+  property int focusAttemptsRemaining: 0
+  property bool focusPrimed: false
+  property bool internalFocusTransfer: false
+  property bool applyingPersistedSidebarState: false
+
+  onSidebarItemFocusedChanged: {
+    if (!sidebarItemFocused && keyboardFocusRequested
+        && !internalFocusTransfer
+        && !focusAcquireTimer.running && !focusReleaseGuard.running)
+      releaseSidebarFocus(false)
+  }
+  readonly property var helpItems: [
+    { keys: "↑ ↓  /  j k", description: "Move selection" },
+    { keys: "← →  /  h l", description: "Collapse or expand project" },
+    { keys: "Enter / o", description: "Open thread or toggle project" },
+    { keys: "p", description: "Pin or unpin selected item" },
+    { keys: "P", description: "Select provider" },
+    { keys: "y", description: "Archive selected thread" },
+    { keys: "/", description: "Search threads and projects" },
+    { keys: "n", description: "New thread in the selected directory" },
+    { keys: "R", description: "Add remote host (SSH or App Server)" },
+    { keys: "Tab / Shift+Tab", description: "Switch between panels" },
+    { keys: "Esc", description: "Close help or release focus" },
+    { keys: "?", description: "Open or close help" }
+  ]
+  // Mapping or reloading the sidebar must never request keyboard focus.
+  property bool keyboardFocusRequested: false
+
+  Ui.ThreadListModel {
+    id: threadListModel
+    controller: root
+  }
+
+  visible: true
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
+  function cleanText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim()
+  }
+
+  function providerHost(providerId) {
+    var wanted = String(providerId || "").toLowerCase()
+    var hosts = service.remoteHosts || []
+    var fallback = null
+    for (var i = 0; i < hosts.length; i++) {
+      if (String(hosts[i].providerType || "").toLowerCase() !== wanted) continue
+      if (String(hosts[i].id || "") === "provider-" + wanted) return hosts[i]
+      if (!fallback) fallback = hosts[i]
+    }
+    return fallback
+  }
+
+  function providerLabel(providerId) {
+    var wanted = String(providerId || activeProvider).toLowerCase()
+    for (var i = 0; i < providerChoices.length; i++) {
+      if (providerChoices[i].id === wanted) return providerChoices[i].label
+    }
+    return wanted.toUpperCase()
+  }
+
+  function saveProviderViewState(providerId) {
+    var id = String(providerId || activeProvider)
+    var next = Object.assign({}, providerViewStates)
+    next[id] = {
+      searchText: searchText,
+      searchOpen: searchOpen,
+      selectedRowKey: rowKey(viewRows[selectedIndex])
+    }
+    providerViewStates = next
+  }
+
+  function restoreProviderViewState(providerId) {
+    var state = providerViewStates[String(providerId || activeProvider)] || ({})
+    searchText = String(state.searchText || "")
+    searchOpen = state.searchOpen === true || searchText !== ""
+    rebuildRows(String(state.selectedRowKey || ""))
+    if (viewRows.length > 0)
+      Qt.callLater(function() { threadList.positionViewAtIndex(selectedIndex, ListView.Contain) })
+  }
+
+  function selectProvider(providerId) {
+    var next = String(providerId || "").toLowerCase()
+    providerMenu.close()
+    if (next === activeProvider) return
+    saveProviderViewState(activeProvider)
+    helpOpen = false
+    if (remoteSetupOpen) closeRemoteSetup()
+    service.setSelectedProvider(next)
+  }
+
+  function providerErrorText() {
+    if (activeProvider === "codex")
+      return service.errorText !== "" ? service.errorText : service.launchError
+    if (service.launchError !== "") return service.launchError
+    var host = activeProviderHost
+    return host ? String(host.error || "") : ""
+  }
+
+  function providerLoading() {
+    if (activeProvider === "codex") return !service.ready || service.loading
+    return !activeProviderHost || activeProviderHost.loading === true
+  }
+
+  function rateLimitWindowText(window) {
+    if (!window || window.usedPercent === undefined || window.usedPercent === null)
+      return ""
+    var minutes = Number(window.windowDurationMins || 0)
+    var label = "limit"
+    if (minutes === 10080) label = "7d"
+    else if (minutes > 0 && minutes % 1440 === 0) label = (minutes / 1440) + "d"
+    else if (minutes > 0 && minutes % 60 === 0) label = (minutes / 60) + "h"
+    else if (minutes > 0) label = minutes + "m"
+    return label + " " + Math.round(Number(window.usedPercent)) + "%"
+  }
+
+  function rateLimitResetText(window) {
+    if (!window || !window.resetsAt) return ""
+    var resetAt = Number(window.resetsAt)
+    var resetMs = resetAt > 1000000000000 ? resetAt : resetAt * 1000
+    var totalMinutes = Math.max(0, Math.ceil((resetMs - nowMs) / 60000))
+    var days = Math.floor(totalMinutes / 1440)
+    var hours = Math.floor((totalMinutes % 1440) / 60)
+    var minutes = totalMinutes % 60
+    if (days > 0) return days + "d " + hours + "h"
+    if (hours > 0) return hours + "h " + minutes + "m"
+    return totalMinutes + "m"
+  }
+
+  function rateLimitText() {
+    var limits = service.rateLimits || ({})
+    var windows = [
+      rateLimitWindowText(limits.primary),
+      rateLimitWindowText(limits.secondary)
+    ].filter(function(value) { return value !== "" })
+    if (windows.length === 0) return ""
+    var weekly = Number(limits.primary && limits.primary.windowDurationMins) === 10080
+      ? limits.primary : limits.secondary
+    var reset = Number(weekly && weekly.windowDurationMins) === 10080
+      ? rateLimitResetText(weekly) : ""
+    var availableResets = Math.max(0, Math.floor(Number(
+      service.rateLimitResetCredits && service.rateLimitResetCredits.availableCount || 0)))
+    return windows.join(" · ")
+      + (reset !== "" ? " · reset " + reset : "")
+      + (availableResets > 0 ? " · reset×" + availableResets : "")
+  }
+
+  function threadTitle(thread) {
+    var name = cleanText(thread ? thread.name : "")
+    if (name !== "") return name
+    var preview = cleanText(thread ? thread.preview : "")
+    return preview !== "" ? preview : "Untitled " + providerLabel() + " thread"
+  }
+
+  function directoryName(path) {
+    var value = String(path || "")
+    if (value === "") return "Unknown folder"
+    var parts = value.replace(/\/$/, "").split("/")
+    return parts.length > 0 && parts[parts.length - 1] !== "" ? parts[parts.length - 1] : value
+  }
+
+  function projectPath(thread) {
+    var path = String(service.projectPathForThread(thread) || "")
+    return path !== "" ? path : homePath
+  }
+
+  function projectMoveTargets(thread) {
+    var currentPath = projectPath(thread)
+    var seen = ({})
+    var targets = []
+
+    function appendTarget(path, name) {
+      var value = String(path || "")
+      if (value === "" || value === currentPath || seen[value] || !isProjectPath(value)) return
+      seen[value] = true
+      targets.push({ path: value, name: String(name || "") || directoryName(value) })
+    }
+
+    for (var projectIndex = 0; projectIndex < service.projects.length; projectIndex++) {
+      var project = service.projects[projectIndex]
+      appendTarget(service.projectRootPath(project), project ? project.name : "")
+    }
+    for (var threadIndex = 0; threadIndex < service.threads.length; threadIndex++) {
+      var candidatePath = projectPath(service.threads[threadIndex])
+      appendTarget(candidatePath, directoryName(candidatePath))
+    }
+
+    targets.sort(function(a, b) { return a.name.localeCompare(b.name) })
+    return targets
+  }
+
+  function threadMatchesSearch(thread, path) {
+    var query = cleanText(searchText).toLowerCase()
+    if (query === "") return true
+    var haystack = [
+      threadTitle(thread),
+      cleanText(thread ? thread.preview : ""),
+      cleanText(thread ? thread.name : ""),
+      String(path || ""),
+      directoryName(path)
+    ].join(" ").toLowerCase()
+    var terms = query.split(" ")
+    for (var i = 0; i < terms.length; i++) {
+      if (terms[i] !== "" && haystack.indexOf(terms[i]) < 0) return false
+    }
+    return true
+  }
+
+  function threadVisible(thread, path) {
+    return threadMatchesSearch(thread, path)
+  }
+
+  function setSearchText(value) {
+    var next = String(value || "")
+    if (searchText === next) return
+    searchText = next
+    selectedIndex = 0
+    rebuildRows("")
+    if (viewRows.length > 0) threadList.positionViewAtIndex(0, ListView.Beginning)
+  }
+
+  function startSearch() {
+    searchOpen = true
+    keyboardFocusRequested = true
+    helpOpen = false
+    internalFocusTransfer = true
+    searchField.forceActiveFocus()
+    searchField.selectAll()
+    Qt.callLater(function() { root.internalFocusTransfer = false })
+  }
+
+  function leaveSearch() {
+    internalFocusTransfer = true
+    searchField.focus = false
+    if (searchText === "") searchOpen = false
+    keyCatcher.forceActiveFocus()
+    Qt.callLater(function() { root.internalFocusTransfer = false })
+  }
+
+  function cancelSearch() {
+    setSearchText("")
+    searchOpen = false
+    if (searchField.activeFocus) leaveSearch()
+  }
+
+  function openRemoteSetup() {
+    if (activeProvider !== "codex" && activeProvider !== "claude") return
+    providerMenu.close()
+    helpOpen = false
+    searchOpen = false
+    remoteSetupOpen = true
+    if (activeProvider === "claude") remoteSetupType = "ssh"
+    keyboardFocusRequested = true
+    service.remoteAddError = ""
+    remoteSetup.resetFields()
+    service.refreshSshHosts()
+    Qt.callLater(remoteSetup.focusName)
+  }
+
+  function closeRemoteSetup() {
+    remoteSetupOpen = false
+    service.remoteAddError = ""
+    internalFocusTransfer = true
+    remoteSetup.blurFields()
+    keyCatcher.forceActiveFocus()
+    Qt.callLater(function() { root.internalFocusTransfer = false })
+  }
+
+  function saveRemoteSetup() {
+    var id = service.addRemote(
+      remoteSetup.nameText,
+      remoteSetupType,
+      remoteSetup.addressText,
+      remoteSetup.homeText,
+      remoteSetup.tokenText,
+      activeProvider)
+    if (id === "") return
+    var expanded = Object.assign({}, collapsedRemotes)
+    expanded[id] = false
+    service.setCollapsedRemotes(expanded)
+    closeRemoteSetup()
+    rebuildRows("remote:" + id)
+  }
+
+  function enableSshHost(alias) {
+    var host = String(alias || "")
+    if (host === "" || service.sshHostEnabled(host, activeProvider)) return
+    var id = service.addRemote(host, "ssh", host, "", "", activeProvider)
+    if (id === "") return
+    var expanded = Object.assign({}, collapsedRemotes)
+    expanded[id] = false
+    service.setCollapsedRemotes(expanded)
+    closeRemoteSetup()
+    rebuildRows("remote:" + id)
+  }
+
+  function isProjectPath(path) {
+    var value = String(path || "")
+    return value !== "" && value !== homePath
+      && value !== workPath
+      && value.indexOf(codexScratchRoot) !== 0
+  }
+
+  function rowKey(row) {
+    if (!row) return ""
+    if (row.kind === "remote") return "remote:" + String(row.remoteId || "")
+    if (row.kind === "project")
+      return "project:" + String(row.remoteId || "local") + ":" + String(row.path || "")
+    if (row.kind === "more") return "more:" + String(row.groupKey || "")
+    return "thread:" + String(row.remoteId || "local") + ":"
+      + String(row.thread ? row.thread.id || "" : "")
+  }
+
+  function rowIndexForKey(key) {
+    var wanted = String(key || "")
+    for (var i = 0; i < viewRows.length; i++) {
+      if (rowKey(viewRows[i]) === wanted) return i
+    }
+    return -1
+  }
+
+  function rowIndexForThread(threadId, remoteId) {
+    var scope = remoteId !== undefined
+      ? String(remoteId || "local")
+      : String(threadScopeForId(threadId) || "local")
+    return rowIndexForKey("thread:" + scope + ":" + String(threadId || ""))
+  }
+
+  function projectHeaderIndex(path, remoteId) {
+    return rowIndexForKey("project:" + String(remoteId || "local") + ":" + String(path || ""))
+  }
+
+  function remoteHeaderIndex(remoteId) {
+    return rowIndexForKey("remote:" + String(remoteId || ""))
+  }
+
+  function groupPreviewKey(kind, path, remoteId) {
+    return kind === "remote"
+      ? "remote:" + String(remoteId || "")
+      : "project:" + String(remoteId || "local") + ":" + String(path || "")
+  }
+
+  function groupShowsAll(kind, path, remoteId) {
+    return expandedGroups[groupPreviewKey(kind, path, remoteId)] === true
+  }
+
+  function showAllGroup(kind, path, remoteId) {
+    var next = Object.assign({}, expandedGroups)
+    next[groupPreviewKey(kind, path, remoteId)] = true
+    expandedGroups = next
+    rebuildRows("")
+    threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
+  }
+
+  function resetGroupPreview(kind, path, remoteId) {
+    var key = groupPreviewKey(kind, path, remoteId)
+    if (expandedGroups[key] !== true) return
+    var next = Object.assign({}, expandedGroups)
+    delete next[key]
+    expandedGroups = next
+  }
+
+  function rebuildRows(preferredKey) {
+    threadListModel.rebuildRows(preferredKey)
+  }
+  function projectCollapseKey(path, remoteId) {
+    return String(remoteId || "local") + ":" + String(path || "")
+  }
+
+  function sectionPinKey(kind, path, remoteId) {
+    return kind === "remote"
+      ? "remote:" + String(remoteId || "")
+      : "project:" + projectCollapseKey(path, remoteId)
+  }
+
+  function sectionPinned(kind, path, remoteId) {
+    return pinnedSections[sectionPinKey(kind, path, remoteId)] === true
+  }
+
+  function toggleSectionPin(kind, path, remoteId) {
+    var key = sectionPinKey(kind, path, remoteId)
+    var next = Object.assign({}, pinnedSections)
+    if (next[key] === true) delete next[key]
+    else next[key] = true
+    service.setPinnedSections(next)
+    rebuildRows(kind + ":" + (kind === "remote"
+      ? String(remoteId || "")
+      : String(remoteId || "local") + ":" + String(path || "")))
+  }
+
+  function setProjectCollapsed(path, collapsed, selectHeader, remoteId) {
+    var project = String(path || "")
+    if (collapsed) resetGroupPreview("project", project, remoteId)
+    var next = Object.assign({}, collapsedProjects)
+    next[projectCollapseKey(project, remoteId)] = !!collapsed
+    service.setCollapsedProjects(next)
+    rebuildRows(selectHeader
+      ? "project:" + String(remoteId || "local") + ":" + project
+      : undefined)
+    threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
+  }
+
+  function projectCollapsed(path, remoteId) {
+    return collapsedProjects[projectCollapseKey(path, remoteId)] !== false
+  }
+
+  function toggleProject(path, remoteId) {
+    setProjectCollapsed(path, !projectCollapsed(path, remoteId), true, remoteId)
+  }
+
+  function remoteCollapsed(remoteId) {
+    return collapsedRemotes[String(remoteId || "")] !== false
+  }
+
+  function toggleRemote(remoteId) {
+    var id = String(remoteId || "")
+    var next = Object.assign({}, collapsedRemotes)
+    next[id] = !remoteCollapsed(id)
+    if (next[id]) resetGroupPreview("remote", "", id)
+    service.setCollapsedRemotes(next)
+    rebuildRows("remote:" + id)
+    if (next[id] === false) service.refreshRemotes(id)
+    threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
+  }
+
+  function age(timestamp) {
+    var seconds = Math.max(0, Math.floor(root.nowMs / 1000 - Number(timestamp || 0)))
+    if (seconds < 60) return ""
+    var minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return minutes + "m"
+    var hours = Math.floor(minutes / 60)
+    if (hours < 24) return hours + "h"
+    var days = Math.floor(hours / 24)
+    if (days < 30) return days + "d"
+    return Math.floor(days / 30) + "mo"
+  }
+
+  function totalThreadCount() {
+    var count = activeProvider === "codex" ? service.threads.length : 0
+    if (activeProvider !== "codex") {
+      var selectedHost = providerHost(activeProvider)
+      count = selectedHost ? (selectedHost.threads || []).length : 0
+    }
+    var hosts = service.remoteHosts || []
+    for (var i = 0; i < hosts.length; i++) {
+      var hostId = String(hosts[i].id || "")
+      if (hostId === "provider-claude" || hostId === "provider-opencode") continue
+      if (String(hosts[i].providerType || "codex").toLowerCase() === activeProvider)
+        count += (hosts[i].threads || []).length
+    }
+    return count
+  }
+
+  function openSelected() {
+    if (selectedIndex < 0 || selectedIndex >= viewRows.length) return
+    var row = viewRows[selectedIndex]
+    if (row.kind === "more")
+      showAllGroup(row.groupKind, row.path, row.remoteId)
+    else if (row.kind === "remote") toggleRemote(row.remoteId)
+    else if (row.kind === "project") toggleProject(row.path, row.remoteId)
+    else if (row.remoteId)
+      service.openRemoteThread(row.remoteId, row.thread, row.path)
+    else service.openThread(row.thread, row.path)
+  }
+
+  function newSelectedThread() {
+    var path = homePath
+    if (selectedIndex >= 0 && selectedIndex < viewRows.length) {
+      var row = viewRows[selectedIndex]
+      path = String(row.path || (row.host ? row.host.home : "") || homePath)
+      if (row.remoteId) {
+        service.newRemoteThread(row.remoteId, path)
+        return
+      }
+    }
+    if (activeProvider !== "codex") {
+      var host = providerHost(activeProvider)
+      if (!host) {
+        service.launchError = providerLabel(activeProvider) + " provider is not ready"
+        return
+      }
+      service.newRemoteThread(host.id, path)
+      return
+    }
+    service.newProjectThread(path)
+  }
+
+  function archiveSelected() {
+    if (selectedIndex < 0 || selectedIndex >= viewRows.length) return
+    var row = viewRows[selectedIndex]
+    if (row.kind !== "thread") return
+    if (row.remoteId) service.archiveRemoteThread(row.remoteId, row.thread)
+    else service.archiveThread(row.thread)
+  }
+
+  function togglePin(remoteId, thread) {
+    if (!thread || !thread.id) return
+    if (remoteId) service.toggleRemoteThreadPin(remoteId, thread)
+    else service.toggleThreadPin(thread)
+  }
+
+  function togglePinSelected() {
+    if (selectedIndex < 0 || selectedIndex >= viewRows.length) return
+    var row = viewRows[selectedIndex]
+    if (row.kind === "thread") togglePin(row.remoteId, row.thread)
+    else if (row.kind === "remote") toggleSectionPin("remote", "", row.remoteId)
+    else if (row.kind === "project")
+      toggleSectionPin("project", row.path, row.remoteId)
+  }
+
+  function pinnedThreadCount() {
+    var count = 0
+    if (activeProvider === "codex") {
+      for (var i = 0; i < service.threads.length; i++)
+        if (service.threads[i] && service.threads[i].isPinned === true) count++
+    }
+    var hosts = service.remoteHosts || []
+    for (var hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
+      var hostProvider = String(hosts[hostIndex].providerType || "")
+      if (activeProvider === "codex" ? hostProvider !== ""
+          : hostProvider !== activeProvider) continue
+      var remoteThreads = hosts[hostIndex].threads || []
+      for (var threadIndex = 0; threadIndex < remoteThreads.length; threadIndex++)
+        if (remoteThreads[threadIndex]
+            && remoteThreads[threadIndex].isPinned === true) count++
+    }
+    return count
+  }
+
+  function threadForId(threadId) {
+    var wanted = String(threadId || "")
+    if (wanted === "") return null
+    for (var i = 0; i < service.threads.length; i++) {
+      if (String(service.threads[i].id || "") === wanted) return service.threads[i]
+    }
+    var configuredRemoteHosts = service.remoteHosts || []
+    for (var hostIndex = 0; hostIndex < configuredRemoteHosts.length; hostIndex++) {
+      var host = configuredRemoteHosts[hostIndex]
+      for (var threadIndex = 0; threadIndex < host.threads.length; threadIndex++) {
+        if (String(host.threads[threadIndex].id || "") === wanted)
+          return host.threads[threadIndex]
+      }
+    }
+    return null
+  }
+
+  function threadScopeForId(threadId) {
+    var wanted = String(threadId || "")
+    if (wanted === "") return ""
+    for (var localIndex = 0; localIndex < service.threads.length; localIndex++) {
+      if (String(service.threads[localIndex].id || "") === wanted) return ""
+    }
+    var configuredRemoteHosts = service.remoteHosts || []
+    for (var hostIndex = 0; hostIndex < configuredRemoteHosts.length; hostIndex++) {
+      var host = configuredRemoteHosts[hostIndex]
+      var hostThreads = host.threads || []
+      for (var threadIndex = 0; threadIndex < hostThreads.length; threadIndex++) {
+        if (String(hostThreads[threadIndex].id || "") === wanted)
+          return String(host.id || "")
+      }
+    }
+    return ""
+  }
+
+  function handleHorizontalNavigation(direction) {
+    if (selectedIndex < 0 || selectedIndex >= viewRows.length) return
+    var row = viewRows[selectedIndex]
+
+    if (direction < 0) {
+      if (row.kind === "thread") {
+        if (row.grouped !== true) return
+        selectedIndex = row.depth > 1
+          ? projectHeaderIndex(row.path, row.remoteId)
+          : remoteHeaderIndex(row.remoteId)
+        threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
+      } else if (row.kind === "remote") {
+        if (!remoteCollapsed(row.remoteId)) toggleRemote(row.remoteId)
+      } else if (!projectCollapsed(row.path, row.remoteId)) {
+        setProjectCollapsed(row.path, true, true, row.remoteId)
+      } else if (row.remoteId) {
+        selectedIndex = remoteHeaderIndex(row.remoteId)
+        threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
+      }
+      return
+    }
+
+    if (row.kind === "remote") {
+      if (remoteCollapsed(row.remoteId)) toggleRemote(row.remoteId)
+      else if (selectedIndex + 1 < viewRows.length) selectedIndex++
+      threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
+      return
+    }
+    if (row.kind !== "project") return
+    if (projectCollapsed(row.path, row.remoteId)) {
+      setProjectCollapsed(row.path, false, true, row.remoteId)
+    } else if (selectedIndex + 1 < viewRows.length
+               && viewRows[selectedIndex + 1].kind === "thread"
+               && viewRows[selectedIndex + 1].path === row.path) {
+      selectedIndex++
+      threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
+    }
+  }
+
+  function followActiveThread(force) {
+    // Once the user is inside the sidebar, automatic list/app-server refreshes
+    // must not overwrite a selection made with j/k or the mouse. The ACTIVE
+    // marker still follows service.activeThreadId independently.
+    var activeId = String(service.activeThreadId || "")
+    if (activeId === "") {
+      followedActiveThreadId = ""
+      return
+    }
+    if (!force && (sidebarFocused || followedActiveThreadId === activeId)) return
+
+    var activeThread = threadForId(activeId)
+    if (!activeThread) return
+    var path = projectPath(activeThread)
+    var activeRemoteId = threadScopeForId(activeId)
+    var activeHost = activeRemoteId !== "" ? service.remoteHostById(activeRemoteId) : null
+    var activeThreadProvider = activeHost
+      ? String(activeHost.providerType || "codex") : "codex"
+    if (activeThreadProvider !== activeProvider) return
+    if (activeRemoteId !== "") {
+      path = service.remotePathForThread(activeHost, activeThread)
+      if (force && remoteCollapsed(activeRemoteId)) {
+        var expandedRemotes = Object.assign({}, collapsedRemotes)
+        expandedRemotes[activeRemoteId] = false
+        service.setCollapsedRemotes(expandedRemotes)
+      }
+    }
+    if (path !== "" && (activeRemoteId !== "" || isProjectPath(path))
+        && projectCollapsed(path, activeRemoteId) && force) {
+      var expanded = Object.assign({}, collapsedProjects)
+      expanded[projectCollapseKey(path, activeRemoteId)] = false
+      service.setCollapsedProjects(expanded)
+    }
+    rebuildRows("thread:" + String(activeRemoteId || "local") + ":" + activeId)
+
+    var index = rowIndexForThread(activeId)
+    if (index < 0) return
+    followedActiveThreadId = activeId
+    selectedIndex = index
+    if (opened) Qt.callLater(function() {
+      threadList.positionViewAtIndex(index, ListView.Contain)
+    })
+  }
+
+  function activeThreadCursorPoint() {
+    var activeThread = threadForId(service.activeThreadId)
+    if (!activeThread) return ""
+    followActiveThread(true)
+
+    var index = rowIndexForThread(service.activeThreadId)
+    if (index < 0) return ""
+
+    followedActiveThreadId = String(service.activeThreadId || "")
+    selectedIndex = index
+    threadList.positionViewAtIndex(index, ListView.Center)
+    threadList.forceLayout()
+
+    var row = threadList.itemAtIndex(index)
+    if (!row) return ""
+
+    // mapToItem(null, ...) returns surface-local coordinates. The hotkey
+    // helper adds the layer surface's global position before moving the cursor.
+    var point = row.mapToItem(null, row.width / 2, row.height / 2)
+    return JSON.stringify({
+      x: Math.round(point.x),
+      y: Math.round(point.y)
+    })
+  }
+
+  function applySidebarOpenState() {
+    if (!bar) return
+    applyingPersistedSidebarState = true
+    if (service.sidebarOpen) open()
+    else close()
+    Qt.callLater(function() { root.applyingPersistedSidebarState = false })
+  }
+
+  function focusSidebar() {
+    keyboardFocusRequested = true
+    focusPrimed = false
+    if (!opened) {
+      open()
+      Qt.callLater(root.focusSidebar)
+      return
+    }
+    // Briefly use Exclusive so Hyprland transfers the compositor keyboard
+    // focus, then settle on OnDemand so normal window clicks keep working.
+    focusPrimeTimer.restart()
+    focusAttemptsRemaining = 10
+    focusReleaseGuard.restart()
+    focusAcquireTimer.restart()
+  }
+
+  function releaseSidebarFocus(force) {
+    if (!opened) return
+    // Moving the pointer into the layer surface can emit a delayed toplevel
+    // change. Ignore only that transition; explicit Esc always passes force.
+    if (!force && focusReleaseGuard.running) return
+    focusAcquireTimer.stop()
+    focusPrimeTimer.stop()
+    focusAttemptsRemaining = 0
+    focusPrimed = false
+    keyboardFocusRequested = false
+    searchField.focus = false
+    if (searchText === "") searchOpen = false
+    keyCatcher.focus = false
+  }
+
+  onOpenedChanged: {
+    if (!bar) return
+    service.setSidebarOpen(opened)
+    if (opened) {
+      nowMs = Date.now()
+      service.refreshThreads()
+      service.refreshActiveThread()
+      if (!applyingPersistedSidebarState) followActiveThread(true)
+    } else {
+      keyboardFocusRequested = false
+      focusPrimed = false
+      setSearchText("")
+      searchOpen = false
+      helpOpen = false
+      remoteSetupOpen = false
+    }
+  }
+
+  onBarChanged: applySidebarOpenState()
+
+  Connections {
+    target: service
+    ignoreUnknownSignals: true
+    function onThreadsChanged() {
+      root.rebuildRows()
+      root.followActiveThread(false)
+    }
+    function onProjectsChanged() { root.rebuildRows() }
+    function onRemoteHostsChanged() {
+      root.rebuildRows()
+      root.followActiveThread(false)
+    }
+    function onCollapsedProjectsChanged() { root.rebuildRows() }
+    function onCollapsedRemotesChanged() { root.rebuildRows() }
+    function onPinnedSectionsChanged() { root.rebuildRows() }
+    function onSelectedProviderChanged() {
+      root.restoreProviderViewState(root.activeProvider)
+    }
+    function onActiveThreadIdChanged() { root.followActiveThread(false) }
+    function onSidebarOpenChanged() { root.applySidebarOpenState() }
+  }
+
+  Connections {
+    target: ToplevelManager
+    function onActiveToplevelChanged() { root.releaseSidebarFocus(false) }
+  }
+
+  Timer {
+    id: focusPrimeTimer
+    interval: 75
+    repeat: false
+    onTriggered: if (root.opened && root.keyboardFocusRequested)
+      root.focusPrimed = true
+  }
+
+  Timer {
+    id: focusAcquireTimer
+    interval: 30
+    repeat: true
+    onTriggered: {
+      keyCatcher.forceActiveFocus()
+      root.focusAttemptsRemaining--
+      if (keyCatcher.activeFocus) stop()
+      else if (root.focusAttemptsRemaining <= 0) {
+        stop()
+        root.releaseSidebarFocus(true)
+      }
+    }
+  }
+
+  Timer {
+    id: focusReleaseGuard
+    interval: 350
+    repeat: false
+  }
+
+  Timer {
+    interval: 30000
+    running: root.opened
+    repeat: true
+    onTriggered: root.nowMs = Date.now()
+  }
+
+  IpcHandler {
+    enabled: root.bar !== null
+    target: root.ipcTarget
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.toggle() }
+    function focus(): void { root.focusSidebar() }
+    function blur(): void { root.releaseSidebarFocus(true) }
+    function help(): void { root.helpOpen = !root.helpOpen }
+    function addRemote(): void { root.openRemoteSetup() }
+    function provider(name: string): string {
+      root.selectProvider(name)
+      return root.activeProvider
+    }
+    function cursorPoint(): string { return root.activeThreadCursorPoint() }
+    function refresh(): string {
+      root.service.refreshThreads()
+      root.service.refreshRemotes()
+      return "ok"
+    }
+    function search(text: string): string {
+      root.setSearchText(text)
+      return String(root.visibleThreadCount)
+    }
+    function status(): string {
+      return JSON.stringify({
+        activeProvider: root.activeProvider,
+        providerLoading: root.providerLoading(),
+        ready: root.service.ready,
+        loading: root.service.loading,
+        threadCount: root.service.threads.length,
+        appServerProjectCount: root.service.projects.length,
+        error: root.service.errorText,
+        launchingThreadId: root.service.launchingThreadId,
+        launchingProjectPath: root.service.launchingProjectPath,
+        archivingThreadId: root.service.archivingThreadId,
+        pinningThreadId: root.service.pinningThreadId,
+        movingThreadId: root.service.movingThreadId,
+        activeThreadId: root.service.activeThreadId,
+        selectedRowKey: root.rowKey(root.viewRows[root.selectedIndex]),
+        searchText: root.searchText,
+        searchOpen: root.searchOpen,
+        visibleThreadCount: root.visibleThreadCount,
+        visibleProjectCount: root.projectCount,
+        helpOpen: root.helpOpen,
+        sidebarFocused: root.sidebarFocused,
+        sidebarOpen: root.service.sidebarOpen,
+        remoteCount: (root.service.remoteHosts || []).length,
+        pinnedThreadCount: root.pinnedThreadCount(),
+        availableSshHostCount: (root.service.sshHosts || []).length,
+        remoteSetupOpen: root.remoteSetupOpen,
+        codexLimit: root.rateLimitText(),
+        modelCount: root.service.modelsForProvider(root.activeProvider).length,
+        selectedModel: root.service.selectedModelForProvider(root.activeProvider) || "default",
+        selectedEffort: root.service.selectedEffortForProvider(root.activeProvider) || "default",
+        selectedAgent: root.service.selectedAgentForProvider(root.activeProvider) || "default",
+        effectiveModel: root.service.effectiveModelForProvider(root.activeProvider),
+        effectiveEffort: root.service.effectiveEffortForProvider(root.activeProvider),
+        effectiveAgent: root.service.effectiveAgentForProvider(root.activeProvider),
+        providerVersion: root.activeProviderHost
+          ? String(root.activeProviderHost.version || "") : "",
+        providerAuthenticated: root.activeProviderHost
+          ? root.activeProviderHost.authenticated !== false : true
+      })
+    }
+  }
+
+  BarIconButton {
+    id: button
+    anchors.fill: parent
+    bar: root.bar
+    text: "󰚩"
+    active: root.sidebarFocused
+    tooltipText: root.opened
+      ? (root.sidebarFocused
+          ? "Codex thread sidebar · focused · click to close"
+          : "Codex thread sidebar · click to close")
+      : "Open Codex thread sidebar"
+    onPressed: function(buttonCode) {
+      if (buttonCode === Qt.LeftButton) root.toggle()
+    }
+  }
+
+  // Keep compositor reservation separate from the visible overlay surface.
+  PanelWindow {
+    id: sidebarReservation
+
+    screen: button.QsWindow.window ? button.QsWindow.window.screen : null
+    visible: root.opened
+    color: "transparent"
+    implicitWidth: root.sidebarReserveWidth
+    exclusionMode: ExclusionMode.Normal
+    exclusiveZone: root.sidebarReserveWidth
+
+    WlrLayershell.namespace: "omarchy-codex-threads-reservation"
+    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+    anchors {
+      top: true
+      bottom: true
+      left: true
+    }
+
+    mask: Region {
+      width: 0
+      height: 0
+    }
+  }
+
+  // A persistent layer-shell sidebar rather than a popup. It has no full-screen
+  // dismissal overlay, so clicking an application leaves it mapped.
+  PanelWindow {
+    id: panel
+
+    screen: button.QsWindow.window ? button.QsWindow.window.screen : null
+    visible: root.opened
+    color: "transparent"
+    implicitWidth: root.sidebarReserveWidth
+    exclusionMode: ExclusionMode.Ignore
+
+    WlrLayershell.namespace: "omarchy-codex-threads"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: root.opened && root.keyboardFocusRequested
+      ? (root.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
+      : WlrKeyboardFocus.None
+
+    anchors {
+      top: true
+      bottom: true
+      left: true
+    }
+
+    margins {
+      // Overlay layers do not inherit the bar's exclusive edge, so include it.
+      top: root.bar && root.bar.position === "top"
+        ? root.bar.barSize + Style.gapsOut
+        : Style.gapsOut
+      bottom: root.bar && root.bar.position === "bottom"
+        ? root.bar.barSize + Style.gapsOut
+        : Style.gapsOut
+    }
+
+    BorderSurface {
+      id: card
+      anchors.fill: parent
+      anchors.leftMargin: Style.gapsOut
+      anchors.rightMargin: Style.gapsOut
+      color: Color.popups.background
+      borderSpec: root.sidebarFocused
+        ? Border.surfaceSpec("popups", "border", Color.popups.border,
+                             Math.max(1, Style.space(2)))
+        : Border.flat("transparent", Math.max(1, Style.space(2)))
+      padding: Style.spacing.popupPadding
+      radius: Style.cornerRadius
+
+      HoverHandler {
+        onHoveredChanged: {
+          if (hovered && root.opened && !root.sidebarFocused) root.focusSidebar()
+        }
+      }
+
+      PanelKeyCatcher {
+        id: keyCatcher
+        anchors.fill: parent
+        blocked: searchField.activeFocus
+          || remoteSetup.inputFocused
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
+
+      onMoveRequested: function(dx, dy) {
+        if (root.helpOpen) return
+        if (root.viewRows.length === 0) return
+        if (dx !== 0) {
+          root.handleHorizontalNavigation(dx)
+          return
+        }
+        if (dy !== 0) {
+          root.selectedIndex = Math.max(0, Math.min(root.viewRows.length - 1,
+                                                     root.selectedIndex + dy))
+          threadList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+        }
+      }
+      onActivateRequested: {
+        if (root.helpOpen) root.helpOpen = false
+        else root.openSelected()
+      }
+      onCloseRequested: {
+        if (providerMenu.opened) providerMenu.close()
+        else if (root.remoteSetupOpen) root.closeRemoteSetup()
+        else if (root.helpOpen) root.helpOpen = false
+        else if (root.searchText !== "" || root.searchOpen) root.cancelSearch()
+        else root.releaseSidebarFocus(true)
+      }
+      onDeleteRequested: {
+        // PanelKeyCatcher reserves x for destructive actions. Archiving uses y
+        // here by preference, so x intentionally does nothing.
+      }
+      onTabRequested: function(direction) { root.switchPanel(direction) }
+      onTextKey: function(text) {
+        if (text === "/") {
+          root.startSearch()
+          return
+        }
+        if (text === "?") {
+          root.helpOpen = !root.helpOpen
+          return
+        }
+        if ((text === "r" || text === "R")
+            && (root.activeProvider === "codex" || root.activeProvider === "claude")) {
+          root.openRemoteSetup()
+          return
+        }
+        if (root.helpOpen) return
+        if (text === "P") {
+          if (providerMenu.opened) providerMenu.close()
+          else providerMenu.open()
+          return
+        }
+        if (text === "o" || text === "O") {
+          root.openSelected()
+          return
+        }
+        if (text === "y" || text === "Y") {
+          root.archiveSelected()
+          return
+        }
+        if (text === "p") {
+          root.togglePinSelected()
+          return
+        }
+        if (text === "n" || text === "N") root.newSelectedThread()
+      }
+
+      Column {
+        id: content
+        anchors.fill: parent
+        spacing: Style.space(8)
+
+        Item {
+          width: parent.width
+          height: Style.space(36)
+
+          Text {
+            id: headerTitle
+            anchors.left: parent.left
+            anchors.right: newThreadButton.left
+            anchors.rightMargin: Style.space(8)
+            height: parent.height
+            text: root.remoteSetupOpen ? "ADD REMOTE"
+              : (root.helpOpen
+                  ? root.providerLabel() + " · HELP"
+                  : root.providerLabel() + "  ▾")
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+            elide: Text.ElideRight
+            verticalAlignment: Text.AlignVCenter
+
+            MouseArea {
+              anchors.fill: parent
+              enabled: !root.remoteSetupOpen && !root.helpOpen
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                if (providerMenu.opened) providerMenu.close()
+                else providerMenu.open()
+              }
+            }
+          }
+
+          Popup {
+            id: providerMenu
+            x: 0
+            y: parent.height - Style.space(2)
+            width: Math.min(parent.width - Style.space(8), Style.space(176))
+            height: providerChoicesColumn.implicitHeight + Style.space(8)
+            padding: Style.space(4)
+            modal: false
+            dim: false
+            focus: false
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+            background: Rectangle {
+              color: Color.popups.background
+              border.color: root.faint
+              border.width: Math.max(1, Style.space(1))
+              radius: Style.cornerRadius
+            }
+
+            contentItem: Column {
+              id: providerChoicesColumn
+              spacing: 0
+
+              Repeater {
+                model: root.providerChoices
+
+                Rectangle {
+                  required property var modelData
+                  width: providerMenu.availableWidth
+                  height: Style.space(30)
+                  radius: Math.max(2, Style.cornerRadius - Style.space(2))
+                  color: providerChoiceMouse.containsMouse
+                    ? root.faint : "transparent"
+
+                  Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(8)
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: modelData.label
+                    color: modelData.id === root.activeProvider
+                      ? Color.accent : root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: modelData.id === root.activeProvider
+                  }
+
+                  Text {
+                    anchors.right: parent.right
+                    anchors.rightMargin: Style.space(8)
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: modelData.id === root.activeProvider
+                    text: "●"
+                    color: Color.accent
+                    font.family: root.fontFamily
+                    font.pixelSize: Math.max(7, Style.font.caption - 2)
+                  }
+
+                  MouseArea {
+                    id: providerChoiceMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.selectProvider(modelData.id)
+                  }
+                }
+              }
+            }
+          }
+
+          Item {
+            id: newThreadButton
+            visible: !root.remoteSetupOpen && !root.helpOpen
+            anchors.right: remoteButton.left
+            anchors.rightMargin: Style.space(4)
+            anchors.top: parent.top
+            anchors.topMargin: -Style.space(6)
+            width: visible ? Style.space(18) : 0
+            height: Style.space(24)
+
+            Text {
+              anchors.centerIn: parent
+              text: "+"
+              color: newThreadMouse.containsMouse ? Color.accent : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            MouseArea {
+              id: newThreadMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.newSelectedThread()
+            }
+          }
+
+          Item {
+            id: remoteButton
+            visible: root.activeProvider === "codex" || root.activeProvider === "claude"
+            anchors.right: helpButton.left
+            anchors.rightMargin: Style.space(4)
+            anchors.top: parent.top
+            anchors.topMargin: -Style.space(6)
+            width: visible ? Style.space(20) : 0
+            height: Style.space(24)
+
+            Column {
+              anchors.centerIn: parent
+              spacing: -Style.space(5)
+
+              Text {
+                text: "→"
+                color: root.remoteSetupOpen || remoteMouse.containsMouse
+                  ? Color.accent : root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Math.max(9, Style.font.caption - 1)
+              }
+
+              Text {
+                text: "←"
+                color: root.remoteSetupOpen || remoteMouse.containsMouse
+                  ? Color.accent : root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Math.max(9, Style.font.caption - 1)
+              }
+            }
+
+            MouseArea {
+              id: remoteMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                if (root.remoteSetupOpen) root.closeRemoteSetup()
+                else root.openRemoteSetup()
+              }
+            }
+          }
+
+          Item {
+            id: helpButton
+            anchors.right: parent.right
+            anchors.rightMargin: -Style.space(6)
+            anchors.top: parent.top
+            anchors.topMargin: -Style.space(6)
+            width: Style.space(18)
+            height: Style.space(24)
+
+            Text {
+              anchors.centerIn: parent
+              text: "?"
+              color: root.helpOpen || helpMouse.containsMouse ? Color.accent : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            MouseArea {
+              id: helpMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.helpOpen = !root.helpOpen
+            }
+          }
+        }
+
+        Text {
+          width: parent.width
+          height: Style.space(18)
+          text: {
+            var providerError = root.providerErrorText()
+            if (providerError !== "") return providerError
+            if (root.activeProvider === "codex" && !root.service.ready)
+              return "Connecting to the local Codex App Server…"
+            if (root.providerLoading() && root.totalThreadCount() === 0)
+              return "Loading saved " + root.providerLabel() + " threads…"
+            if (root.activeProvider === "codex" && root.service.movingThreadId !== "")
+              return "Moving thread to project…"
+            if (root.activeProvider === "codex" && root.service.archivingThreadId !== "")
+              return "Archiving thread…"
+            if (root.activeProvider === "codex" && root.service.pinningThreadId !== "")
+              return "Updating pin…"
+            var filtered = root.searchText !== ""
+            return root.projectCount + " projects · "
+              + (filtered
+                  ? root.visibleThreadCount + " of " + root.totalThreadCount()
+                  : root.totalThreadCount())
+              + " threads · newest first"
+          }
+          color: root.providerErrorText() !== ""
+            ? Color.urgent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+          verticalAlignment: Text.AlignVCenter
+        }
+
+        TextField {
+          id: searchField
+          visible: root.searchOpen || root.searchText !== ""
+          width: parent.width
+          height: Style.space(34)
+          text: root.searchText
+          placeholderText: "Search threads and projects…"
+          foreground: root.foreground
+          accent: Color.accent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          verticalPadding: Style.space(5)
+          rightPadding: Style.space(30)
+          selectByMouse: true
+          onTextEdited: root.setSearchText(text)
+          onActiveFocusChanged: if (activeFocus) root.keyboardFocusRequested = true
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape) {
+              root.cancelSearch()
+              event.accepted = true
+            } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
+              root.leaveSearch()
+              if (root.viewRows.length > 0) {
+                var direction = event.key === Qt.Key_Down ? 1 : -1
+                root.selectedIndex = Math.max(0, Math.min(root.viewRows.length - 1,
+                                                           root.selectedIndex + direction))
+                threadList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+              }
+              event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+              root.leaveSearch()
+              event.accepted = true
+            } else if (event.key === Qt.Key_U && (event.modifiers & Qt.ControlModifier)) {
+              root.setSearchText("")
+              event.accepted = true
+            }
+          }
+
+          TapHandler {
+            onTapped: {
+              root.keyboardFocusRequested = true
+              Qt.callLater(root.startSearch)
+            }
+          }
+
+          Text {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(9)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.searchText !== ""
+            text: "×"
+            color: clearSearchMouse.containsMouse ? Color.accent : root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+
+            MouseArea {
+              id: clearSearchMouse
+              anchors.fill: parent
+              anchors.margins: -Style.space(7)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                root.setSearchText("")
+                root.startSearch()
+              }
+            }
+          }
+        }
+
+        PanelSeparator { width: parent.width }
+
+        Item {
+          width: parent.width
+          height: Math.max(0, parent.height - y)
+
+          Item {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: codexLimitFooter.top
+
+            Text {
+              anchors.centerIn: parent
+              width: parent.width - Style.space(40)
+              visible: !root.helpOpen && !root.providerLoading()
+                && root.viewRows.length === 0
+              text: root.totalThreadCount() === 0
+                ? "No saved " + root.providerLabel() + " threads"
+                : "No threads match this search"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              horizontalAlignment: Text.AlignHCenter
+            }
+
+            Ui.CodexThreadList {
+              id: threadList
+              anchors.fill: parent
+              panel: root
+            }
+          }
+
+          Item {
+            id: codexLimitFooter
+            readonly property string label: root.activeProvider === "codex"
+              ? root.rateLimitText() : ""
+            readonly property bool hasSelector: root.service
+              .modelsForProvider(root.activeProvider).length > 0
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: visible ? Style.space(22) : 0
+            visible: (label !== "" || hasSelector)
+              && !root.helpOpen && !root.remoteSetupOpen
+
+            Text {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(12)
+              anchors.right: modelEffortSelector.left
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              text: parent.label
+              visible: parent.label !== ""
+              color: Util.alpha(root.foreground, 0.42)
+              font.family: root.fontFamily
+              font.pixelSize: Math.max(8, Style.font.caption - 1)
+              font.letterSpacing: 0.25
+              elide: Text.ElideRight
+            }
+
+            Ui.ModelEffortSelector {
+              id: modelEffortSelector
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(12)
+              anchors.verticalCenter: parent.verticalCenter
+              panel: root
+              visible: codexLimitFooter.hasSelector
+            }
+          }
+
+          Ui.RemoteSetup {
+            id: remoteSetup
+            anchors.fill: parent
+            panel: root
+          }
+
+          Ui.HelpOverlay {
+            anchors.fill: parent
+            panel: root
+          }
+        }
+      }
+      }
+    }
+  }
+
+  Component.onCompleted: {
+    rebuildRows()
+    applySidebarOpenState()
+  }
+}

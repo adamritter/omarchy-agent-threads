@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "adam.codex-threads",
+  "name": "Codex Threads",
+  "version": "1.2.0",
+  "author": "Adam",
+  "description": "Browse local and remote Codex threads and focus or open their terminal sessions.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Codex Threads",
+    "description": "A left-side browser for local, App Server, and SSH Codex threads.",
+    "category": "AI",
+    "aliases": [
+      "codex-threads",
+      "threads"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "left"
+  }
+}

@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-launchers-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+stub_bin="$test_root/bin"
+runtime_dir="$test_root/runtime"
+project_dir="$test_root/project"
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+mkdir -p -- "$stub_bin" "$runtime_dir" "$project_dir"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'if [[ "${1:-}" == "-j" && "${2:-}" == "clients" ]]; then' \
+  '  count=0' \
+  '  [[ ! -f "$HYPR_STUB_COUNT" ]] || IFS= read -r count < "$HYPR_STUB_COUNT"' \
+  '  count=$((count + 1))' \
+  '  printf "%s\n" "$count" > "$HYPR_STUB_COUNT"' \
+  '  if (( count == 1 )); then printf "%s\n" "[]"' \
+  '  else printf "%s\n" "[{\"address\":\"0xabc123\"}]"; fi' \
+  '  exit 0' \
+  'fi' \
+  'exit 0' > "$stub_bin/hyprctl"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'printf "%s\n" "$*" > "$OMARCHY_STUB_LOG"' \
+  'exit 0' > "$stub_bin/omarchy"
+chmod +x "$stub_bin/hyprctl" "$stub_bin/omarchy"
+
+export PATH="$stub_bin:$PATH"
+export XDG_RUNTIME_DIR="$runtime_dir"
+export HYPR_STUB_COUNT="$test_root/hypr-count"
+export OMARCHY_STUB_LOG="$test_root/omarchy.log"
+
+local_result="$("$plugin_root/bin/omarchy-agent-thread-open" \
+  claude "$project_dir" "" http://127.0.0.1:43962 sonnet high reviewer)"
+local_session="$(jq -er '.sessionId | select(test("^[0-9a-f-]{36}$"))' <<<"$local_result")"
+jq -e '.address == "0xabc123"' <<<"$local_result" >/dev/null
+grep -F -- "claude --session-id $local_session --model sonnet --effort high --agent reviewer" \
+  "$OMARCHY_STUB_LOG" >/dev/null
+
+resume_session="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+rm -f -- "$HYPR_STUB_COUNT"
+local_resume_result="$("$plugin_root/bin/omarchy-agent-thread-open" \
+  claude "$project_dir" "$resume_session" http://127.0.0.1:43962 opus xhigh "")"
+jq -e --arg id "$resume_session" '.sessionId == $id and .address == "0xabc123"' \
+  <<<"$local_resume_result" >/dev/null
+grep -F -- "claude --resume $resume_session --model opus --effort xhigh" \
+  "$OMARCHY_STUB_LOG" >/dev/null
+
+printf '%s\n' '{"version":2,"remotes":[{"id":"remote-claude","label":"Remote Claude","type":"ssh","providerType":"claude","sshHost":"fixture","claudeCommand":"claude","home":"/work"}]}' \
+  > "$test_root/remotes.json"
+rm -f -- "$HYPR_STUB_COUNT"
+remote_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
+  "$test_root/remotes.json" remote-claude /work "" opus xhigh reviewer)"
+remote_session="$(jq -er '.sessionId | select(test("^[0-9a-f-]{36}$"))' <<<"$remote_result")"
+jq -e '.address == "0xabc123"' <<<"$remote_result" >/dev/null
+grep -F -- "claude --session-id $remote_session --model opus --effort xhigh --agent reviewer" \
+  "$OMARCHY_STUB_LOG" >/dev/null
+test "$(<"$runtime_dir/omarchy-codex-threads-${UID}/remote-claude--${remote_session}.address")" \
+  = "0xabc123"
+
+rm -f -- "$HYPR_STUB_COUNT"
+rm -f -- "$runtime_dir/omarchy-codex-threads-${UID}/remote-claude--${resume_session}.address"
+remote_resume_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
+  "$test_root/remotes.json" remote-claude /work "$resume_session" sonnet medium)"
+jq -e --arg id "$resume_session" '.sessionId == $id and .address == "0xabc123"' \
+  <<<"$remote_resume_result" >/dev/null
+grep -F -- "claude --resume $resume_session --model sonnet --effort medium" \
+  "$OMARCHY_STUB_LOG" >/dev/null
+
+printf '%s\n' "agent-launcher tests passed"
