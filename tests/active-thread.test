@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d)"
+trap 'rm -rf -- "$test_root"' EXIT
+
+proc_root="$test_root/proc"
+state_dir="$test_root/state"
+sessions_dir="$test_root/sessions"
+window_pid=100
+codex_pid=101
+window_address="0xtest"
+main_id="11111111-1111-1111-1111-111111111111"
+guardian_id="22222222-2222-2222-2222-222222222222"
+
+mkdir -p "$proc_root/$window_pid/task/$window_pid" \
+  "$proc_root/$window_pid/fd" \
+  "$proc_root/$codex_pid/task/$codex_pid" \
+  "$proc_root/$codex_pid/fd" \
+  "$state_dir" "$sessions_dir"
+printf 'foot\n' > "$proc_root/$window_pid/comm"
+printf '%s\n' "$codex_pid" > "$proc_root/$window_pid/task/$window_pid/children"
+printf 'codex\n' > "$proc_root/$codex_pid/comm"
+printf '\n' > "$proc_root/$codex_pid/task/$codex_pid/children"
+
+guardian_rollout="$sessions_dir/rollout-test-$guardian_id.jsonl"
+main_rollout="$sessions_dir/rollout-test-$main_id.jsonl"
+printf '%s\n' \
+  '{"type":"session_meta","payload":{"source":{"subagent":{"other":"guardian"}}}}' \
+  > "$guardian_rollout"
+printf '%s\n' \
+  '{"type":"session_meta","payload":{"source":"cli"}}' \
+  > "$main_rollout"
+ln -s "$guardian_rollout" "$proc_root/$codex_pid/fd/1"
+ln -s "$main_rollout" "$proc_root/$codex_pid/fd/2"
+
+actual="$(
+  OMARCHY_CODEX_PROC_ROOT="$proc_root" \
+  OMARCHY_CODEX_STATE_DIR="$state_dir" \
+  OMARCHY_CODEX_ACTIVE_WINDOW_JSON="{\"address\":\"$window_address\",\"pid\":$window_pid}" \
+    "$plugin_dir/bin/omarchy-codex-active-thread"
+)"
+
+if [[ "$actual" != "$main_id" ]]; then
+  printf 'Expected main thread %s, got %s\n' "$main_id" "$actual" >&2
+  exit 1
+fi
+
+printf 'active-thread tests passed\n'

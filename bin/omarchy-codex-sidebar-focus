@@ -3,10 +3,24 @@
 set -u
 
 target="adam.codex-threads"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve the active terminal while it still owns the toplevel focus. A Codex
+# process may hold internal subagent rollouts in addition to the visible thread.
+active_thread_id="$("${script_dir}/omarchy-codex-active-thread" 2>/dev/null || true)"
 
 # Mapping the sidebar does not take keyboard focus by itself. This lets us
 # locate the current thread while the Codex terminal is still the active app.
 omarchy-shell -q "$target" open >/dev/null
+if [[ -n "$active_thread_id" ]]; then
+  for _ in {1..80}; do
+    followed_row="$(
+      omarchy-shell "$target" followThread "$active_thread_id" 2>/dev/null || true
+    )"
+    [[ "$followed_row" == thread:*:"$active_thread_id" ]] && break
+    sleep 0.025
+  done
+fi
 
 layer=""
 for _ in {1..40}; do

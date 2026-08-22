@@ -737,6 +737,13 @@ Panel {
       root.selectProvider(name)
       return root.activeProvider
     }
+    function followThread(id: string): string {
+      var threadId = String(id || "").trim()
+      if (threadId === "") return ""
+      root.service.activeThreadId = threadId
+      root.sidebarActions.followActiveThread(true)
+      return root.rowKey(root.viewRows[root.selectedIndex])
+    }
     function cursorPoint(): string { return root.sidebarActions.activeThreadCursorPoint() }
     function refresh(): string {
       root.service.refreshThreads()

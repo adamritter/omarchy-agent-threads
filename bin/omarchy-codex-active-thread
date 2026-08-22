@@ -2,7 +2,11 @@
 
 set -u
 
-active_json="$(hyprctl -j activewindow 2>/dev/null || true)"
+proc_root="${OMARCHY_CODEX_PROC_ROOT:-/proc}"
+active_json="${OMARCHY_CODEX_ACTIVE_WINDOW_JSON:-}"
+if [[ -z "$active_json" ]]; then
+  active_json="$(hyprctl -j activewindow 2>/dev/null || true)"
+fi
 active_address="$(jq -r '.address // empty' <<<"$active_json" 2>/dev/null)"
 active_pid="$(jq -r '.pid // empty' <<<"$active_json" 2>/dev/null)"
 
@@ -10,15 +14,34 @@ active_pid="$(jq -r '.pid // empty' <<<"$active_json" 2>/dev/null)"
 
 thread_id_from_process() {
   local process_id="$1"
+  local fallback_id=""
   local fd_target
+  local session_meta
+  local thread_id
 
-  [[ -d "/proc/${process_id}/fd" ]] || return 1
+  [[ -d "${proc_root}/${process_id}/fd" ]] || return 1
   while IFS= read -r fd_target; do
     if [[ "$fd_target" =~ /rollout-.*-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.jsonl$ ]]; then
-      printf '%s\n' "${BASH_REMATCH[1]}"
+      thread_id="${BASH_REMATCH[1]}"
+      [[ -n "$fallback_id" ]] || fallback_id="$thread_id"
+
+      session_meta=""
+      [[ -r "$fd_target" ]] && IFS= read -r session_meta < "$fd_target"
+      if jq -e '.type == "session_meta"
+          and (.payload.source | type) == "object"
+          and .payload.source.subagent != null' >/dev/null 2>&1 <<<"$session_meta"; then
+        continue
+      fi
+
+      printf '%s\n' "$thread_id"
       return 0
     fi
-  done < <(find "/proc/${process_id}/fd" -maxdepth 1 -type l -printf '%l\n' 2>/dev/null)
+  done < <(find "${proc_root}/${process_id}/fd" -maxdepth 1 -type l -printf '%l\n' 2>/dev/null)
+
+  if [[ -n "$fallback_id" ]]; then
+    printf '%s\n' "$fallback_id"
+    return 0
+  fi
 
   return 1
 }
@@ -32,14 +55,15 @@ while (( queue_index < ${#queue[@]} )); do
   ((queue_index += 1))
 
   process_name=""
-  [[ -r "/proc/${process_id}/comm" ]] && IFS= read -r process_name < "/proc/${process_id}/comm"
+  [[ -r "${proc_root}/${process_id}/comm" ]] \
+    && IFS= read -r process_name < "${proc_root}/${process_id}/comm"
   if [[ "$process_name" == "codex" ]] && thread_id_from_process "$process_id"; then
     exit 0
   fi
 
   children=""
-  if [[ -r "/proc/${process_id}/task/${process_id}/children" ]]; then
-    IFS= read -r children < "/proc/${process_id}/task/${process_id}/children" || true
+  if [[ -r "${proc_root}/${process_id}/task/${process_id}/children" ]]; then
+    IFS= read -r children < "${proc_root}/${process_id}/task/${process_id}/children" || true
     for child_pid in $children; do
       [[ "$child_pid" =~ ^[0-9]+$ ]] && queue+=("$child_pid")
     done
@@ -48,15 +72,20 @@ done
 
 # A freshly launched session may be focused before Codex opens its rollout.
 runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
-state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
+state_dir="${OMARCHY_CODEX_STATE_DIR:-${runtime_root}/omarchy-codex-threads-${UID}}"
 if [[ -d "$state_dir" ]]; then
+  newest_mapping=""
   for mapping_file in "$state_dir"/*.address; do
     [[ -f "$mapping_file" ]] || continue
     [[ "$(<"$mapping_file")" == "$active_address" ]] || continue
-    mapping_name="$(basename "$mapping_file" .address)"
+    [[ -z "$newest_mapping" || "$mapping_file" -nt "$newest_mapping" ]] \
+      && newest_mapping="$mapping_file"
+  done
+  if [[ -n "$newest_mapping" ]]; then
+    mapping_name="$(basename "$newest_mapping" .address)"
     printf '%s\n' "${mapping_name##*--}"
     exit 0
-  done
+  fi
 fi
 
 exit 0
