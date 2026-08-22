@@ -2,4 +2,4 @@ CodexAppServerClient 1.0 CodexAppServerClient.qml
 LocalAgentProvider 1.0 LocalAgentProvider.qml
 LocalCodexProvider 1.0 LocalCodexProvider.qml
 ProviderRegistry 1.0 ProviderRegistry.qml
-RemoteCodexProvider 1.0 RemoteCodexProvider.qml
+RemoteAgentProvider 1.0 RemoteAgentProvider.qml

@@ -103,7 +103,7 @@ Item {
 
   signal threadLaunchRequested(string threadId)
 
-  Providers.RemoteCodexProvider {
+  Providers.RemoteAgentProvider {
     id: remoteProvider
     controller: root
   }
