@@ -3,6 +3,8 @@
 A keyboard-first Omarchy Shell sidebar for browsing, opening, organizing, and
 monitoring local and remote coding-agent sessions.
 
+![Agent Threads preview](preview.png)
+
 ## Highlights
 
 - Browse Codex, Claude Code, and OpenCode sessions in one project-grouped list.
@@ -57,11 +59,8 @@ flags, while live status is read from the TUI's per-session server.
 Install and enable the plugin from its public Git repository:
 
 ```bash
-omarchy plugin add <git-repository-url> --enable
+omarchy plugin add https://github.com/adamritter/omarchy-agent-threads.git --enable
 ```
-
-Replace `<git-repository-url>` with the repository URL shown on the release or
-marketplace page.
 
 For local development, place the repository at
 `~/.config/omarchy/plugins/adam.codex-threads`, then run:
