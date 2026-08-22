@@ -8,25 +8,31 @@ target="adam.codex-threads"
 # locate the current thread while the Codex terminal is still the active app.
 omarchy-shell -q "$target" open >/dev/null
 
-point=""
 layer=""
 for _ in {1..40}; do
-  point="$(omarchy-shell "$target" cursorPoint 2>/dev/null || true)"
   layer="$(hyprctl layers -j 2>/dev/null \
     | jq -c '[.. | objects | select(.namespace? == "omarchy-codex-threads")] | first // empty' \
       2>/dev/null || true)"
 
-  if jq -e '.x | numbers' >/dev/null 2>&1 <<<"$point" \
-      && jq -e '.y | numbers' >/dev/null 2>&1 <<<"$point" \
-      && jq -e '.x | numbers' >/dev/null 2>&1 <<<"$layer" \
-      && jq -e '.y | numbers' >/dev/null 2>&1 <<<"$layer"; then
+  if jq -e '.x | numbers' >/dev/null 2>&1 <<<"$layer" \
+      && jq -e '.y | numbers' >/dev/null 2>&1 <<<"$layer" \
+      && jq -e '.w | numbers' >/dev/null 2>&1 <<<"$layer" \
+      && jq -e '.h | numbers' >/dev/null 2>&1 <<<"$layer"; then
     break
   fi
 
   sleep 0.025
 done
 
-if [[ -n "$point" && -n "$layer" ]]; then
+if [[ -n "$layer" ]]; then
+  point="$(omarchy-shell "$target" cursorPoint 2>/dev/null || true)"
+  if ! jq -e --argjson layer "$layer" \
+      '(.x | numbers) and (.y | numbers)
+       and .x >= 1 and .y >= 1 and .x < $layer.w and .y < $layer.h' \
+      >/dev/null 2>&1 <<<"$point"; then
+    point="$(jq -c '{ x: (.w / 2), y: (.h / 2) }' <<<"$layer")"
+  fi
+
   target_x="$(jq -nr --argjson point "$point" --argjson layer "$layer" \
     '$layer.x + $point.x | round')"
   target_y="$(jq -nr --argjson point "$point" --argjson layer "$layer" \

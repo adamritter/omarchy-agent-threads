@@ -220,11 +220,11 @@ Item {
 
   function activeThreadCursorPoint() {
     var activeThread = threadForId(service.activeThreadId)
-    if (!activeThread) return ""
+    if (!activeThread) return visibleListCursorPoint()
     followActiveThread(true)
 
     var index = rowIndexForThread(service.activeThreadId)
-    if (index < 0) return ""
+    if (index < 0) return visibleListCursorPoint()
 
     followedActiveThreadId = String(service.activeThreadId || "")
     panel.selectedIndex = index
@@ -232,9 +232,17 @@ Item {
     listView.forceLayout()
 
     var row = listView.itemAtIndex(index)
-    if (!row) return ""
+    // A distant row may not be instantiated synchronously after ListView moves.
+    // The caller only needs a safe point inside the sidebar, so fall back to
+    // the visible list center instead of leaving the pointer outside it.
+    if (!row) return visibleListCursorPoint()
 
     var point = row.mapToItem(null, row.width / 2, row.height / 2)
+    return JSON.stringify({ x: Math.round(point.x), y: Math.round(point.y) })
+  }
+
+  function visibleListCursorPoint() {
+    var point = listView.mapToItem(null, listView.width / 2, listView.height / 2)
     return JSON.stringify({ x: Math.round(point.x), y: Math.round(point.y) })
   }
 }

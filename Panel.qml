@@ -667,7 +667,14 @@ Panel {
 
   Connections {
     target: ToplevelManager
-    function onActiveToplevelChanged() { root.releaseSidebarFocus(false) }
+    function onActiveToplevelChanged() {
+      // The cursor warp used by Super+A may deliver a delayed toplevel event
+      // after focus has already reached the layer surface. Keep the requested
+      // sidebar focus while the pointer is still inside it; moving or clicking
+      // back into an application will release it normally.
+      if (root.keyboardFocusRequested && sidebarHover.hovered) return
+      root.releaseSidebarFocus(false)
+    }
   }
 
   Timer {
@@ -879,8 +886,12 @@ Panel {
       radius: Style.cornerRadius
 
       HoverHandler {
+        id: sidebarHover
         onHoveredChanged: {
-          if (hovered && root.opened && !root.sidebarFocused) root.focusSidebar()
+          // Super+A already starts an explicit focus cycle after moving the
+          // pointer. Do not start a second competing cycle on pointer entry.
+          if (hovered && root.opened && !root.keyboardFocusRequested)
+            root.focusSidebar()
         }
       }
 
