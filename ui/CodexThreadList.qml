@@ -95,7 +95,7 @@ ListView {
     height: sectionRow ? Style.space(52)
       : (moreRow ? Style.space(38) : threadContent.implicitHeight + Style.space(8))
     radius: Style.cornerRadius
-    color: panel.sidebarFocused && activeThread
+    color: activeThread
       ? Style.selectedFillFor(panel.foreground, Color.accent)
       : (mouse.containsMouse
           || (panel.sidebarFocused && index === panel.selectedIndex)
