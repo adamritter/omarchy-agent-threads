@@ -3,4 +3,4 @@
 set -euo pipefail
 
 omarchy-shell shell rescanPlugins
-omarchy-shell agent-threads status
+omarchy-shell adam.codex-threads status

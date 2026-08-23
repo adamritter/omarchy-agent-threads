@@ -69,12 +69,12 @@ omarchy plugin add https://github.com/adamritter/omarchy-agent-threads.git --ena
 ```
 
 For local development, place the repository at
-`~/.config/omarchy/plugins/agent-threads`, then run:
+`~/.config/omarchy/plugins/adam.codex-threads`, then run:
 
 ```bash
-omarchy plugin validate ~/.config/omarchy/plugins/agent-threads
+omarchy plugin validate ~/.config/omarchy/plugins/adam.codex-threads
 omarchy-shell shell rescanPlugins
-omarchy plugin enable agent-threads --section left
+omarchy plugin enable adam.codex-threads --section left
 ```
 
 ## Recommended shortcuts
@@ -83,11 +83,11 @@ Add these bindings to `~/.config/hypr/bindings.lua`:
 
 ```lua
 -- Open Agent Threads, follow the active session, and give the sidebar keyboard focus.
-o.bind("SUPER + A", "Focus Agent Threads", "omarchy-shell -q agent-threads focusSidebar")
+o.bind("SUPER + A", "Focus Agent Threads", "omarchy-shell -q adam.codex-threads focusSidebar")
 
 -- SUPER + S defaults to the scratchpad; SUPER + grave already opens scratchpad/Quakes.
 hl.unbind("SUPER + S")
-o.bind("SUPER + S", "Toggle Agent Threads", "omarchy-shell -q agent-threads toggle")
+o.bind("SUPER + S", "Toggle Agent Threads", "omarchy-shell -q adam.codex-threads toggle")
 ```
 
 `Super+A` is the fast keyboard-navigation entry point. `Super+S` only opens or
@@ -192,7 +192,7 @@ Review the source before enabling it, especially the scripts under `bin/`.
 Disable and remove the plugin with:
 
 ```bash
-omarchy plugin remove agent-threads
+omarchy plugin remove adam.codex-threads
 ```
 
 Removing the plugin does not delete its local state files, remote connection

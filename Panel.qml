@@ -12,8 +12,8 @@ import "logic/NavigationLogic.js" as NavigationLogic
 
 Panel {
   id: root
-  moduleName: "agent-threads"
-  ipcTarget: "agent-threads"
+  moduleName: "adam.codex-threads"
+  ipcTarget: "adam.codex-threads"
   manageIpc: false
 
   // The live plugin uses the singleton. Component tests inject a fake service

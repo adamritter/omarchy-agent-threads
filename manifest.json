@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "agent-threads",
+  "id": "adam.codex-threads",
   "name": "Agent Threads",
   "version": "0.1.5",
   "author": "Adam Ritter",
