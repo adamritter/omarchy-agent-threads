@@ -63,6 +63,7 @@ Panel {
   property string editingRemoteId: ""
   property int focusAttemptsRemaining: 0
   property bool focusPrimed: false
+  property bool focusWorkflowPending: false
   property int cursorReturnX: -1
   property int cursorReturnY: -1
   property int fullscreenInternalState: 0
@@ -676,6 +677,37 @@ Panel {
     else focusAcquireTimer.restart()
   }
 
+  function summonSidebarFocus() {
+    if (focusWorkflowPending) return
+    focusWorkflowPending = true
+    cursorReturnX = -1
+    cursorReturnY = -1
+    requestOpen()
+    if (fullscreenSuppressed) {
+      focusWorkflowPending = false
+      return
+    }
+    sidebarActions.followActiveThread(true)
+
+    var point
+    try { point = JSON.parse(sidebarActions.visibleListCursorPoint()) }
+    catch (error) { point = ({ x: sidebarReserveWidth / 2, y: 1 }) }
+    var targetScreen = panel.screen
+    var layerTop = Style.gapsOut
+      + (bar && bar.position === "top" ? bar.barSize : 0)
+    var pointX = Math.round(Number(targetScreen ? targetScreen.x : 0)
+      + Number(point.x || sidebarReserveWidth / 2))
+    var pointY = Math.round(Number(targetScreen ? targetScreen.y : 0)
+      + layerTop + Number(point.y || 1))
+    Hyprland.dispatch("hl.dsp.cursor.move({ x = " + pointX
+      + ", y = " + pointY + " })")
+    Qt.callLater(function() {
+      if (!root.focusWorkflowPending) return
+      root.focusWorkflowPending = false
+      root.focusSidebar()
+    })
+  }
+
   function requestOpen() {
     open()
     queryFullscreenState()
@@ -930,6 +962,7 @@ Panel {
     function hide(): void { root.requestClose() }
     function toggle(): void { root.requestToggle() }
     function focus(): void { root.focusSidebar() }
+    function focusSidebar(): void { root.summonSidebarFocus() }
     function focusFrom(x: string, y: string): void { root.focusSidebarFrom(x, y) }
     function blur(): void { root.releaseSidebarFocus(true) }
     function help(): void { root.helpOpen = !root.helpOpen }
@@ -956,23 +989,6 @@ Panel {
       root.service.setSidebarScope(wanted, root.activeWorkspaceId, root.opened)
       root.applySidebarOpenState()
       return root.service.sidebarScope
-    }
-    function prepareFocus(id: string): string {
-      var threadId = String(id || "").trim()
-      if (threadId !== "") root.service.activeThreadId = threadId
-      root.requestOpen()
-      // activeThreadIdChanged follows a changed session; onOpenedChanged does
-      // the same on first mapping. The explicit call also restores the active
-      // row when the already-open, unfocused sidebar had another selection.
-      root.sidebarActions.followActiveThread(true)
-      var point
-      try { point = JSON.parse(root.sidebarActions.visibleListCursorPoint()) }
-      catch (error) { point = ({ x: 1, y: 1 }) }
-      return JSON.stringify({
-        x: Number(point.x || 1),
-        y: Number(point.y || 1),
-        presented: root.sidebarPresented
-      })
     }
     function followThread(id: string): string {
       var threadId = String(id || "").trim()

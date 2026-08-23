@@ -82,7 +82,7 @@ Add these bindings to `~/.config/hypr/bindings.lua`:
 
 ```lua
 -- Open Agent Threads, follow the active session, and give the sidebar keyboard focus.
-o.bind("SUPER + A", "Focus Agent Threads", "$HOME/.config/omarchy/plugins/agent-threads/bin/omarchy-codex-sidebar-focus")
+o.bind("SUPER + A", "Focus Agent Threads", "omarchy-shell -q agent-threads focusSidebar")
 
 -- SUPER + S defaults to the scratchpad; SUPER + grave already opens scratchpad/Quakes.
 hl.unbind("SUPER + S")
