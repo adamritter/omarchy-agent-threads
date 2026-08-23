@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "agent-threads",
   "name": "Agent Threads",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": "Adam Ritter",
   "description": "A keyboard-controlled sidebar for tracking and opening local or remote Codex, Claude Code, and OpenCode threads in native windows.",
   "kinds": [
