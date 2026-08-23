@@ -285,27 +285,6 @@ Panel {
     return targets
   }
 
-  function threadMatchesSearch(thread, path) {
-    var query = cleanText(searchText).toLowerCase()
-    if (query === "") return true
-    var haystack = [
-      threadTitle(thread),
-      cleanText(thread ? thread.preview : ""),
-      cleanText(thread ? thread.name : ""),
-      String(path || ""),
-      directoryName(path)
-    ].join(" ").toLowerCase()
-    var terms = query.split(" ")
-    for (var i = 0; i < terms.length; i++) {
-      if (terms[i] !== "" && haystack.indexOf(terms[i]) < 0) return false
-    }
-    return true
-  }
-
-  function threadVisible(thread, path) {
-    return threadMatchesSearch(thread, path)
-  }
-
   function setSearchText(value) {
     var next = String(value || "")
     if (searchText === next) return

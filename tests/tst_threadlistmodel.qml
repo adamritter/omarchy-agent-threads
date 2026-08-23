@@ -38,11 +38,6 @@ TestCase {
     var parts = String(path || "").replace(/\/$/, "").split("/")
     return parts[parts.length - 1]
   }
-  function threadVisible(thread, path) {
-    var query = cleanText(searchText).toLowerCase()
-    return query === "" || (cleanText(thread && thread.name) + " " + path)
-      .toLowerCase().indexOf(query) >= 0
-  }
   function rowKey(row) {
     if (!row) return ""
     if (row.kind === "remote") return "remote:" + String(row.remoteId || "")
@@ -124,6 +119,37 @@ TestCase {
     compare(listModel.projectCount, 1)
     compare(listModel.viewRows.length, 2)
     compare(listModel.viewRows[1].thread.id, "beta")
+  }
+
+  function test_filterIgnoresHiddenPromptDetailsAndParentPath() {
+    service.threads = [{
+      id: "crash",
+      name: null,
+      preview: "A process crashed on this machine\nPID: 49838",
+      cwd: "/srv/8-hidden/work",
+      updatedAt: 20
+    }]
+    searchText = "a 8"
+    listModel.rebuildRows("")
+    compare(listModel.visibleThreadCount, 0)
+    compare(listModel.viewRows.length, 0)
+  }
+
+  function test_filterMatchesVisibleFallbackTitleAndProjectName() {
+    service.threads = [{
+      id: "crash",
+      name: null,
+      preview: "A process crashed on this machine\nPID: 49838",
+      cwd: "/srv/workspace-eight",
+      updatedAt: 20
+    }]
+    searchText = "crashed eight"
+    listModel.rebuildRows("")
+    compare(listModel.visibleThreadCount, 1)
+    compare(listModel.projectCount, 1)
+    compare(listModel.viewRows.length, 1)
+    compare(listModel.viewRows[0].name, "workspace-eight")
+
   }
 
   function test_expandedPinnedProjectShowsThreadsUnderCollapsedRemote() {

@@ -16,7 +16,6 @@ Item {
 
   function cleanText(value) { return controller.cleanText(value) }
   function providerHost(providerId) { return controller.providerHost(providerId) }
-  function threadVisible(thread, path) { return controller.threadVisible(thread, path) }
   function projectPath(thread) { return controller.projectPath(thread) }
   function isProjectPath(path) { return controller.isProjectPath(path) }
   function directoryName(path) { return controller.directoryName(path) }
@@ -35,6 +34,29 @@ Item {
     return controller.projectCollapsed(path, remoteId)
   }
   function remoteCollapsed(remoteId) { return controller.remoteCollapsed(remoteId) }
+
+  function threadSearchTitle(thread) {
+    var name = cleanText(thread ? thread.name : "")
+    if (name !== "") return name
+    var preview = String(thread && thread.preview || "")
+    return cleanText(preview.split(/\r?\n/)[0])
+  }
+
+  function threadVisible(thread, path) {
+    var query = cleanText(searchText).toLowerCase()
+    if (query === "") return true
+    // Search only labels exposed by the sidebar. Full prompts and filesystem
+    // paths contain hidden IDs, timestamps, and other surprising matches.
+    var haystack = [
+      threadSearchTitle(thread),
+      directoryName(path)
+    ].join(" ").toLowerCase()
+    var terms = query.split(" ")
+    for (var i = 0; i < terms.length; i++) {
+      if (terms[i] !== "" && haystack.indexOf(terms[i]) < 0) return false
+    }
+    return true
+  }
 
   function rebuildRows(preferredKey) {
     var previousKey = preferredKey !== undefined
