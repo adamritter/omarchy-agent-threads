@@ -34,6 +34,9 @@ printf '%s\n' \
   '  printf "%s\n" '\''{"ok":true}'\''' \
   'elif [[ "$remote_command" == *" '\''pin'\'' "* ]]; then' \
   '  printf "%s\n" '\''{"ok":true}'\''' \
+  'elif [[ "$remote_command" == *" '\''rename'\'' "* ]]; then' \
+  '  [[ "$remote_command" == *"'\''Remote renamed'\''"* ]]' \
+  '  printf "%s\n" '\''{"ok":true}'\''' \
   'elif [[ -e "$REMOTE_FIXTURE_HOME/archived" ]]; then' \
   '  printf "%s\n" '\''{"available":true,"authenticated":true,"threads":[]}'\''' \
   'else' \
@@ -70,6 +73,9 @@ jq -e --arg id "$session_id" '
 
 $plugin_root/bin/omarchy-codex-remote-query \
   "$config" remote-claude pin "$session_id" true | jq -e '.ok == true' >/dev/null
+$plugin_root/bin/omarchy-codex-remote-query \
+  "$config" remote-claude rename "$session_id" /work "Remote renamed" \
+  | jq -e '.ok == true' >/dev/null
 $plugin_root/bin/omarchy-codex-remote-query \
   "$config" remote-claude archive "$session_id" | jq -e '.ok == true' >/dev/null
 snapshot="$($plugin_root/bin/omarchy-codex-remote-query \

@@ -77,6 +77,10 @@ ListView {
       && String(threadData.id || "") === panel.service.pinningThreadId
       && String(modelData.remoteId || "")
         === String(panel.service.remoteActionHostId || "")
+    readonly property bool renaming: threadRow
+      && String(threadData.id || "") === panel.service.renamingThreadId
+      && String(modelData.remoteId || "")
+        === String(panel.service.remoteActionHostId || "")
     readonly property bool moving: threadRow && !modelData.remoteId
       && String(threadData.id || "") === panel.service.movingThreadId
 
@@ -243,11 +247,13 @@ ListView {
             model: row.modelData.remoteId ? [
               { label: row.pinned ? "Unpin thread" : "Pin thread", hint: "p", action: "pin" },
               { label: "Open thread", hint: "Enter / o", action: "open" },
+              { label: "Rename…", hint: "r", action: "rename" },
               { label: "New thread here", hint: "n", action: "new" },
               { label: "Archive", hint: "y", action: "archive" }
             ] : [
               { label: row.pinned ? "Unpin thread" : "Pin thread", hint: "p", action: "pin" },
               { label: "Open thread", hint: "Enter / o", action: "open" },
+              { label: "Rename…", hint: "r", action: "rename" },
               { label: "New thread here", hint: "n", action: "new" },
               { label: "Move to…", hint: "›", action: "move" },
               { label: "Archive", hint: "y", action: "archive" }
@@ -302,6 +308,8 @@ ListView {
                       panel.service.openRemoteThread(row.modelData.remoteId,
                         row.threadData, row.modelData.path)
                     else panel.service.openThread(row.threadData, row.modelData.path)
+                  } else if (action === "rename") {
+                    panel.startRename(row.modelData.remoteId, row.threadData)
                   } else if (action === "new") {
                     if (row.modelData.remoteId)
                       panel.service.newRemoteThread(row.modelData.remoteId, row.modelData.path)
@@ -492,13 +500,14 @@ ListView {
 
       Text {
         width: parent.width
-        text: row.pinning ? "Updating pin…  " + panel.threadTitle(row.threadData)
+        text: row.renaming ? "Renaming…  " + panel.threadTitle(row.threadData)
+          : (row.pinning ? "Updating pin…  " + panel.threadTitle(row.threadData)
           : (row.moving ? "Moving…  " + panel.threadTitle(row.threadData)
           : (row.archiving ? "Archiving…  " + panel.threadTitle(row.threadData)
-            : (row.pinned ? "󰐃  " : "") + panel.threadTitle(row.threadData)))
+            : (row.pinned ? "󰐃  " : "") + panel.threadTitle(row.threadData))))
         textFormat: Text.PlainText
         color: row.activeThread ? Color.accent : panel.foreground
-        opacity: row.archiving || row.moving || row.pinning ? 0.58 : 1
+        opacity: row.archiving || row.moving || row.pinning || row.renaming ? 0.58 : 1
         font.family: panel.fontFamily
         font.pixelSize: Style.font.body
         font.bold: true
@@ -513,10 +522,12 @@ ListView {
       anchors.verticalCenter: parent.verticalCenter
       width: Style.space(14)
       text: row.remoteRow
-        ? (panel.remoteCollapsed(row.modelData.remoteId) ? "󰒋" : "󰇘")
+        ? (panel.remoteCollapsed(row.modelData.remoteId) ? "▸" : "▾")
         : (panel.projectCollapsed(row.modelData.path, row.modelData.remoteId)
             ? "\uf07b" : "\uf07c")
-      color: row.activeProject ? Color.accent : panel.dim
+      color: row.activeProject
+        || (row.remoteRow && !panel.remoteCollapsed(row.modelData.remoteId))
+        ? Color.accent : panel.dim
       font.family: panel.fontFamily
       font.pixelSize: Style.font.body
       horizontalAlignment: Text.AlignHCenter

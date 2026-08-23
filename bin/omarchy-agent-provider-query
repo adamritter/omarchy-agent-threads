@@ -195,6 +195,34 @@ function readClaudeTranscript(candidate, budget) {
   }
 }
 
+function renameClaudeThread(sessionID, title) {
+  const name = cleanText(title).slice(0, 200)
+  if (!sessionID) fail("missing session id")
+  if (!name) fail("missing session name")
+  const transcriptName = `${sessionID}.jsonl`
+  const rootPath = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"), "projects")
+  const candidate = walkClaudeTranscripts(rootPath)
+    .find(item => path.basename(item.path) === transcriptName)
+  if (!candidate) fail("session transcript not found")
+
+  const descriptor = fs.openSync(candidate.path,
+    fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_NOFOLLOW)
+  try {
+    const stat = fs.fstatSync(descriptor)
+    if (!stat.isFile()) fail("session transcript is not a regular file")
+    const record = JSON.stringify({
+      type: "custom-title",
+      customTitle: name,
+      sessionId: sessionID,
+      timestamp: new Date().toISOString()
+    }) + "\n"
+    fs.writeSync(descriptor, record)
+    fs.fsyncSync(descriptor)
+  } finally {
+    fs.closeSync(descriptor)
+  }
+}
+
 function claudeJobStates() {
   const states = new Map()
   const jobsPath = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"), "jobs")
@@ -679,6 +707,13 @@ async function main() {
     else {
       await openCode.archiveOpenCode(threadID, threadPath)
     }
+    process.stdout.write(JSON.stringify({ ok: true }) + "\n")
+    return
+  }
+
+  if (action === "rename") {
+    if (provider === "claude") renameClaudeThread(threadID, actionValue)
+    else await openCode.renameOpenCode(threadID, threadPath, actionValue)
     process.stdout.write(JSON.stringify({ ok: true }) + "\n")
     return
   }

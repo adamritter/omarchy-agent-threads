@@ -117,6 +117,16 @@ run_helper snapshot | jq -e --arg id "$session_id" '
   .threads[] | select(.id == $id) | .isPinned == true
 ' >/dev/null
 
+run_helper rename "$session_id" "" "Renamed Claude session" >/dev/null
+tail -n 1 "$transcript" | jq -e --arg id "$session_id" '
+  .type == "custom-title"
+  and .customTitle == "Renamed Claude session"
+  and .sessionId == $id
+' >/dev/null
+run_helper snapshot | jq -e --arg id "$session_id" '
+  .threads[] | select(.id == $id) | .name == "Renamed Claude session"
+' >/dev/null
+
 run_helper archive "$session_id" >/dev/null
 run_helper snapshot | jq -e --arg id "$session_id" '
   (.threads | any(.id == $id)) == false

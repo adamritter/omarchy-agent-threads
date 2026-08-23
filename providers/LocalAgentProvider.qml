@@ -182,6 +182,21 @@ Item {
     actionProcess.running = true
   }
 
+  function renameThread(thread, name) {
+    var id = String(thread && thread.id || "")
+    if (id === "" || actionProcess.running) return false
+    actionKind = "rename"
+    actionThreadId = id
+    actionHostId = hostId
+    controller.renamingThreadId = id
+    controller.launchError = ""
+    actionProcess.command = [
+      queryHelperPath, providerType, "rename", id, pathForThread(thread), name
+    ]
+    actionProcess.running = true
+    return true
+  }
+
   function toggleThreadPin(thread) {
     var id = String(thread && thread.id || "")
     if (id === "" || actionProcess.running) return
@@ -307,6 +322,7 @@ Item {
       if (exitCode !== 0)
         root.controller.launchError = actionStderr.text.trim() || root.label + " action failed"
       if (root.actionKind === "archive") root.controller.archivingThreadId = ""
+      if (root.actionKind === "rename") root.controller.renamingThreadId = ""
       if (root.actionKind === "pin") {
         root.controller.pinningThreadId = ""
         root.controller.pendingPinValue = false

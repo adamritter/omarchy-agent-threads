@@ -10,6 +10,9 @@ TestCase {
   property string searchText: ""
   property int groupPreviewLimit: 10
   property var service: ({})
+  property var pinnedSectionState: ({})
+  property var collapsedProjectState: ({})
+  property var collapsedRemoteState: ({})
 
   ThreadListModel {
     id: listModel
@@ -55,14 +58,29 @@ TestCase {
   }
   function groupShowsAll(kind, path, remoteId) { return true }
   function groupPreviewKey(kind, path, remoteId) { return kind + ":" + path + ":" + remoteId }
-  function sectionPinned(kind, path, remoteId) { return false }
-  function projectCollapsed(path, remoteId) { return false }
-  function remoteCollapsed(remoteId) { return false }
+  function sectionPinned(kind, path, remoteId) {
+    var key = kind === "remote"
+      ? "remote:" + String(remoteId || "")
+      : "project:" + String(remoteId || "local") + ":" + String(path || "")
+    return pinnedSectionState[key] === true
+  }
+  function projectCollapsed(path, remoteId) {
+    return collapsedProjectState[String(remoteId || "local") + ":"
+      + String(path || "")] !== false
+  }
+  function remoteCollapsed(remoteId) {
+    return collapsedRemoteState[String(remoteId || "")] !== false
+  }
 
   function init() {
     activeProvider = "codex"
     searchText = ""
     listModel.selectedIndex = 0
+    pinnedSectionState = ({})
+    collapsedProjectState = ({
+      "local:/work/project": false
+    })
+    collapsedRemoteState = ({})
     service = {
       threads: [
         { id: "home", name: "Home thread", cwd: "/home/test", updatedAt: 30 },
@@ -106,5 +124,41 @@ TestCase {
     compare(listModel.projectCount, 1)
     compare(listModel.viewRows.length, 2)
     compare(listModel.viewRows[1].thread.id, "beta")
+  }
+
+  function test_expandedPinnedProjectShowsThreadsUnderCollapsedRemote() {
+    service.threads = []
+    service.remoteHosts = [{
+      id: "remote-one",
+      label: "Remote one",
+      providerType: "codex",
+      home: "/home/remote",
+      threads: [
+        { id: "remote-alpha", name: "Alpha", cwd: "/srv/app", updatedAt: 20 },
+        { id: "remote-beta", name: "Beta", cwd: "/srv/app", updatedAt: 10 }
+      ]
+    }]
+    pinnedSectionState = ({
+      "project:remote-one:/srv/app": true
+    })
+    collapsedRemoteState = ({
+      "remote-one": true
+    })
+
+    collapsedProjectState = ({
+      "remote-one:/srv/app": true
+    })
+    listModel.rebuildRows("")
+    compare(listModel.viewRows.length, 2)
+    compare(listModel.viewRows[0].kind, "remote")
+    compare(listModel.viewRows[1].kind, "project")
+
+    collapsedProjectState = ({
+      "remote-one:/srv/app": false
+    })
+    listModel.rebuildRows("")
+    compare(listModel.viewRows.length, 4)
+    compare(listModel.viewRows[2].thread.id, "remote-alpha")
+    compare(listModel.viewRows[3].thread.id, "remote-beta")
   }
 }

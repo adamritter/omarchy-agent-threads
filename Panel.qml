@@ -30,7 +30,7 @@ Panel {
   readonly property bool fullscreenSuppressed: activeWorkspaceHasFullscreen
   readonly property bool sidebarPresented: opened && !fullscreenSuppressed
   readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
-    || remoteSetup.inputFocused
+    || renameField.activeFocus || remoteSetup.inputFocused
   readonly property bool sidebarFocused: keyboardFocusRequested && sidebarItemFocused
   readonly property string activeProvider: service.selectedProvider || "codex"
   readonly property var activeProviderHost: providerHost(activeProvider)
@@ -53,6 +53,9 @@ Panel {
   property double nowMs: Date.now()
   property string searchText: ""
   property bool searchOpen: false
+  property bool renameOpen: false
+  property var renameTargetThread: null
+  property string renameTargetRemoteId: ""
   property bool helpOpen: false
   property bool remoteSetupOpen: false
   property string remoteSetupType: "ssh"
@@ -68,7 +71,8 @@ Panel {
   property bool activeWorkspaceGeometryFullscreen: false
   property bool fullscreenProbeQueued: false
   property bool internalFocusTransfer: false
-  property bool applyingPersistedSidebarState: false
+  property bool applyingWorkspaceSidebarState: false
+  property int activeWorkspaceId: 0
 
   onSidebarItemFocusedChanged: {
     if (!sidebarItemFocused && keyboardFocusRequested
@@ -81,11 +85,13 @@ Panel {
     { keys: "← →  /  h l", description: "Collapse or expand project" },
     { keys: "Enter / o", description: "Open thread or toggle project" },
     { keys: "p", description: "Pin or unpin selected item" },
+    { keys: "r", description: "Rename selected thread" },
     { keys: "P", description: "Select provider" },
     { keys: "y", description: "Archive selected thread" },
     { keys: "/", description: "Search threads and projects" },
     { keys: "n", description: "New thread in the selected directory" },
     { keys: "R", description: "Add remote host (SSH or App Server)" },
+    { keys: "g", description: "Toggle this-workspace or global sidebar" },
     { keys: "Tab / Shift+Tab", description: "Switch between panels" },
     { keys: "Esc", description: "Close help or release focus" },
     { keys: "?", description: "Open or close help" }
@@ -332,6 +338,49 @@ Panel {
     if (searchField.activeFocus) leaveSearch()
   }
 
+  function startRename(remoteId, thread) {
+    var targetRemoteId = remoteId === undefined ? "" : String(remoteId || "")
+    var targetThread = thread || null
+    if (!targetThread && selectedIndex >= 0 && selectedIndex < viewRows.length) {
+      var row = viewRows[selectedIndex]
+      if (row.kind !== "thread") return
+      targetRemoteId = String(row.remoteId || "")
+      targetThread = row.thread
+    }
+    if (!targetThread || !targetThread.id || service.renamingThreadId !== "") return
+    providerMenu.close()
+    helpOpen = false
+    renameTargetThread = targetThread
+    renameTargetRemoteId = targetRemoteId
+    renameOpen = true
+    keyboardFocusRequested = true
+    internalFocusTransfer = true
+    renameField.text = threadTitle(targetThread)
+    renameField.forceActiveFocus()
+    renameField.selectAll()
+    Qt.callLater(function() { root.internalFocusTransfer = false })
+  }
+
+  function cancelRename() {
+    renameOpen = false
+    renameTargetThread = null
+    renameTargetRemoteId = ""
+    internalFocusTransfer = true
+    renameField.focus = false
+    keyCatcher.forceActiveFocus()
+    Qt.callLater(function() { root.internalFocusTransfer = false })
+  }
+
+  function submitRename() {
+    var name = cleanText(renameField.text).slice(0, 200)
+    if (!renameTargetThread || name === "") return
+    var remoteId = renameTargetRemoteId
+    var thread = renameTargetThread
+    cancelRename()
+    if (remoteId !== "") service.renameRemoteThread(remoteId, thread, name)
+    else service.renameThread(thread, name)
+  }
+
   function openRemoteSetup(remoteId) {
     var id = String(remoteId || "")
     var host = id !== "" ? service.remoteHostById(id) : null
@@ -340,6 +389,7 @@ Panel {
     if (provider !== "codex" && provider !== "claude" && provider !== "opencode") return
     if (id !== "" && !host) return
     providerMenu.close()
+    if (renameOpen) cancelRename()
     helpOpen = false
     searchOpen = false
     editingRemoteId = id
@@ -597,11 +647,12 @@ Panel {
   }
 
   function applySidebarOpenState() {
-    if (!bar) return
-    applyingPersistedSidebarState = true
-    if (service.sidebarOpen) open()
+    if (!bar || activeWorkspaceId <= 0 || !service.sidebarSettingsLoaded) return
+    applyingWorkspaceSidebarState = true
+    service.migrateSidebarOpenState(activeWorkspaceId)
+    if (service.sidebarOpenOnWorkspace(activeWorkspaceId)) open()
     else close()
-    Qt.callLater(function() { root.applyingPersistedSidebarState = false })
+    Qt.callLater(function() { root.applyingWorkspaceSidebarState = false })
   }
 
   function focusSidebar() {
@@ -611,10 +662,18 @@ Panel {
     focusPrimed = false
     // Briefly use Exclusive so Hyprland transfers the compositor keyboard
     // focus, then settle on OnDemand so normal window clicks keep working.
-    focusPrimeTimer.restart()
-    focusAttemptsRemaining = 10
+    focusAttemptsRemaining = 30
     focusReleaseGuard.restart()
-    focusAcquireTimer.restart()
+    // Take Qt item focus in this same event turn. The retry remains for the
+    // freshly mapped surface case, but an already visible sidebar can now
+    // consume the very next key after the summon shortcut.
+    keyCatcher.forceActiveFocus()
+    Qt.callLater(function() {
+      if (root.opened && root.keyboardFocusRequested)
+        keyCatcher.forceActiveFocus()
+    })
+    if (keyCatcher.activeFocus) focusPrimeTimer.restart()
+    else focusAcquireTimer.restart()
   }
 
   function requestOpen() {
@@ -631,6 +690,16 @@ Panel {
     else requestOpen()
   }
 
+  function toggleSidebarScope() {
+    if (activeWorkspaceId <= 0) {
+      queryFullscreenState()
+      return
+    }
+    service.setSidebarScope(service.sidebarScope === "global" ? "workspace" : "global",
+                            activeWorkspaceId, opened)
+    applySidebarOpenState()
+  }
+
   function queryFullscreenState() {
     if (fullscreenProbe.running) {
       fullscreenProbeQueued = true
@@ -643,6 +712,7 @@ Panel {
     var state
     try { state = JSON.parse(String(text || "{}")) } catch (e) { return }
     var workspaceFullscreen = state.hasfullscreen === true
+    var workspaceId = Number(state.workspaceId || 0)
     var internalState = workspaceFullscreen ? 2 : 0
     var clientState = 0
     var wasSuppressed = fullscreenSuppressed
@@ -650,6 +720,11 @@ Panel {
     activeWorkspaceGeometryFullscreen = state.geometryFullscreen === true
     fullscreenInternalState = internalState
     fullscreenClientState = clientState
+    if (workspaceId > 0 && workspaceId !== activeWorkspaceId) {
+      releaseSidebarFocus(true)
+      activeWorkspaceId = workspaceId
+      applySidebarOpenState()
+    }
     if (!wasSuppressed && fullscreenSuppressed) releaseSidebarFocus(true)
   }
 
@@ -696,12 +771,13 @@ Panel {
 
   onOpenedChanged: {
     if (!bar) return
-    service.setSidebarOpen(opened)
+    if (!applyingWorkspaceSidebarState && activeWorkspaceId > 0)
+      service.setSidebarOpenOnWorkspace(activeWorkspaceId, opened)
     if (opened) {
       nowMs = Date.now()
       service.refreshThreads()
       service.refreshActiveThread()
-      if (!applyingPersistedSidebarState) sidebarActions.followActiveThread(true)
+      if (!applyingWorkspaceSidebarState) sidebarActions.followActiveThread(true)
       queryFullscreenState()
     } else {
       keyboardFocusRequested = false
@@ -715,7 +791,10 @@ Panel {
     }
   }
 
-  onBarChanged: applySidebarOpenState()
+  onBarChanged: {
+    queryFullscreenState()
+    applySidebarOpenState()
+  }
 
   Connections {
     target: service
@@ -736,7 +815,14 @@ Panel {
       root.restoreProviderViewState(root.activeProvider)
     }
     function onActiveThreadIdChanged() { root.sidebarActions.followActiveThread(false) }
-    function onSidebarOpenChanged() { root.applySidebarOpenState() }
+    function onSidebarSettingsLoadedChanged() { root.applySidebarOpenState() }
+    function onSidebarOpenWorkspacesChanged() {
+      if (!root.applyingWorkspaceSidebarState) root.applySidebarOpenState()
+    }
+    function onSidebarScopeChanged() { root.applySidebarOpenState() }
+    function onGlobalSidebarOpenChanged() {
+      if (!root.applyingWorkspaceSidebarState) root.applySidebarOpenState()
+    }
   }
 
   Connections {
@@ -775,12 +861,15 @@ Panel {
 
   Timer {
     id: focusAcquireTimer
-    interval: 30
+    interval: 10
     repeat: true
     onTriggered: {
       keyCatcher.forceActiveFocus()
       root.focusAttemptsRemaining--
-      if (keyCatcher.activeFocus) stop()
+      if (keyCatcher.activeFocus) {
+        stop()
+        focusPrimeTimer.restart()
+      }
       else if (root.focusAttemptsRemaining <= 0) {
         stop()
         root.releaseSidebarFocus(true)
@@ -857,6 +946,34 @@ Panel {
       root.selectProvider(name)
       return root.activeProvider
     }
+    function scope(mode: string): string {
+      var wanted = String(mode || "").toLowerCase()
+      if (wanted === "toggle") wanted = root.service.sidebarScope === "global"
+        ? "workspace" : "global"
+      if (wanted !== "workspace" && wanted !== "global")
+        return root.service.sidebarScope
+      if (root.activeWorkspaceId <= 0) return root.service.sidebarScope
+      root.service.setSidebarScope(wanted, root.activeWorkspaceId, root.opened)
+      root.applySidebarOpenState()
+      return root.service.sidebarScope
+    }
+    function prepareFocus(id: string): string {
+      var threadId = String(id || "").trim()
+      if (threadId !== "") root.service.activeThreadId = threadId
+      root.requestOpen()
+      // activeThreadIdChanged follows a changed session; onOpenedChanged does
+      // the same on first mapping. The explicit call also restores the active
+      // row when the already-open, unfocused sidebar had another selection.
+      root.sidebarActions.followActiveThread(true)
+      var point
+      try { point = JSON.parse(root.sidebarActions.visibleListCursorPoint()) }
+      catch (error) { point = ({ x: 1, y: 1 }) }
+      return JSON.stringify({
+        x: Number(point.x || 1),
+        y: Number(point.y || 1),
+        presented: root.sidebarPresented
+      })
+    }
     function followThread(id: string): string {
       var threadId = String(id || "").trim()
       if (threadId === "") return ""
@@ -897,6 +1014,9 @@ Panel {
         helpOpen: root.helpOpen,
         sidebarFocused: root.sidebarFocused,
         sidebarOpen: root.service.sidebarOpen,
+        sidebarOpenOnWorkspace: root.service.sidebarOpenOnWorkspace(root.activeWorkspaceId),
+        activeWorkspaceId: root.activeWorkspaceId,
+        sidebarScope: root.service.sidebarScope,
         sidebarPresented: root.sidebarPresented,
         fullscreenSuppressed: root.fullscreenSuppressed,
         fullscreenInternalState: root.fullscreenInternalState,
@@ -1034,6 +1154,7 @@ Panel {
         id: keyCatcher
         anchors.fill: parent
         blocked: searchField.activeFocus
+          || renameField.activeFocus
           || remoteSetup.inputFocused
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
@@ -1064,6 +1185,7 @@ Panel {
       }
       onCloseRequested: {
         if (providerMenu.opened) providerMenu.close()
+        else if (root.renameOpen) root.cancelRename()
         else if (root.remoteSetupOpen) root.closeRemoteSetup()
         else if (root.helpOpen) root.helpOpen = false
         else if (root.searchText !== "" || root.searchOpen) root.cancelSearch()
@@ -1083,7 +1205,7 @@ Panel {
           root.helpOpen = !root.helpOpen
           return
         }
-        if ((text === "r" || text === "R")
+        if (text === "R"
             && (root.activeProvider === "codex" || root.activeProvider === "claude"
                 || root.activeProvider === "opencode")) {
           root.openRemoteSetup()
@@ -1107,6 +1229,14 @@ Panel {
           root.sidebarActions.togglePinSelected()
           return
         }
+        if (text === "r") {
+          root.startRename()
+          return
+        }
+        if (text === "g" || text === "G") {
+          root.toggleSidebarScope()
+          return
+        }
         if (text === "n" || text === "N") root.sidebarActions.newSelectedThread()
       }
 
@@ -1122,13 +1252,14 @@ Panel {
           Text {
             id: headerTitle
             anchors.left: parent.left
-            anchors.right: newThreadButton.left
+            anchors.right: sidebarScopeButton.left
             anchors.rightMargin: Style.space(8)
             height: parent.height
             text: root.remoteSetupOpen ? "ADD REMOTE"
+              : (root.renameOpen ? "RENAME THREAD"
               : (root.helpOpen
                   ? root.providerLabel() + " · HELP"
-                  : root.providerLabel() + "  ▾")
+                  : root.providerLabel() + "  ▾"))
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.title
@@ -1138,7 +1269,7 @@ Panel {
 
             MouseArea {
               anchors.fill: parent
-              enabled: !root.remoteSetupOpen && !root.helpOpen
+              enabled: !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: {
@@ -1146,6 +1277,26 @@ Panel {
                 else providerMenu.open()
               }
             }
+          }
+
+          PanelActionButton {
+            id: sidebarScopeButton
+            visible: !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
+            anchors.right: newThreadButton.left
+            anchors.rightMargin: Style.space(4)
+            anchors.top: parent.top
+            anchors.topMargin: -Style.space(6)
+            width: visible ? implicitWidth : 0
+            size: Style.space(24)
+            iconText: root.service.sidebarScope === "global" ? "󰖟" : "󰍹"
+            tooltipText: root.service.sidebarScope === "global"
+              ? "Sidebar scope: all workspaces"
+              : "Sidebar scope: this workspace"
+            foreground: root.service.sidebarScope === "global" ? Color.accent : root.dim
+            hoverColor: Color.accent
+            fontFamily: root.fontFamily
+            fontSize: Style.font.body
+            onClicked: root.toggleSidebarScope()
           }
 
           Popup {
@@ -1248,7 +1399,7 @@ Panel {
 
           Item {
             id: newThreadButton
-            visible: !root.remoteSetupOpen && !root.helpOpen
+            visible: !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
             anchors.right: remoteButton.left
             anchors.rightMargin: Style.space(4)
             anchors.top: parent.top
@@ -1275,8 +1426,8 @@ Panel {
 
           Item {
             id: remoteButton
-            visible: root.activeProvider === "codex" || root.activeProvider === "claude"
-              || root.activeProvider === "opencode"
+            visible: !root.renameOpen && (root.activeProvider === "codex"
+              || root.activeProvider === "claude" || root.activeProvider === "opencode")
             anchors.right: helpButton.left
             anchors.rightMargin: Style.space(4)
             anchors.top: parent.top
@@ -1356,6 +1507,7 @@ Panel {
               return "Loading saved " + root.providerLabel() + " threads…"
             if (root.activeProvider === "codex" && root.service.movingThreadId !== "")
               return "Moving thread to project…"
+            if (root.service.renamingThreadId !== "") return "Renaming thread…"
             if (root.activeProvider === "codex" && root.service.archivingThreadId !== "")
               return "Archiving thread…"
             if (root.activeProvider === "codex" && root.service.pinningThreadId !== "")
@@ -1373,6 +1525,36 @@ Panel {
           font.pixelSize: Style.font.caption
           elide: Text.ElideRight
           verticalAlignment: Text.AlignVCenter
+        }
+
+        TextField {
+          id: renameField
+          visible: root.renameOpen
+          width: parent.width
+          height: Style.space(34)
+          placeholderText: "Thread name…"
+          maximumLength: 200
+          foreground: root.foreground
+          accent: Color.accent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          verticalPadding: Style.space(5)
+          selectByMouse: true
+          onActiveFocusChanged: if (activeFocus) root.keyboardFocusRequested = true
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape) {
+              root.cancelRename()
+              event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+              root.submitRename()
+              event.accepted = true
+            } else if (event.key === Qt.Key_U && (event.modifiers & Qt.ControlModifier)) {
+              text = ""
+              event.accepted = true
+            }
+          }
         }
 
         TextField {

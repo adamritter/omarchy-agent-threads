@@ -15,6 +15,7 @@ Item {
   property int initializeRequestId: 0
   property int listRequestId: 0
   property int archiveRequestId: 0
+  property int renameRequestId: 0
   property int pinRequestId: 0
   property int projectListRequestId: 0
   property int projectCreateRequestId: 0
@@ -43,6 +44,7 @@ Item {
     controller.activeThreadId = ""
     controller.errorText = ""
     controller.movingThreadId = ""
+    controller.renamingThreadId = ""
     controller.pinningThreadId = ""
     controller.pendingPinValue = false
     controller.pendingMovePath = ""
@@ -202,6 +204,17 @@ Item {
     return false
   }
 
+  function renameThread(threadId, name) {
+    renameRequestId = nextRequestId++
+    if (send({
+      method: "thread/name/set",
+      id: renameRequestId,
+      params: { threadId: threadId, name: name }
+    })) return true
+    renameRequestId = 0
+    return false
+  }
+
   function setThreadPinned(threadId, pinned, sectionId) {
     pinRequestId = nextRequestId++
     if (send({
@@ -299,6 +312,14 @@ Item {
       }
       return
     }
+    if (message.id === renameRequestId && renameRequestId !== 0) {
+      renameRequestId = 0
+      controller.renamingThreadId = ""
+      if (message.error)
+        controller.errorText = String(message.error.message || "Could not rename the Codex thread")
+      else controller.scheduleEventRefresh()
+      return
+    }
     if (message.id === pinRequestId && pinRequestId !== 0) {
       var pinnedThreadId = controller.pinningThreadId
       var pinnedValue = controller.pendingPinValue
@@ -360,6 +381,8 @@ Item {
       root.loading = false
       if (root.archiveRequestId !== 0) root.controller.restoreArchivedThread()
       root.archiveRequestId = 0
+      root.renameRequestId = 0
+      root.controller.renamingThreadId = ""
       root.pinRequestId = 0
       root.controller.pinningThreadId = ""
       root.controller.pendingPinValue = false

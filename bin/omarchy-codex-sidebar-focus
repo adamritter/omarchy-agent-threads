@@ -16,17 +16,17 @@ if [[ "$cursor_origin" =~ ^[[:space:]]*(-?[0-9]+)[[:space:]]*,[[:space:]]*(-?[0-
   origin_y="${BASH_REMATCH[2]}"
 fi
 
-# Mapping the sidebar does not take keyboard focus by itself. This lets us
-# locate the current thread while the Codex terminal is still the active app.
-omarchy-shell -q "$target" open >/dev/null
-if [[ -n "$active_thread_id" ]]; then
-  for _ in {1..80}; do
-    followed_row="$(
-      omarchy-shell "$target" followThread "$active_thread_id" 2>/dev/null || true
-    )"
-    [[ "$followed_row" == thread:*:"$active_thread_id" ]] && break
-    sleep 0.025
-  done
+# Open, select the active thread, lay out its row, and return its cursor target
+# in one Quickshell IPC turn. If the thread is still loading, the plugin returns
+# the visible list center and follows the session when its model arrives.
+point="$(
+  omarchy-shell "$target" prepareFocus "$active_thread_id" 2>/dev/null || true
+)"
+
+# Fullscreen workspaces intentionally suppress the sidebar; do not spend a
+# second polling for a layer surface that cannot be mapped there.
+if jq -e '.presented == false' >/dev/null 2>&1 <<<"$point"; then
+  exit 0
 fi
 
 layer=""
@@ -46,7 +46,6 @@ for _ in {1..40}; do
 done
 
 if [[ -n "$layer" ]]; then
-  point="$(omarchy-shell "$target" cursorPoint 2>/dev/null || true)"
   if ! jq -e --argjson layer "$layer" \
       '(.x | numbers) and (.y | numbers)
        and .x >= 1 and .y >= 1 and .x < $layer.w and .y < $layer.h' \
@@ -63,8 +62,8 @@ if [[ -n "$layer" ]]; then
     "hl.dsp.cursor.move({ x = ${target_x}, y = ${target_y} })" >/dev/null 2>&1 || true
 fi
 
-# Acquire keyboard focus only after the cursor is inside the active row, so
-# input:follow_mouse cannot immediately return focus to the previous window.
+# Acquire keyboard focus immediately after the cursor is inside the sidebar;
+# this ordering is required when Hyprland input:follow_mouse is enabled.
 if [[ -n "$origin_x" && -n "$origin_y" ]]; then
   omarchy-shell -q "$target" focusFrom "$origin_x" "$origin_y" >/dev/null
 else

@@ -18,6 +18,8 @@ printf '%s\n' \
   '[[ -s "$REMOTE_OPENCODE_HELPER" ]]' \
   'if [[ "$remote_command" == *opencode*archive*ses_remote_fixture* ]]; then' \
   '  printf "%s\n" '\''{"ok":true}'\''' \
+  'elif [[ "$remote_command" == *opencode*rename*ses_remote_fixture* ]]; then' \
+  '  printf "%s\n" '\''{"ok":true}'\''' \
   'elif [[ "$remote_command" == *opencode*pin*ses_remote_fixture* ]]; then' \
   '  printf "%s\n" '\''{"ok":true}'\''' \
   'else' \
@@ -50,10 +52,15 @@ jq -e '
   "$config" remote-opencode pin ses_remote_fixture true | jq -e '.ok == true' >/dev/null
 "$plugin_root/bin/omarchy-codex-remote-query" \
   "$config" remote-opencode archive ses_remote_fixture /work | jq -e '.ok == true' >/dev/null
+"$plugin_root/bin/omarchy-codex-remote-query" \
+  "$config" remote-opencode rename ses_remote_fixture /work "Remote renamed" \
+  | jq -e '.ok == true' >/dev/null
 
 grep -F -- "serve --hostname 127.0.0.1 --port 43962" "$ssh_log" >/dev/null
 grep -F -- "OpenCode API did not become ready within 30 seconds" "$ssh_log" >/dev/null
 grep -F -- " opencode 'archive' 'ses_remote_fixture' '/work' ''" "$ssh_log" >/dev/null
 grep -F -- " opencode 'pin' 'ses_remote_fixture' '' 'true'" "$ssh_log" >/dev/null
+grep -F -- " opencode 'rename' 'ses_remote_fixture' '/work' '' 'Remote renamed'" \
+  "$ssh_log" >/dev/null
 
 printf '%s\n' "remote-opencode tests passed"

@@ -399,6 +399,30 @@ Item {
     actionProcess.running = true
   }
 
+  function renameThread(hostId, thread, name) {
+    var id = String(thread && thread.id || "")
+    if (id === "" || actionProcess.running) return false
+    actionHostId = String(hostId || "")
+    actionKind = "rename"
+    actionThreadId = id
+    controller.renamingThreadId = id
+    controller.launchError = ""
+    var host = hostById(actionHostId)
+    if (!host) {
+      actionHostId = ""
+      actionKind = ""
+      actionThreadId = ""
+      controller.renamingThreadId = ""
+      return false
+    }
+    actionProcess.command = [
+      queryHelperPath, configPath, actionHostId, "rename", id,
+      pathForThread(host, thread), name
+    ]
+    actionProcess.running = true
+    return true
+  }
+
   function toggleThreadPin(hostId, thread) {
     var id = String(thread && thread.id || "")
     if (id === "" || actionProcess.running || controller.pinningThreadId !== "") return
@@ -603,6 +627,7 @@ Item {
       }
       if (kind === "archive") root.controller.archivingThreadId = ""
       if (kind === "pin") root.controller.pinningThreadId = ""
+      if (kind === "rename") root.controller.renamingThreadId = ""
       root.actionHostId = ""
       root.actionKind = ""
       root.actionThreadId = ""

@@ -18,7 +18,7 @@ function loadMetadata() {
 }
 
 function cleanText(value) {
-  return String(value || "").replace(/\\s+/g, " ").trim()
+  return String(value || "").replace(/\s+/g, " ").trim()
 }
 
 function projectList(threads) {
@@ -272,3 +272,12 @@ export async function archiveOpenCode(threadID, threadPath) {
   })
 }
 
+export async function renameOpenCode(threadID, threadPath, title) {
+  const name = cleanText(title).slice(0, 200)
+  if (!threadID) throw new Error("missing session id")
+  if (!name) throw new Error("missing session name")
+  return requestOpenCode(`/session/${encodeURIComponent(threadID)}?directory=${encodeURIComponent(threadPath || home)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title: name })
+  })
+}

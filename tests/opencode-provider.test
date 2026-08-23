@@ -60,6 +60,11 @@ jq -e --arg cwd "$project_dir" '
 run_helper pin ses_opencode_fixture "$project_dir" true >/dev/null
 run_helper snapshot | jq -e '.threads[0].isPinned == true' >/dev/null
 
+run_helper rename ses_opencode_fixture "$project_dir" "Renamed OpenCode session" >/dev/null
+run_helper snapshot | jq -e '.threads[0].name == "Renamed OpenCode session"' >/dev/null
+grep -F 'PATCH /session/ses_opencode_fixture {"title":"Renamed OpenCode session"}' \
+  "$action_log" >/dev/null
+
 run_helper archive ses_opencode_fixture "$project_dir" >/dev/null
 grep -F 'PATCH /session/ses_opencode_fixture {"time":{"archived":' "$action_log" >/dev/null
 

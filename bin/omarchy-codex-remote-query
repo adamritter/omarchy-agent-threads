@@ -8,7 +8,7 @@ import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 const [configPath = "", hostId = "", action = "snapshot", actionValue = "",
-  actionExtra = ""] = process.argv.slice(2)
+  actionExtra = "", actionName = ""] = process.argv.slice(2)
 const timeoutMs = 60000
 const pinnedSectionId = "01984de2-8f74-7c91-a3b2-5c5e937cf318"
 let nextRequestId = 1
@@ -146,8 +146,8 @@ function runRemoteClaude(host) {
   if (!/^[A-Za-z0-9_.@:-]+$/.test(sshHost)) fail("invalid SSH host or alias")
   const claudeCommand = String(host.claudeCommand || "claude").trim()
   if (!/^[A-Za-z0-9_./-]+$/.test(claudeCommand)) fail("invalid remote Claude command")
-  if (!["snapshot", "archive", "pin"].includes(action)) fail("unsupported Claude action")
-  if ((action === "archive" || action === "pin")
+  if (!["snapshot", "archive", "pin", "rename"].includes(action)) fail("unsupported Claude action")
+  if ((action === "archive" || action === "pin" || action === "rename")
       && !/^[A-Za-z0-9._-]+$/.test(actionValue)) fail("invalid Claude session id")
   if (action === "pin" && actionExtra !== "true" && actionExtra !== "false")
     fail("invalid pin value")
@@ -157,7 +157,7 @@ function runRemoteClaude(host) {
   const helperSource = fs.readFileSync(helperPath, "utf8")
   const remoteCommand = `OMARCHY_CLAUDE_COMMAND=${shellQuote(claudeCommand)} `
     + `node --input-type=module - claude ${shellQuote(action)} `
-    + `${shellQuote(actionValue)} '' ${shellQuote(actionExtra)}`
+    + `${shellQuote(actionValue)} '' ${shellQuote(action === "rename" ? actionName : actionExtra)}`
   const child = spawn("ssh", [
     "-T",
     "-o", "BatchMode=yes",
@@ -215,8 +215,8 @@ function runRemoteOpenCode(host) {
   const openCodePort = Number(host.opencodePort || 43962)
   if (!Number.isInteger(openCodePort) || openCodePort < 1024 || openCodePort > 65535)
     fail("invalid remote OpenCode port")
-  if (!["snapshot", "archive", "pin"].includes(action)) fail("unsupported OpenCode action")
-  if ((action === "archive" || action === "pin")
+  if (!["snapshot", "archive", "pin", "rename"].includes(action)) fail("unsupported OpenCode action")
+  if ((action === "archive" || action === "pin" || action === "rename")
       && !/^[A-Za-z0-9._-]+$/.test(actionValue)) fail("invalid OpenCode session id")
   if (action === "pin" && actionExtra !== "true" && actionExtra !== "false")
     fail("invalid pin value")
@@ -225,7 +225,7 @@ function runRemoteOpenCode(host) {
     "lib", "opencode-provider.mjs")
   const providerSource = fs.readFileSync(helperPath, "utf8").replace(/^export /gm, "")
   const launcherSource = `
-const [, requestedAction = "snapshot", sessionID = "", sessionPath = "", pinValue = ""] = process.argv.slice(2)
+const [, requestedAction = "snapshot", sessionID = "", sessionPath = "", pinValue = "", renameValue = ""] = process.argv.slice(2)
 async function runRemoteOpenCodeHelper() {
   if (requestedAction === "snapshot") {
     process.stdout.write(JSON.stringify(await openCodeSnapshot()) + "\\n")
@@ -233,6 +233,11 @@ async function runRemoteOpenCodeHelper() {
   }
   if (requestedAction === "archive") {
     await archiveOpenCode(sessionID, sessionPath)
+    process.stdout.write(JSON.stringify({ ok: true }) + "\\n")
+    return
+  }
+  if (requestedAction === "rename") {
+    await renameOpenCode(sessionID, sessionPath, renameValue)
     process.stdout.write(JSON.stringify({ ok: true }) + "\\n")
     return
   }
@@ -272,12 +277,14 @@ runRemoteOpenCodeHelper().catch(error => {
     + `i=$((i + 1)); sleep 0.25; done; fi; `
     + `curl -fsS --max-time 2 ${shellQuote(serverURL + "/global/health")} >/dev/null 2>&1 `
     + `|| { echo 'OpenCode API did not become ready within 30 seconds' >&2; exit 70; }; `
-  const threadPath = action === "archive" ? actionExtra : ""
+  const threadPath = action === "archive" || action === "rename" ? actionExtra : ""
   const pinValue = action === "pin" ? actionExtra : ""
+  const renameValue = action === "rename" ? actionName : ""
   const remoteCommand = ensureServer
     + `XDG_RUNTIME_DIR="$HOME/.cache/omarchy-codex-threads-runtime" `
     + `OMARCHY_OPENCODE_URL=${shellQuote(serverURL)} node --input-type=module - opencode `
-    + `${shellQuote(action)} ${shellQuote(actionValue)} ${shellQuote(threadPath)} ${shellQuote(pinValue)}`
+    + `${shellQuote(action)} ${shellQuote(actionValue)} ${shellQuote(threadPath)} ${shellQuote(pinValue)} `
+    + shellQuote(renameValue)
   const child = spawn("ssh", [
     "-T",
     "-o", "BatchMode=yes",
@@ -368,6 +375,16 @@ async function main() {
   if (action === "archive") {
     if (!/^[A-Za-z0-9._-]+$/.test(actionValue)) fail("invalid thread id")
     await request("thread/archive", { threadId: actionValue })
+    process.stdout.write(JSON.stringify({ hostId, action, ok: true }) + "\n")
+    transport.close()
+    return
+  }
+
+  if (action === "rename") {
+    if (!/^[A-Za-z0-9._-]+$/.test(actionValue)) fail("invalid thread id")
+    const name = String(actionName || "").replace(/\s+/g, " ").trim().slice(0, 200)
+    if (!name) fail("missing thread name")
+    await request("thread/name/set", { threadId: actionValue, name })
     process.stdout.write(JSON.stringify({ hostId, action, ok: true }) + "\n")
     transport.close()
     return

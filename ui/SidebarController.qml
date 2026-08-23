@@ -70,6 +70,10 @@ Item {
     else service.archiveThread(row.thread)
   }
 
+  function renameSelected() {
+    panel.startRename()
+  }
+
   function togglePin(remoteId, thread) {
     if (!thread || !thread.id) return
     if (remoteId) service.toggleRemoteThreadPin(remoteId, thread)
@@ -197,6 +201,18 @@ Item {
     var activeThreadProvider = activeHost
       ? String(activeHost.providerType || "codex") : "codex"
     if (activeThreadProvider !== panel.activeProvider) return
+
+    // The common focus path already has the active row in view. Select it
+    // directly instead of rebuilding the complete grouped model again.
+    var visibleIndex = rowIndexForThread(activeId)
+    if (visibleIndex >= 0) {
+      followedActiveThreadId = activeId
+      panel.selectedIndex = visibleIndex
+      if (panel.opened) Qt.callLater(function() {
+        listView.positionViewAtIndex(visibleIndex, ListView.Contain)
+      })
+      return
+    }
     if (activeRemoteId !== "") {
       path = service.remotePathForThread(activeHost, activeThread)
       if (force && panel.remoteCollapsed(activeRemoteId)) {

@@ -104,6 +104,7 @@ the scratchpad/Quakes with `Super+grave`, so that function remains available.
 | `n` | Create a thread in the selected directory |
 | `p` | Pin or unpin the selected item |
 | `P` | Select provider |
+| `r` | Rename the selected thread |
 | `y` | Archive the selected thread |
 | `/` | Search |
 | `R` | Add an SSH or App Server remote |

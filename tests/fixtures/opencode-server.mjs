@@ -62,7 +62,11 @@ const server = http.createServer((request, response) => {
     request.on("data", chunk => { body += chunk })
     request.on("end", () => {
       fs.appendFileSync(actionLog, `${request.method} ${url.pathname} ${body}\n`)
-      send(200, { ...session, time: { ...session.time, archived: Date.now() } })
+      const patch = JSON.parse(body || "{}")
+      if (typeof patch.title === "string") session.title = patch.title
+      if (patch.time && patch.time.archived)
+        session.time = { ...session.time, archived: patch.time.archived }
+      send(200, session)
     })
     return
   }
@@ -72,4 +76,3 @@ const server = http.createServer((request, response) => {
 server.listen(0, "127.0.0.1", () => {
   fs.writeFileSync(portFile, String(server.address().port))
 })
-

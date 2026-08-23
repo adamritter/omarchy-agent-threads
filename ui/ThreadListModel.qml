@@ -204,7 +204,7 @@ Item {
         return String(a.path || "").localeCompare(String(b.path || ""))
       })
 
-      function appendRemoteProject(rows, remoteEntry, pinnedOnly) {
+      function appendRemoteProject(rows, remoteEntry) {
         var remoteProjectThreads = remoteGroups[remoteEntry.path] || []
         var pinnedProjectThreads = remotePinnedGroups[remoteEntry.path] || []
         rows.push({
@@ -230,7 +230,7 @@ Item {
             thread: pinnedProjectThreads[pinnedThreadIndex]
           })
         }
-        if (pinnedOnly === true || projectCollapsed(remoteEntry.path, host.id)) return
+        if (projectCollapsed(remoteEntry.path, host.id)) return
         var remoteProjectShownCount = groupShowsAll(
           "project", remoteEntry.path, host.id)
           ? remoteProjectThreads.length
@@ -307,7 +307,7 @@ Item {
         for (var pinnedProjectIndex = 0;
              pinnedProjectIndex < pinnedRemoteProjects.length;
              pinnedProjectIndex++) {
-          appendRemoteProject(remoteRows, pinnedRemoteProjects[pinnedProjectIndex], true)
+          appendRemoteProject(remoteRows, pinnedRemoteProjects[pinnedProjectIndex])
         }
         appendBlock(remoteRows, newestThreadTimestamp(matchingThreads),
           sectionPinned("remote", "", host.id))

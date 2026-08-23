@@ -27,6 +27,7 @@ Item {
   property string launchingThreadId: ""
   property string launchingProjectPath: ""
   property string archivingThreadId: ""
+  property string renamingThreadId: ""
   property string pinningThreadId: ""
   property bool pendingPinValue: false
   property var archivedThreadSnapshot: null
@@ -59,6 +60,10 @@ Item {
   readonly property alias sshHostsError: remoteProvider.sshHostsError
   property bool sidebarSettingsLoaded: false
   property bool hydratingSidebarSettings: false
+  property bool migrateOpenSidebarToActiveWorkspace: false
+  property string sidebarScope: "workspace"
+  property bool globalSidebarOpen: false
+  property var sidebarOpenWorkspaces: ({})
   property var collapsedProjects: ({})
   property var collapsedRemotes: ({})
   property var pinnedSections: ({})
@@ -74,7 +79,13 @@ Item {
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME")
     || (Quickshell.env("HOME") + "/.local/state")
   readonly property string sidebarSettingsPath: stateHome + "/omarchy/codex-threads.json"
-  readonly property alias sidebarOpen: persisted.sidebarOpen
+  readonly property bool sidebarOpen: {
+    if (sidebarScope === "global") return globalSidebarOpen
+    var states = sidebarOpenWorkspaces
+    for (var workspaceId in states)
+      if (states[workspaceId] === true) return true
+    return false
+  }
   readonly property alias selectedProvider: persisted.selectedProvider
   readonly property alias selectedModel: persisted.selectedModel
   readonly property alias selectedEffort: persisted.selectedEffort
@@ -107,6 +118,15 @@ Item {
     if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
   }
   onPinnedSectionsChanged: {
+    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
+  }
+  onSidebarOpenWorkspacesChanged: {
+    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
+  }
+  onSidebarScopeChanged: {
+    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
+  }
+  onGlobalSidebarOpenChanged: {
     if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
   }
 
@@ -222,6 +242,17 @@ Item {
       return
     }
     remoteProvider.archiveThread(hostId, thread)
+  }
+
+  function renameRemoteThread(hostId, thread, name) {
+    var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
+    if (normalized === "" || renamingThreadId !== "") return false
+    var provider = localAgentProvider(hostId)
+    var started = provider
+      ? provider.renameThread(thread, normalized)
+      : remoteProvider.renameThread(hostId, thread, normalized)
+    if (!started) launchError = "Could not start the thread rename"
+    return !!started
   }
 
   function toggleRemoteThreadPin(hostId, thread) {
@@ -571,6 +602,20 @@ Item {
     }
   }
 
+  function renameThread(thread, name) {
+    var id = String(thread && thread.id || "")
+    var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
+    if (id === "" || normalized === "" || renamingThreadId !== "") return false
+    renamingThreadId = id
+    errorText = ""
+    if (!appServerClient.renameThread(id, normalized)) {
+      renamingThreadId = ""
+      errorText = "Could not reach the Codex App Server"
+      return false
+    }
+    return true
+  }
+
   function toggleThreadPin(thread) {
     var id = String(thread && thread.id || "")
     if (id === "" || pinningThreadId !== "") return
@@ -662,8 +707,47 @@ Item {
     eventRefresh.restart()
   }
 
-  function setSidebarOpen(value) {
-    persisted.sidebarOpen = !!value
+  function sidebarOpenOnWorkspace(workspaceId) {
+    if (sidebarScope === "global") return globalSidebarOpen
+    var id = String(workspaceId || "")
+    return id !== "" && sidebarOpenWorkspaces[id] === true
+  }
+
+  function setSidebarOpenOnWorkspace(workspaceId, value) {
+    if (sidebarScope === "global") {
+      globalSidebarOpen = !!value
+      return
+    }
+    var id = String(workspaceId || "")
+    if (id === "" || id === "0") return
+    var next = Object.assign({}, sidebarOpenWorkspaces)
+    if (value) next[id] = true
+    else delete next[id]
+    sidebarOpenWorkspaces = next
+  }
+
+  function setSidebarScope(value, workspaceId, visibleNow) {
+    var nextScope = value === "global" ? "global" : "workspace"
+    if (nextScope === sidebarScope) return
+    var id = String(workspaceId || "")
+    if (id === "" || id === "0") return
+    var currentlyOpen = visibleNow === undefined
+      ? sidebarOpenOnWorkspace(id) : !!visibleNow
+    if (nextScope === "global") {
+      globalSidebarOpen = currentlyOpen
+    } else if (id !== "" && id !== "0") {
+      var next = Object.assign({}, sidebarOpenWorkspaces)
+      if (currentlyOpen) next[id] = true
+      else delete next[id]
+      sidebarOpenWorkspaces = next
+    }
+    sidebarScope = nextScope
+  }
+
+  function migrateSidebarOpenState(workspaceId) {
+    if (!migrateOpenSidebarToActiveWorkspace) return
+    migrateOpenSidebarToActiveWorkspace = false
+    setSidebarOpenOnWorkspace(workspaceId, true)
   }
 
   function setSelectedProvider(value) {
@@ -697,7 +781,17 @@ Item {
 
     if (parsed) {
       hydratingSidebarSettings = true
-      if (typeof parsed.open === "boolean") persisted.sidebarOpen = parsed.open
+      var parsedOpenWorkspaces = parsed.openWorkspaces
+        && typeof parsed.openWorkspaces === "object"
+        && !Array.isArray(parsed.openWorkspaces)
+        ? Object.assign({}, parsed.openWorkspaces) : ({})
+      sidebarOpenWorkspaces = parsedOpenWorkspaces
+      sidebarScope = parsed.scope === "global" ? "global" : "workspace"
+      globalSidebarOpen = typeof parsed.globalOpen === "boolean"
+        ? parsed.globalOpen : parsed.open === true
+      migrateOpenSidebarToActiveWorkspace = Object.keys(parsedOpenWorkspaces).length === 0
+        && parsed.open === true
+      persisted.sidebarOpen = parsed.open === true
       if (parsed.provider === "codex" || parsed.provider === "claude"
           || parsed.provider === "opencode")
         persisted.selectedProvider = parsed.provider
@@ -722,15 +816,18 @@ Item {
     }
 
     sidebarSettingsLoaded = true
-    if (!parsed || Number(parsed.version || 0) < 9) sidebarSaveTimer.restart()
+    if (!parsed || Number(parsed.version || 0) < 11) sidebarSaveTimer.restart()
     startAppServer()
   }
 
   function flushSidebarSettings() {
     if (!sidebarSettingsLoaded) return
     sidebarSettingsFile.setText(JSON.stringify({
-      version: 9,
-      open: persisted.sidebarOpen,
+      version: 11,
+      open: sidebarOpen,
+      scope: sidebarScope,
+      globalOpen: globalSidebarOpen,
+      openWorkspaces: sidebarOpenWorkspaces,
       provider: persisted.selectedProvider,
       model: persisted.selectedModel,
       effort: persisted.selectedEffort,
