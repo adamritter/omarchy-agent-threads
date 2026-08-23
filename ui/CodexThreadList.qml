@@ -126,7 +126,8 @@ ListView {
       id: statusCircle
       visible: row.busy || row.blocked || row.unread
       anchors.left: parent.left
-      anchors.leftMargin: Style.space(2)
+      anchors.leftMargin: Style.space(2 + (row.groupedThread
+        ? Number(row.modelData.depth || 1) * 18 : 0))
       anchors.verticalCenter: parent.verticalCenter
       width: Style.space(14)
       height: width
@@ -496,8 +497,7 @@ ListView {
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
       anchors.leftMargin: Style.space(row.groupedThread
-        ? ((Number(row.modelData.depth || 1) * 18)
-           + (row.busy || row.blocked || row.unread ? 8 : 26))
+        ? (Number(row.modelData.depth || 1) * 18 + 26)
         : 22)
       anchors.rightMargin: Style.space(68)
       spacing: Style.space(2)
