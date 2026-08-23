@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t agent-threads-directory-picker-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+helper="$plugin_root/bin/omarchy-agent-directory-picker"
+
+mkdir -p -- "$test_root/alpha" "$test_root/Beta" "$test_root/file-dir"
+printf '%s\n' "not a directory" > "$test_root/plain-file"
+
+listing="$($helper local - list "$test_root")"
+jq -e --arg path "$test_root" '.path == $path' <<<"$listing" >/dev/null
+jq -e '.entries | map(.name) == ["alpha", "Beta", "file-dir"]' <<<"$listing" >/dev/null
+
+created="$($helper local - mkdir "$test_root" "new project")"
+jq -e --arg path "$test_root/new project" '.path == $path and .entries == []' \
+  <<<"$created" >/dev/null
+[[ -d "$test_root/new project" ]]
+
+if $helper local - mkdir "$test_root" "../escape" >/dev/null 2>&1; then
+  echo "Directory picker unexpectedly accepted a path separator" >&2
+  exit 1
+fi
+
+if $helper ssh 'bad host!' list / >/dev/null 2>&1; then
+  echo "Directory picker unexpectedly accepted an invalid SSH host" >&2
+  exit 1
+fi
+
+printf '%s\n' "directory-picker tests passed"

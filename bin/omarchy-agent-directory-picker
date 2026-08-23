@@ -1,0 +1,131 @@
+#!/usr/bin/env node
+
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import { spawn } from "node:child_process"
+import { fileURLToPath } from "node:url"
+
+const [mode = "local", target = "-", action = "list", rawPath = "", folderName = ""] =
+  process.argv.slice(2)
+
+function result(value, exitCode = 0) {
+  process.stdout.write(JSON.stringify(value) + "\n")
+  process.exitCode = exitCode
+}
+
+function fail(message) {
+  result({ error: String(message || "Directory operation failed") }, 2)
+}
+
+function expandedPath(value) {
+  const requested = String(value || "").trim()
+  const expanded = requested === "" || requested === "~" ? os.homedir()
+    : requested.startsWith("~/") ? path.join(os.homedir(), requested.slice(2))
+      : requested
+  return path.resolve(expanded)
+}
+
+function directoryEntry(parent, entry) {
+  const entryPath = path.join(parent, entry.name)
+  try {
+    if (!entry.isDirectory() && !(entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory()))
+      return null
+  } catch {
+    return null
+  }
+  return { name: entry.name, path: entryPath }
+}
+
+function listDirectory(value) {
+  const requestedPath = expandedPath(value)
+  const stat = fs.statSync(requestedPath)
+  if (!stat.isDirectory()) throw new Error("The selected path is not a directory")
+  const currentPath = fs.realpathSync(requestedPath)
+  const allEntries = fs.readdirSync(currentPath, { withFileTypes: true })
+    .map(entry => directoryEntry(currentPath, entry))
+    .filter(Boolean)
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, {
+      numeric: true,
+      sensitivity: "base"
+    }))
+  const entries = allEntries.slice(0, 2000)
+  return {
+    path: currentPath,
+    parent: path.dirname(currentPath),
+    home: os.homedir(),
+    entries,
+    truncated: allEntries.length > entries.length
+  }
+}
+
+function createDirectory(parentValue, nameValue) {
+  const parentPath = expandedPath(parentValue)
+  const name = String(nameValue || "").trim()
+  if (name === "" || name === "." || name === ".." || name.includes("/")
+      || name.includes("\0") || Buffer.byteLength(name) > 255)
+    throw new Error("Enter a valid single folder name")
+  const stat = fs.statSync(parentPath)
+  if (!stat.isDirectory()) throw new Error("The parent path is not a directory")
+  const createdPath = path.join(fs.realpathSync(parentPath), name)
+  fs.mkdirSync(createdPath, { mode: 0o755 })
+  return listDirectory(createdPath)
+}
+
+function runLocal() {
+  try {
+    if (action === "list") result(listDirectory(rawPath))
+    else if (action === "mkdir") result(createDirectory(rawPath, folderName))
+    else fail("Unknown directory operation")
+  } catch (error) {
+    fail(error && error.message ? error.message : error)
+  }
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'"'"'`)}'`
+}
+
+function runRemote() {
+  const sshHost = String(target || "").trim()
+  if (!/^[A-Za-z0-9_.@:-]+$/.test(sshHost)) {
+    fail("Invalid SSH host or alias")
+    return
+  }
+
+  const helperSource = fs.readFileSync(fileURLToPath(import.meta.url), "utf8")
+  const remoteArguments = ["local", "-", action, rawPath, folderName]
+    .map(shellQuote).join(" ")
+  const child = spawn("ssh", [
+    "-T",
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=8",
+    sshHost,
+    `node --input-type=module - ${remoteArguments}`
+  ], { stdio: ["pipe", "pipe", "pipe"] })
+  let stdout = ""
+  let stderr = ""
+  let finished = false
+  const timeout = setTimeout(() => child.kill("SIGTERM"), 20000)
+  child.stdout.on("data", chunk => { stdout += String(chunk) })
+  child.stderr.on("data", chunk => { stderr += String(chunk) })
+  child.on("error", error => {
+    if (finished) return
+    finished = true
+    clearTimeout(timeout)
+    fail(error.message)
+  })
+  child.on("close", exitCode => {
+    if (finished) return
+    finished = true
+    clearTimeout(timeout)
+    if (stdout.trim() !== "") process.stdout.write(stdout)
+    else fail(stderr.trim() || `SSH directory operation exited with code ${exitCode}`)
+    if (exitCode !== 0) process.exitCode = exitCode || 2
+  })
+  child.stdin.end(helperSource)
+}
+
+if (mode === "local") runLocal()
+else if (mode === "ssh") runRemote()
+else fail("Unknown directory picker mode")

@@ -17,7 +17,11 @@ done < <(find "$plugin_dir/bin" -maxdepth 1 -type f -exec grep -Il '^#!/usr/bin/
 
 while IFS= read -r file; do
   qmllint "$file"
-done < <(find "$plugin_dir/services" "$plugin_dir/providers" "$plugin_dir/ui" \
-  -maxdepth 1 -type f -name '*.qml' | sort)
+done < <(find "$plugin_dir/services" "$plugin_dir/providers" \
+  "$plugin_dir/ui" -type f -name '*.qml' | sort)
+
+while IFS= read -r file; do
+  qmllint "$file"
+done < <(find "$plugin_dir/logic" -maxdepth 1 -type f -name '*.js' | sort)
 
 printf 'Static checks passed.\n'

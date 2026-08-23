@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$(cd -- "${script_dir}/.." && pwd)"
+
+if (( $# > 0 )); then
+  test_files=("$@")
+else
+  test_files=("$plugin_dir"/tests/*.test)
+fi
+
+for test_file in "${test_files[@]}"; do
+  if [[ "$test_file" != /* ]]; then
+    test_file="$plugin_dir/$test_file"
+  fi
+  bash "$test_file"
+done

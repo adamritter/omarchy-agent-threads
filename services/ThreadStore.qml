@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../providers" as Providers
+import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Item {
   id: root
@@ -287,21 +288,11 @@ Item {
   }
 
   function threadIsPinned(thread) {
-    if (!thread) return false
-    if (thread.isPinned === true) return true
-    var section = thread.section
-    return section !== null && section !== undefined
-      && (String(section.id || "") === pinnedSectionId
-        || String(section.name || "").toLowerCase() === "pinned")
+    return ThreadStateLogic.threadIsPinned(thread, pinnedSectionId)
   }
 
   function normalizePinnedThreads(items) {
-    var normalized = []
-    for (var i = 0; i < items.length; i++) {
-      var thread = items[i]
-      normalized.push(Object.assign({}, thread, { isPinned: threadIsPinned(thread) }))
-    }
-    return normalized
+    return ThreadStateLogic.normalizePinnedThreads(items, pinnedSectionId)
   }
 
   function refreshProjects() {
@@ -539,27 +530,14 @@ Item {
   }
 
   function applyThreadStatuses(nextStatuses) {
-    var nextUnread = Object.assign({}, unreadThreads)
-    for (var id in nextStatuses) {
-      if ((threadStatuses[id] === "busy" || threadStatuses[id] === "blocked")
-          && nextStatuses[id] === "done"
-          && id !== activeThreadId)
-        nextUnread[id] = true
-      if (id === activeThreadId) delete nextUnread[id]
-    }
+    var nextUnread = ThreadStateLogic.nextUnreadThreads(
+      threadStatuses, unreadThreads, nextStatuses, activeThreadId)
     threadStatuses = nextStatuses
     unreadThreads = nextUnread
   }
 
   function remoteStatusValue(status) {
-    var flags = status && Array.isArray(status.activeFlags)
-      ? status.activeFlags : []
-    if (flags.indexOf("waitingOnApproval") >= 0
-        || flags.indexOf("waitingOnUserInput") >= 0)
-      return "blocked"
-    var type = typeof status === "string"
-      ? status : String(status && status.type || "")
-    return type === "active" ? "busy" : "done"
+    return ThreadStateLogic.remoteStatusValue(status)
   }
 
   function applyRemoteThreadStatuses() {
@@ -637,23 +615,11 @@ Item {
   }
 
   function applyThreadPin(items, threadId, pinned, returnedThread) {
-    var wanted = String(threadId || "")
-    var next = []
-    for (var i = 0; i < items.length; i++) {
-      var thread = items[i]
-      next.push(String(thread && thread.id || "") === wanted
-        ? Object.assign({}, thread, returnedThread || ({}), { isPinned: !!pinned })
-        : thread)
-    }
-    return next
+    return ThreadStateLogic.applyThreadPin(items, threadId, pinned, returnedThread)
   }
 
   function threadIndex(items, threadId) {
-    var wanted = String(threadId || "")
-    for (var i = 0; i < items.length; i++) {
-      if (String(items[i] && items[i].id || "") === wanted) return i
-    }
-    return -1
+    return ThreadStateLogic.threadIndex(items, threadId)
   }
 
   function setArchiveTombstone(threadId, archived) {
@@ -666,13 +632,7 @@ Item {
   }
 
   function threadsWithoutArchiveTombstones(items) {
-    var visible = []
-    for (var i = 0; i < items.length; i++) {
-      var thread = items[i]
-      if (archiveTombstones[String(thread && thread.id || "")] !== true)
-        visible.push(thread)
-    }
-    return visible
+    return ThreadStateLogic.withoutArchiveTombstones(items, archiveTombstones)
   }
 
   function restoreArchivedThread() {

@@ -418,6 +418,7 @@ Item {
             remoteId: projectThread.remoteId,
             host: projectThread.host,
             grouped: true,
+            depth: entry.remoteId ? 2 : 1,
             thread: projectThread.thread
           })
         }

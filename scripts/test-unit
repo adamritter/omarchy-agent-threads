@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$(cd -- "${script_dir}/.." && pwd)"
+qml_test_runner="${QMLTESTRUNNER:-}"
+qml_test_platform="${QML_TEST_PLATFORM:-offscreen}"
+
+if [[ -z "$qml_test_runner" ]]; then
+  if [[ -x /usr/lib/qt6/bin/qmltestrunner ]]; then
+    qml_test_runner=/usr/lib/qt6/bin/qmltestrunner
+  else
+    qml_test_runner="$(command -v qmltestrunner)"
+  fi
+fi
+
+if (( $# == 0 )); then
+  set -- "$plugin_dir/tests"
+fi
+
+for input in "$@"; do
+  if [[ "$input" != /* ]]; then
+    input="$plugin_dir/$input"
+  fi
+  QT_QPA_PLATFORM="$qml_test_platform" \
+    "$qml_test_runner" -input "$input" -import "$plugin_dir" -o -,txt
+done

@@ -13,6 +13,7 @@ monitoring local and remote coding-agent sessions.
 - Open an existing session or focus its already-running terminal window.
 - Create a new thread from the current project, remote, or selected thread with
   the global `n` shortcut or a visible `+` button.
+- Create a project with `N` by choosing or creating a local or SSH directory.
 - See live session state and a distinct highlight for the active thread.
 - Temporarily hide while the active window is in true fullscreen mode.
 - Search threads and projects without leaving the keyboard.
@@ -98,23 +99,31 @@ the scratchpad/Quakes with `Super+grave`, so that function remains available.
 
 | Key | Action |
 | --- | --- |
-| `j` / `k`, arrows | Move selection |
+| `[count]j` / `[count]k`, arrows | Move selection, optionally by a count |
+| `gg` / `G`, Home / End | Jump to the first or last visible row |
+| `Ctrl+U` / `Ctrl+D` | Move half a page |
+| `Ctrl+B` / `Ctrl+F`, Page Up / Page Down | Move a full page |
 | `h` / `l`, left/right | Collapse or expand |
 | `Enter` / `o` | Open a thread or toggle a group |
 | `n` | Create a thread in the selected directory |
+| `N` | Create a project from a local or remote directory |
 | `p` | Pin or unpin the selected item |
 | `P` | Select provider |
 | `r` | Rename the selected thread |
 | `y` | Archive the selected thread |
 | `/` | Search |
 | `R` | Add an SSH or App Server remote |
+| `s` | Toggle this-workspace or global sidebar scope |
 | `Tab` / `Shift+Tab` | Switch between sidebar panels |
 | `?` | Help |
-| `Esc` | Close the current overlay or release focus |
+| `Esc` / `q` | Close the current overlay or release focus |
 
 Thread rows also provide direct pin and overflow buttons. Project and remote
-headers provide pin and new-thread buttons. A strong accent marks the active
-thread; the lighter highlight is the keyboard selection or pointer hover.
+headers provide pin and new-thread buttons. The project picker supports keyboard
+navigation, direct paths, new folders, and remote browsing over SSH. Direct App
+Server connections accept a manually entered remote path because they do not
+provide filesystem access. A strong accent marks the active thread; the lighter
+highlight is the keyboard selection or pointer hover.
 
 ## Remote hosts
 
@@ -171,7 +180,9 @@ Omarchy Shell plugins run unsandboxed with the permissions of the current user.
 This plugin reads local Codex session metadata and process information. If the
 optional providers are selected, it also reads Claude transcript metadata or
 queries a local OpenCode server. The remote picker reads host aliases from
-`~/.ssh/config` but does not copy SSH keys.
+`~/.ssh/config` but does not copy SSH keys. Project directory browsing sends the
+bundled directory-listing helper over an existing SSH connection and does not
+install persistent files on the remote host.
 
 Review the source before enabling it, especially the scripts under `bin/`.
 
@@ -190,24 +201,83 @@ contain no copied SSH keys or provider access tokens.
 
 ## Development
 
-Run the static checks with:
+Keep logic that does not require rendered controls, Quickshell services, or
+Wayland state in `logic/`. The QML views and services call these modules, and
+Qt Quick tests exercise them without loading the live plugin. Existing pure
+QML models and controllers should be tested the same way.
+
+The original QML ownership structure is intentional. `Panel.qml` directly owns
+the bar button, layer-shell windows, focus lifecycle, overlays, and top-level
+coordination. `ui/CodexThreadList.qml` owns list scrolling and row rendering,
+while `ui/SidebarController.qml` owns list actions. Do not move layer-shell
+windows or overlay controls behind forwarded host properties without a live
+reload test; doing so can leave stale windows mapped or evaluate visibility
+bindings against a detached panel.
+
+Deterministic transformations can still live in `logic/` and be tested without
+loading the Shell. Prefer those low-risk extractions over restructuring the QML
+window ownership tree.
+
+Run one focused QML unit test while iterating:
+
+```bash
+./scripts/test-unit tests/tst_projectpickerlogic.qml
+```
+
+Run every QML unit test with:
+
+```bash
+./scripts/test-unit
+```
+
+The unit-test script prefers Qt 6's `qmltestrunner`, matching Quickshell, and
+uses Qt's offscreen backend so pure logic/model tests do not wait for desktop
+focus. Run these commands outside restricted sandboxes; otherwise Qt can abort
+and report a misleading coredump. Set `QMLTESTRUNNER` only when an alternate
+Qt 6 runner is required, or `QML_TEST_PLATFORM=wayland` for a test that genuinely
+needs a visible window.
+
+Run the helper and provider integration tests with:
+
+```bash
+./scripts/test-integration
+```
+
+Individual integration tests can also be selected:
+
+```bash
+./scripts/test-integration tests/directory-picker.test
+```
+
+Run static validation with:
 
 ```bash
 ./scripts/check-static
 ```
 
-Run the provider and launcher tests with:
+Before handing off a change, run the complete suite outside the sandbox:
 
 ```bash
-for test_file in tests/*.test; do bash "$test_file"; done
+./scripts/test
 ```
 
-Then restart the live shell and inspect the plugin status:
+Plugin files under `~/.config/omarchy/plugins/` hot-reload on save. Do not
+restart the shell for ordinary QML, JavaScript, helper, or documentation
+changes. If the automatic reload does not apply a change, rescan just the
+plugins and inspect this plugin:
 
 ```bash
-omarchy restart shell
-omarchy-shell agent-threads status
+./scripts/reload-plugin
 ```
+
+A full `omarchy restart shell` is a last-resort lifecycle check. Use it only
+when testing process startup/shutdown, recovering from a stuck socket or child
+process, or confirming a problem that still exists after `rescanPlugins`. Qt
+also caches a QML directory's file listing; adding or renaming component files
+inside a directory that the running Shell has already imported can therefore
+require one restart. Editing existing component files does not. One final
+restart may be used for release-level integration testing, but it should not be
+part of the ordinary edit-test loop.
 
 The integration currently targets the Codex App Server protocol shipped with
 recent Codex CLI releases. Pinning, model discovery, rate limits, and remote

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+"$script_dir/check-static"
+"$script_dir/test-integration"
+"$script_dir/test-unit"
+
+printf 'All checks passed.\n'
