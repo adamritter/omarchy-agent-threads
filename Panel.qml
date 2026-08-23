@@ -8,6 +8,7 @@ import qs.Commons
 import qs.Ui
 import "services" as Services
 import "ui" as Ui
+import "logic/NavigationLogic.js" as NavigationLogic
 
 Panel {
   id: root
@@ -64,6 +65,8 @@ Panel {
   property var renameTargetThread: null
   property string renameTargetRemoteId: ""
   property bool helpOpen: false
+  property string navigationCount: ""
+  property int navigationFindDirection: 0
   property bool remoteSetupOpen: false
   property string remoteSetupType: "ssh"
   property string remoteSetupProvider: "codex"
@@ -89,20 +92,26 @@ Panel {
       releaseSidebarFocus(false)
   }
   readonly property var helpItems: [
-    { keys: "↑ ↓  /  j k", description: "Move selection" },
+    { keys: "↑ ↓ / [count]j k", description: "Move selection" },
     { keys: "← →  /  h l", description: "Collapse or expand project" },
     { keys: "Enter / o", description: "Open thread or toggle project" },
+    { keys: "/", description: "Search threads and projects" },
+    { keys: "P", description: "Select provider" },
+    { keys: "Tab / Shift+Tab", description: "Switch between panels" },
+    { keys: "n", description: "New thread in the selected directory" },
     { keys: "p", description: "Pin or unpin selected item" },
     { keys: "r", description: "Rename selected thread" },
-    { keys: "P", description: "Select provider" },
     { keys: "y", description: "Archive selected thread" },
-    { keys: "/", description: "Search threads and projects" },
-    { keys: "n", description: "New thread in the selected directory" },
     { keys: "R", description: "Add remote host (SSH or App Server)" },
-    { keys: "g", description: "Toggle this-workspace or global sidebar" },
-    { keys: "Tab / Shift+Tab", description: "Switch between panels" },
-    { keys: "Esc", description: "Close help or release focus" },
-    { keys: "?", description: "Open or close help" }
+    { keys: "s", description: "Toggle this-workspace or global sidebar" },
+    { keys: "Ctrl+U / Ctrl+D", description: "Move half a page" },
+    { keys: "Ctrl+B / Ctrl+F", description: "Move a full page" },
+    { keys: "PgUp / PgDn", description: "Move a full page" },
+    { keys: "[count]g / G", description: "Go to numbered or last row" },
+    { keys: "Home / End", description: "Go to first or last row" },
+    { keys: "[count]f… / F…", description: "Find thread by name initial" },
+    { keys: "?", description: "Open or close help" },
+    { keys: "Esc / q", description: "Close help or release focus" }
   ]
   // Mapping or reloading the sidebar must never request keyboard focus.
   property bool keyboardFocusRequested: false
@@ -120,6 +129,23 @@ Panel {
   visible: true
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
+
+  function clearNavigationPrefix() {
+    navigationCount = ""
+    navigationFindDirection = 0
+  }
+
+  function visibleRowIndex(first) {
+    if (viewRows.length === 0) return -1
+    var edgeY = threadList.contentY + (first ? 1 : threadList.height - 1)
+    var direction = first ? 1 : -1
+    for (var offset = 0; offset <= 48; offset += 2) {
+      var index = threadList.indexAt(threadList.width / 2,
+        edgeY + direction * offset)
+      if (index >= 0) return index
+    }
+    return selectedIndex
+  }
 
   function cleanText(value) {
     return String(value || "").replace(/\s+/g, " ").trim()
@@ -794,6 +820,7 @@ Panel {
     if (!force && focusReleaseGuard.running) return
     focusAcquireTimer.stop()
     focusPrimeTimer.stop()
+    clearNavigationPrefix()
     focusAttemptsRemaining = 0
     focusPrimed = false
     cursorReturnX = -1
@@ -829,6 +856,7 @@ Panel {
       if (!applyingWorkspaceSidebarState) sidebarActions.followActiveThread(true)
       queryFullscreenState()
     } else {
+      clearNavigationPrefix()
       keyboardFocusRequested = false
       focusPrimed = false
       cursorReturnX = -1
@@ -1183,7 +1211,7 @@ Panel {
         }
       }
 
-      PanelKeyCatcher {
+      Ui.SidebarKeyCatcher {
         id: keyCatcher
         anchors.fill: parent
         blocked: searchField.activeFocus
@@ -1202,21 +1230,45 @@ Panel {
         }
         if (root.viewRows.length === 0) return
         if (dx !== 0) {
+          root.clearNavigationPrefix()
           root.sidebarActions.handleHorizontalNavigation(dx)
           return
         }
         if (dy !== 0) {
-          root.selectedIndex = Math.max(0, Math.min(root.viewRows.length - 1,
-                                                     root.selectedIndex + dy))
+          var count = NavigationLogic.countValue(root.navigationCount)
+          root.clearNavigationPrefix()
+          root.selectedIndex = NavigationLogic.movedIndex(
+            root.selectedIndex, dy, count, root.viewRows.length)
           threadList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
         }
       }
+      onPageRequested: function(direction, fraction) {
+        if (root.helpOpen || providerMenu.opened || root.viewRows.length === 0) return
+        var first = root.visibleRowIndex(true)
+        var last = root.visibleRowIndex(false)
+        var step = NavigationLogic.pageStep(first, last, fraction)
+        root.clearNavigationPrefix()
+        root.selectedIndex = NavigationLogic.movedIndex(
+          root.selectedIndex, direction, step, root.viewRows.length)
+        threadList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+      }
+      onEdgeRequested: function(edge) {
+        if (root.helpOpen || providerMenu.opened || root.viewRows.length === 0) return
+        root.clearNavigationPrefix()
+        root.selectedIndex = edge < 0 ? 0 : root.viewRows.length - 1
+        threadList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+      }
       onActivateRequested: {
+        root.clearNavigationPrefix()
         if (providerMenu.opened) providerMenu.activateSelection()
         else if (root.helpOpen) root.helpOpen = false
         else root.sidebarActions.openSelected()
       }
       onCloseRequested: {
+        if (root.navigationCount !== "" || root.navigationFindDirection !== 0) {
+          root.clearNavigationPrefix()
+          return
+        }
         if (providerMenu.opened) providerMenu.close()
         else if (root.renameOpen) root.cancelRename()
         else if (root.remoteSetupOpen) root.closeRemoteSetup()
@@ -1228,8 +1280,55 @@ Panel {
         // PanelKeyCatcher reserves x for destructive actions. Archiving uses y
         // here by preference, so x intentionally does nothing.
       }
-      onTabRequested: function(direction) { root.switchPanel(direction) }
+      onTabRequested: function(direction) {
+        root.clearNavigationPrefix()
+        root.switchPanel(direction)
+      }
       onTextKey: function(text) {
+        if (root.navigationFindDirection !== 0) {
+          var match = NavigationLogic.matchingThreadIndex(
+            root.viewRows, root.selectedIndex, root.navigationFindDirection,
+            text, root.navigationCount,
+            function(row) { return root.threadTitle(row.thread) })
+          root.clearNavigationPrefix()
+          if (match >= 0) {
+            root.selectedIndex = match
+            threadList.positionViewAtIndex(match, ListView.Contain)
+          }
+          return
+        }
+        if (text === "q") {
+          root.clearNavigationPrefix()
+          keyCatcher.closeRequested()
+          return
+        }
+        if (/^[0-9]$/.test(text)) {
+          root.navigationCount = NavigationLogic.appendCount(root.navigationCount, text)
+          return
+        }
+        if (text === "g") {
+          var target = NavigationLogic.countedRowIndex(
+            root.navigationCount, root.viewRows.length)
+          root.clearNavigationPrefix()
+          if (target >= 0) {
+            root.selectedIndex = target
+            threadList.positionViewAtIndex(target, ListView.Contain)
+          }
+          return
+        }
+        if (text === "G") {
+          root.clearNavigationPrefix()
+          if (root.viewRows.length > 0) {
+            root.selectedIndex = root.viewRows.length - 1
+            threadList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+          }
+          return
+        }
+        if (text === "f" || text === "F") {
+          root.navigationFindDirection = text === "f" ? 1 : -1
+          return
+        }
+        root.clearNavigationPrefix()
         if (text === "/") {
           root.startSearch()
           return
@@ -1266,7 +1365,7 @@ Panel {
           root.startRename()
           return
         }
-        if (text === "g" || text === "G") {
+        if (text === "s") {
           root.toggleSidebarScope()
           return
         }
@@ -1546,6 +1645,10 @@ Panel {
               return "Archiving thread…"
             if (root.activeProvider === "codex" && root.service.pinningThreadId !== "")
               return "Updating pin…"
+            if (root.navigationFindDirection !== 0)
+              return (root.navigationCount !== "" ? root.navigationCount : "")
+                + (root.navigationFindDirection > 0 ? "f…" : "F…")
+            if (root.navigationCount !== "") return "Count: " + root.navigationCount
             var filtered = root.searchText !== ""
             return root.projectCount + " projects · "
               + (filtered

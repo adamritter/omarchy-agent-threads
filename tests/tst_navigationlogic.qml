@@ -21,6 +21,35 @@ TestCase {
     compare(NavigationLogic.movedIndex(0, 1, 1, 0), -1)
   }
 
+  function test_selectsOneBasedCountedRows() {
+    compare(NavigationLogic.countedRowIndex("", 20), 0)
+    compare(NavigationLogic.countedRowIndex("1", 20), 0)
+    compare(NavigationLogic.countedRowIndex("8", 20), 7)
+    compare(NavigationLogic.countedRowIndex("99", 20), 19)
+    compare(NavigationLogic.countedRowIndex("8", 0), -1)
+  }
+
+  function test_findsThreadRowsByInitial() {
+    var rows = [
+      { kind: "project", title: "Workspace" },
+      { kind: "thread", title: "Alpha" },
+      { kind: "thread", title: "write tests" },
+      { kind: "remote", title: "Work server" },
+      { kind: "thread", title: "Wait for CI" },
+      { kind: "thread", title: "work later" },
+      { kind: "thread", title: "Fix lint" }
+    ]
+    function title(row) { return row.title }
+
+    compare(NavigationLogic.matchingThreadIndex(rows, 0, 1, "w", "", title), 2)
+    compare(NavigationLogic.matchingThreadIndex(rows, 0, 1, "W", "", title), 4)
+    compare(NavigationLogic.matchingThreadIndex(rows, 0, 1, "w", "2", title), 5)
+    compare(NavigationLogic.matchingThreadIndex(rows, 6, -1, "W", "", title), 4)
+    compare(NavigationLogic.matchingThreadIndex(rows, 6, -1, "w", "", title), 5)
+    compare(NavigationLogic.matchingThreadIndex(rows, 6, -1, "w", "2", title), 2)
+    compare(NavigationLogic.matchingThreadIndex(rows, 2, 1, "z", "", title), -1)
+  }
+
   function test_calculatesViewportSteps() {
     compare(NavigationLogic.pageStep(4, 13, 0.5), 5)
     compare(NavigationLogic.pageStep(4, 13, 1), 10)

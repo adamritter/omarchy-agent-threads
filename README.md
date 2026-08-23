@@ -100,21 +100,22 @@ the scratchpad/Quakes with `Super+grave`, so that function remains available.
 | Key | Action |
 | --- | --- |
 | `[count]j` / `[count]k`, arrows | Move selection, optionally by a count |
-| `gg` / `G`, Home / End | Jump to the first or last visible row |
-| `Ctrl+U` / `Ctrl+D` | Move half a page |
-| `Ctrl+B` / `Ctrl+F`, Page Up / Page Down | Move a full page |
 | `h` / `l`, left/right | Collapse or expand |
 | `Enter` / `o` | Open a thread or toggle a group |
+| `/` | Search |
+| `P` | Select provider |
+| `Tab` / `Shift+Tab` | Switch between sidebar panels |
 | `n` | Create a thread in the selected directory |
 | `N` | Create a project from a local or remote directory |
 | `p` | Pin or unpin the selected item |
-| `P` | Select provider |
 | `r` | Rename the selected thread |
 | `y` | Archive the selected thread |
-| `/` | Search |
 | `R` | Add an SSH or App Server remote |
 | `s` | Toggle this-workspace or global sidebar scope |
-| `Tab` / `Shift+Tab` | Switch between sidebar panels |
+| `Ctrl+U` / `Ctrl+D` | Move half a page |
+| `Ctrl+B` / `Ctrl+F`, Page Up / Page Down | Move a full page |
+| `[count]g` / `G`, Home / End | Jump to a numbered row or the last row |
+| `[count]f<char>` / `[count]F<char>` | Find next/previous thread by name initial |
 | `?` | Help |
 | `Esc` / `q` | Close the current overlay or release focus |
 
