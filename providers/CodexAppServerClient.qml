@@ -364,6 +364,8 @@ Item {
       return
     }
     var method = String(message.method || "")
+    if (method === "thread/status/changed")
+      controller.applyRemoteStatusNotification(message.params || {})
     if (method.indexOf("project/") === 0) refreshProjects()
     if (method === "turn/completed") refreshRateLimits()
     if (method.indexOf("thread/") === 0 || method === "turn/completed")

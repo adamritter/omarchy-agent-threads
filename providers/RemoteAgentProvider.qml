@@ -111,6 +111,11 @@ Item {
 
   function threadStatus(thread) {
     var status = thread ? thread.status : null
+    var flags = status && Array.isArray(status.activeFlags)
+      ? status.activeFlags : []
+    if (flags.indexOf("waitingOnApproval") >= 0
+        || flags.indexOf("waitingOnUserInput") >= 0)
+      return "blocked"
     var type = typeof status === "string" ? status : String(status && status.type || "")
     return type === "active" ? "busy" : "done"
   }
@@ -130,10 +135,10 @@ Item {
       var next = nextThreads[i]
       var id = String(next && next.id || "")
       var old = threadById(previous, id)
-      var wasBusy = old && threadStatus(old) === "busy"
-      var nowBusy = threadStatus(next) === "busy"
+      var wasActive = old && threadStatus(old) !== "done"
+      var nowActive = threadStatus(next) !== "done"
       var unread = next.attention === true || (old && old.unread === true)
-      if (wasBusy && !nowBusy && id !== controller.activeThreadId) unread = true
+      if (wasActive && !nowActive && id !== controller.activeThreadId) unread = true
       if (old && String(next.completionToken || "") !== ""
           && String(next.completionToken) !== String(old.completionToken || "")
           && id !== controller.activeThreadId) unread = true

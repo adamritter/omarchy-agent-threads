@@ -541,7 +541,8 @@ Item {
   function applyThreadStatuses(nextStatuses) {
     var nextUnread = Object.assign({}, unreadThreads)
     for (var id in nextStatuses) {
-      if (threadStatuses[id] === "busy" && nextStatuses[id] === "done"
+      if ((threadStatuses[id] === "busy" || threadStatuses[id] === "blocked")
+          && nextStatuses[id] === "done"
           && id !== activeThreadId)
         nextUnread[id] = true
       if (id === activeThreadId) delete nextUnread[id]
@@ -551,6 +552,11 @@ Item {
   }
 
   function remoteStatusValue(status) {
+    var flags = status && Array.isArray(status.activeFlags)
+      ? status.activeFlags : []
+    if (flags.indexOf("waitingOnApproval") >= 0
+        || flags.indexOf("waitingOnUserInput") >= 0)
+      return "blocked"
     var type = typeof status === "string"
       ? status : String(status && status.type || "")
     return type === "active" ? "busy" : "done"

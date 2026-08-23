@@ -3,6 +3,7 @@ set -euo pipefail
 
 declare -A live_rollouts=()
 declare -A last_events=()
+declare -A last_approval_events=()
 declare -a thread_ids=()
 declare -a rollout_paths=()
 declare -a codex_fd_dirs=()
@@ -17,10 +18,17 @@ done
 
 # Resolve all rollout symlinks with one find process. The old implementation
 # spawned one readlink process for every FD of every Codex process.
-while read -r codex_pid; do
-  [[ "$codex_pid" =~ ^[0-9]+$ && -d "/proc/${codex_pid}/fd" ]] || continue
-  codex_fd_dirs+=("/proc/${codex_pid}/fd")
-done < <(pgrep -x codex 2>/dev/null || true)
+if [[ -n "${OMARCHY_CODEX_LIVE_ROLLOUTS:-}" ]]; then
+  while IFS= read -r rollout_path; do
+    [[ -n "$rollout_path" ]] || continue
+    live_rollouts["$rollout_path"]=1
+  done <<< "$OMARCHY_CODEX_LIVE_ROLLOUTS"
+else
+  while read -r codex_pid; do
+    [[ "$codex_pid" =~ ^[0-9]+$ && -d "/proc/${codex_pid}/fd" ]] || continue
+    codex_fd_dirs+=("/proc/${codex_pid}/fd")
+  done < <(pgrep -x codex 2>/dev/null || true)
+fi
 
 if (( ${#codex_fd_dirs[@]} > 0 )); then
   while IFS= read -r rollout_path; do
@@ -87,14 +95,20 @@ for rollout_path in "${rollout_paths[@]}"; do
   fi
 done
 
-# One rg process scans the live rollouts and leaves the final lifecycle event
-# for each file in last_events.
+# One rg process scans the live rollouts. Lifecycle and approval events are
+# tracked separately so a completed tool call does not hide a running turn.
 if (( ${#live_rollouts_to_scan[@]} > 0 )); then
   while IFS= read -r match_line; do
     rollout_path="${match_line%%:*}"
-    last_events["$rollout_path"]="${match_line#*:}"
-  done < <(rg --with-filename -o \
-    '"type":"(task_started|task_complete|turn_aborted)"' \
+    event="${match_line#*:}"
+    if [[ "$event" == *'"custom_tool_call"'* \
+        || "$event" == *'"custom_tool_call_output"'* ]]; then
+      last_approval_events["$rollout_path"]="$event"
+    else
+      last_events["$rollout_path"]="$event"
+    fi
+  done < <(rg --with-filename -o -P \
+    '"type":"(task_started|task_complete|turn_aborted|custom_tool_call_output)"|"type":"custom_tool_call"(?=.*\\"sandbox_permissions\\":\\"require_escalated\\")' \
     "${live_rollouts_to_scan[@]}" 2>/dev/null || true)
 fi
 
@@ -109,6 +123,10 @@ for (( i = 0; i < ${#thread_ids[@]}; i++ )); do
   if [[ "${last_events[$rollout_path]-}" == *'"task_started"'* \
       && "${live_rollouts[$rollout_path]-}" == 1 ]]; then
     status="busy"
+  fi
+  if [[ "${last_approval_events[$rollout_path]-}" == *'"custom_tool_call"'* \
+      && "${live_rollouts[$rollout_path]-}" == 1 ]]; then
+    status="blocked"
   fi
 
   if [[ "$first" == true ]]; then

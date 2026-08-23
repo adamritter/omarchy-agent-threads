@@ -62,6 +62,10 @@ ListView {
       && (modelData.remoteId
         ? panel.service.remoteThreadStatus(threadData) === "busy"
         : panel.service.threadStatus(threadData.id) === "busy")
+    readonly property bool blocked: threadRow
+      && (modelData.remoteId
+        ? panel.service.remoteThreadStatus(threadData) === "blocked"
+        : panel.service.threadStatus(threadData.id) === "blocked")
     readonly property bool unread: threadRow
       && (modelData.remoteId
         ? threadData.unread === true
@@ -106,7 +110,7 @@ ListView {
           ? panel.faint : "transparent")
 
     Text {
-      visible: row.threadRow && !row.busy && !row.unread
+      visible: row.threadRow && !row.busy && !row.blocked && !row.unread
       anchors.left: parent.left
       anchors.leftMargin: Style.space(row.groupedThread ? 22 : 0)
       anchors.verticalCenter: parent.verticalCenter
@@ -120,7 +124,7 @@ ListView {
 
     Item {
       id: statusCircle
-      visible: row.busy || row.unread
+      visible: row.busy || row.blocked || row.unread
       anchors.left: parent.left
       anchors.leftMargin: Style.space(2)
       anchors.verticalCenter: parent.verticalCenter
@@ -132,9 +136,9 @@ ListView {
         width: Style.space(10)
         height: width
         radius: width / 2
-        color: row.unread ? Color.accent : "transparent"
-        border.width: Math.max(1, Style.space(2))
-        border.color: Color.accent
+        color: row.blocked ? Color.urgent : (row.unread ? Color.accent : "transparent")
+        border.width: row.blocked ? 0 : Math.max(1, Style.space(2))
+        border.color: row.blocked ? Color.urgent : Color.accent
       }
 
       Rectangle {
@@ -143,7 +147,7 @@ ListView {
         width: Style.space(4)
         height: width
         radius: width / 2
-        visible: row.busy
+        visible: row.busy && !row.blocked
         color: Color.accent
       }
 
@@ -152,7 +156,7 @@ ListView {
         to: 360
         duration: 850
         loops: Animation.Infinite
-        running: row.busy
+        running: row.busy && !row.blocked
       }
     }
 
@@ -493,7 +497,7 @@ ListView {
       anchors.verticalCenter: parent.verticalCenter
       anchors.leftMargin: Style.space(row.groupedThread
         ? ((Number(row.modelData.depth || 1) * 18)
-           + (row.busy || row.unread ? 8 : 26))
+           + (row.busy || row.blocked || row.unread ? 8 : 26))
         : 22)
       anchors.rightMargin: Style.space(68)
       spacing: Style.space(2)
