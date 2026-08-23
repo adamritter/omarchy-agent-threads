@@ -249,6 +249,19 @@ Individual integration tests can also be selected:
 ./scripts/test-integration tests/directory-picker.test
 ```
 
+Before changing `Panel.qml` ownership, layer-shell windows, overlays, or list
+wiring, run the component render contract directly:
+
+```bash
+./scripts/test-integration tests/panel-render.test
+```
+
+This starts a short-lived Quickshell instance with fake projects and threads.
+It checks the actual panel delegates, search and help states, both layer-shell
+windows, destroy/recreate behavior, and cleanup of its test surfaces. It does
+not read live session data or start provider processes. Like QML unit tests, it
+must run outside restricted sandboxes because it uses Wayland and Hyprland.
+
 Run static validation with:
 
 ```bash

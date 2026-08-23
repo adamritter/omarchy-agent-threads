@@ -15,7 +15,12 @@ Panel {
   ipcTarget: "agent-threads"
   manageIpc: false
 
-  readonly property var service: Services.ThreadStore
+  // The live plugin uses the singleton. Component tests inject a fake service
+  // at construction time so they exercise this real ownership tree without
+  // starting provider processes or reading user session data.
+  property var service: Quickshell.env("AGENT_THREADS_PANEL_TEST") === "1"
+    ? null : Services.ThreadStore
+  property string layerNamespace: "omarchy-codex-threads"
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Util.alpha(foreground, 0.58)
   readonly property color faint: Util.alpha(foreground, 0.10)
@@ -27,7 +32,9 @@ Panel {
     "bin/omarchy-agent-workspace-state").toString().replace(/^file:\/\//, "")
   readonly property int sidebarContentWidth: Style.space(380)
   readonly property int sidebarReserveWidth: sidebarContentWidth + Style.gapsOut
-  readonly property bool fullscreenSuppressed: activeWorkspaceHasFullscreen
+  property bool fullscreenSuppressionEnabled: true
+  readonly property bool fullscreenSuppressed: fullscreenSuppressionEnabled
+    && activeWorkspaceHasFullscreen
   readonly property bool sidebarPresented: opened && !fullscreenSuppressed
   readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
     || renameField.activeFocus || remoteSetup.inputFocused
@@ -499,6 +506,37 @@ Panel {
     if (row.kind === "more") return "more:" + String(row.groupKey || "")
     return "thread:" + String(row.remoteId || "local") + ":"
       + String(row.thread ? row.thread.id || "" : "")
+  }
+
+  function renderSnapshot() {
+    return {
+      opened: opened,
+      sidebarPresented: sidebarPresented,
+      reservationVisible: sidebarReservation.visible,
+      panelVisible: panel.visible,
+      layerNamespace: layerNamespace,
+      headerText: headerTitle.text,
+      statusText: statusLabel.text,
+      searchVisible: searchField.visible,
+      renameVisible: renameField.visible,
+      remoteSetupVisible: remoteSetup.visible,
+      helpVisible: helpOverlay.visible,
+      listVisible: threadList.visible,
+      selectedIndex: selectedIndex,
+      selectedRowKey: rowKey(viewRows[selectedIndex]),
+      modelRowCount: viewRows.length,
+      renderedRows: threadList.renderSnapshot()
+    }
+  }
+
+  function dispatchTestInput(kind, first, second) {
+    if (Quickshell.env("AGENT_THREADS_PANEL_TEST") !== "1") return false
+    if (kind === "move") keyCatcher.moveRequested(Number(first), Number(second))
+    else if (kind === "text") keyCatcher.textKey(String(first || ""))
+    else if (kind === "activate") keyCatcher.activateRequested()
+    else if (kind === "close") keyCatcher.closeRequested()
+    else return false
+    return true
   }
 
   function rowIndexForKey(key) {
@@ -1073,7 +1111,7 @@ Panel {
     exclusionMode: ExclusionMode.Normal
     exclusiveZone: root.sidebarReserveWidth
 
-    WlrLayershell.namespace: "omarchy-codex-threads-reservation"
+    WlrLayershell.namespace: root.layerNamespace + "-reservation"
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
@@ -1100,7 +1138,7 @@ Panel {
     implicitWidth: root.sidebarReserveWidth
     exclusionMode: ExclusionMode.Ignore
 
-    WlrLayershell.namespace: "omarchy-codex-threads"
+    WlrLayershell.namespace: root.layerNamespace
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: root.sidebarPresented && root.keyboardFocusRequested
       ? (root.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
@@ -1491,6 +1529,7 @@ Panel {
         }
 
         Text {
+          id: statusLabel
           width: parent.width
           height: Style.space(18)
           text: {
@@ -1700,6 +1739,7 @@ Panel {
           }
 
           Ui.HelpOverlay {
+            id: helpOverlay
             anchors.fill: parent
             panel: root
           }

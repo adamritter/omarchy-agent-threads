@@ -7,6 +7,18 @@ import "." as Components
 ListView {
   id: root
 
+  function renderSnapshot() {
+    var rendered = []
+    for (var index = 0; index < count; index++) {
+      var item = itemAtIndex(index)
+      rendered.push(item ? item.renderSnapshot() : {
+        index: index,
+        instantiated: false
+      })
+    }
+    return rendered
+  }
+
   required property var panel
   anchors.fill: parent
   visible: !panel.helpOpen
@@ -87,6 +99,23 @@ ListView {
         === String(panel.service.remoteActionHostId || "")
     readonly property bool moving: threadRow && !modelData.remoteId
       && String(threadData.id || "") === panel.service.movingThreadId
+
+    function renderSnapshot() {
+      return {
+        index: index,
+        instantiated: true,
+        kind: String(modelData.kind || "thread"),
+        key: panel.rowKey(modelData),
+        primaryText: threadRow ? threadTitleText.text
+          : (sectionRow ? sectionTitleText.text : moreTitleText.text),
+        active: activeThread || activeProject,
+        busy: busy,
+        blocked: blocked,
+        unread: unread,
+        pinned: pinned || pinnedSection,
+        depth: Number(modelData.depth || 0)
+      }
+    }
 
     function openThreadMenu() {
       if (remoteRow) {
@@ -477,6 +506,7 @@ ListView {
     }
 
     Text {
+      id: moreTitleText
       visible: row.moreRow
       anchors.left: parent.left
       anchors.leftMargin: Style.space(22 + Number(row.modelData.depth || 0) * 18)
@@ -503,6 +533,7 @@ ListView {
       spacing: Style.space(2)
 
       Text {
+        id: threadTitleText
         width: parent.width
         text: row.renaming ? "Renaming…  " + panel.threadTitle(row.threadData)
           : (row.pinning ? "Updating pin…  " + panel.threadTitle(row.threadData)
@@ -548,6 +579,7 @@ ListView {
       spacing: Style.space(1)
 
       Text {
+        id: sectionTitleText
         width: parent.width
         text: row.modelData.name + "  ·  " + row.modelData.count
         textFormat: Text.PlainText

@@ -49,6 +49,10 @@
   bar button, layer-shell windows, focus lifecycle, overlays, and top-level
   coordination. `ui/CodexThreadList.qml` owns scrolling and rows, and
   `ui/SidebarController.qml` owns list actions.
+- Run `tests/panel-render.test` outside the sandbox before and after any change
+  to `Panel.qml` ownership, window bindings, overlay composition, or list
+  wiring. It instantiates the real panel with fake data in Quickshell and
+  verifies rendered rows, overlays, layer windows, recreation, and cleanup.
 - Do not move layer-shell windows or overlay controls behind forwarded host
   properties without a live reload test. Detached plugin instances can retain
   stale windows or incorrectly visible overlays.
