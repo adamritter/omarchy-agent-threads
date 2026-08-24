@@ -267,7 +267,7 @@ Item {
 
     followedActiveThreadId = String(service.activeThreadId || "")
     panel.selectedIndex = index
-    listView.positionViewAtIndex(index, ListView.Center)
+    listView.positionViewAtIndex(index, ListView.Contain)
     listView.forceLayout()
 
     var row = listView.itemAtIndex(index)

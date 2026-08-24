@@ -734,14 +734,15 @@ Panel {
       focusWorkflowPending = false
       return
     }
-    sidebarActions.followActiveThread(true)
-
     var point
-    try { point = JSON.parse(sidebarActions.visibleListCursorPoint()) }
+    try { point = JSON.parse(sidebarActions.activeThreadCursorPoint()) }
     catch (error) { point = ({ x: sidebarContentWidth / 2, y: 1 }) }
     var targetScreen = panel.screen
-    var layerTop = Style.gapsOut
-      + (bar && bar.position === "top" ? bar.barSize : 0)
+    // The compositor places this normal-exclusion layer below the bar's
+    // reserved area, then applies the panel's own top margin.
+    var reservedBarHeight = bar && bar.position === "top" ? bar.barSize : 0
+    var layerTop = Number(reservedBarHeight || 0)
+      + Number(panel.margins.top || 0)
     var pointX = Math.round(Number(targetScreen ? targetScreen.x : 0)
       + Number(point.x || sidebarContentWidth / 2))
     var pointY = Math.round(Number(targetScreen ? targetScreen.y : 0)
