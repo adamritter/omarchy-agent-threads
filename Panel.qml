@@ -78,6 +78,8 @@ Panel {
   property int focusAttemptsRemaining: 0
   property bool focusPrimed: false
   property bool focusWorkflowPending: false
+  property bool pointerHoverSuppressed: false
+  readonly property bool pointerWarpActive: pointerWarpGuard.running
   property int cursorReturnX: -1
   property int cursorReturnY: -1
   property int fullscreenInternalState: 0
@@ -727,6 +729,8 @@ Panel {
   function summonSidebarFocus() {
     if (focusWorkflowPending) return
     focusWorkflowPending = true
+    pointerHoverSuppressed = true
+    pointerWarpGuard.restart()
     cursorReturnX = -1
     cursorReturnY = -1
     requestOpen()
@@ -828,6 +832,7 @@ Panel {
     clearNavigationPrefix()
     focusAttemptsRemaining = 0
     focusPrimed = false
+    pointerHoverSuppressed = true
     cursorReturnX = -1
     cursorReturnY = -1
     keyboardFocusRequested = false
@@ -961,6 +966,12 @@ Panel {
 
   Timer {
     id: focusReleaseGuard
+    interval: 350
+    repeat: false
+  }
+
+  Timer {
+    id: pointerWarpGuard
     interval: 350
     repeat: false
   }
@@ -1186,6 +1197,8 @@ Panel {
       HoverHandler {
         id: sidebarHover
         onHoveredChanged: {
+          if (hovered && !pointerWarpGuard.running)
+            root.pointerHoverSuppressed = false
           // Super+A already starts an explicit focus cycle after moving the
           // pointer. Do not start a second competing cycle on pointer entry.
           if (hovered && root.opened && !root.keyboardFocusRequested)

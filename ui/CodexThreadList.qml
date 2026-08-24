@@ -100,8 +100,10 @@ ListView {
         === String(panel.service.remoteActionHostId || "")
     readonly property bool moving: threadRow && !modelData.remoteId
       && String(threadData.id || "") === panel.service.movingThreadId
+    readonly property bool pointerHovered: mouse.containsMouse
+      && !panel.pointerHoverSuppressed
     readonly property string backgroundRole: PresentationLogic.rowBackgroundRole(
-      activeThread, mouse.containsMouse, index === panel.selectedIndex,
+      activeThread, pointerHovered, index === panel.selectedIndex,
       panel.sidebarFocused)
 
     function renderSnapshot() {
@@ -207,6 +209,10 @@ ListView {
       hoverEnabled: true
       acceptedButtons: Qt.LeftButton
       cursorShape: Qt.PointingHandCursor
+      onPositionChanged: {
+        if (!panel.pointerWarpActive)
+          panel.pointerHoverSuppressed = false
+      }
       onClicked: function(event) {
         panel.selectedIndex = row.index
         if (row.moreRow) {
@@ -315,7 +321,7 @@ ListView {
     Rectangle {
       id: threadMenuButton
       visible: row.threadRow
-        && (mouse.containsMouse || threadMenuMouse.containsMouse || threadMenu.opened)
+        && (row.pointerHovered || threadMenuMouse.containsMouse || threadMenu.opened)
       anchors.right: parent.right
       anchors.rightMargin: Style.space(4)
       anchors.verticalCenter: parent.verticalCenter
@@ -567,7 +573,7 @@ ListView {
     Rectangle {
       id: threadPinButton
       visible: row.threadRow
-        && (mouse.containsMouse || threadPinMouse.containsMouse || row.pinned || row.pinning)
+        && (row.pointerHovered || threadPinMouse.containsMouse || row.pinned || row.pinning)
       anchors.right: threadMenuButton.left
       anchors.rightMargin: Style.space(2)
       anchors.verticalCenter: parent.verticalCenter
@@ -610,7 +616,7 @@ ListView {
       anchors.rightMargin: Style.space(10)
       anchors.verticalCenter: parent.verticalCenter
       text: "…  Show all  ·  " + Number(row.modelData.remaining || 0) + " more"
-      color: mouse.containsMouse ? Color.accent : panel.dim
+      color: row.pointerHovered ? Color.accent : panel.dim
       font.family: panel.fontFamily
       font.pixelSize: Style.font.caption
       elide: Text.ElideRight
@@ -752,7 +758,7 @@ ListView {
       id: remoteManageButton
       visible: row.remoteRow
         && !row.needsRemoteClaudeAction
-        && (mouse.containsMouse || remoteManageMouse.containsMouse || remoteMenu.opened)
+        && (row.pointerHovered || remoteManageMouse.containsMouse || remoteMenu.opened)
       anchors.right: sectionPinButton.left
       anchors.rightMargin: Style.space(2)
       anchors.verticalCenter: parent.verticalCenter
@@ -888,7 +894,7 @@ ListView {
       id: sectionPinButton
       visible: row.sectionRow
         && !row.needsRemoteClaudeAction
-        && (mouse.containsMouse || sectionPinMouse.containsMouse || row.pinnedSection)
+        && (row.pointerHovered || sectionPinMouse.containsMouse || row.pinnedSection)
       anchors.right: newProjectButton.left
       anchors.rightMargin: Style.space(2)
       anchors.verticalCenter: parent.verticalCenter
@@ -928,7 +934,7 @@ ListView {
     Item {
       id: newProjectButton
       visible: row.sectionRow && !row.needsRemoteClaudeAction
-        && (mouse.containsMouse || newProjectMouse.containsMouse)
+        && (row.pointerHovered || newProjectMouse.containsMouse)
       anchors.right: parent.right
       anchors.rightMargin: Style.space(6)
       anchors.verticalCenter: parent.verticalCenter
