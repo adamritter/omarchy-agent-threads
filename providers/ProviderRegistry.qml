@@ -17,6 +17,7 @@ Item {
     ? claudeProvider.actionHostId : openCodeProvider.actionHostId
 
   signal settingsChanged()
+  signal snapshotsChanged()
 
   onClaudeModelChanged: settingsChanged()
   onClaudeEffortChanged: settingsChanged()
@@ -30,6 +31,7 @@ Item {
     controller: root.controller
     providerType: "claude"
     label: "CLAUDE"
+    onHostChanged: root.snapshotsChanged()
   }
 
   LocalAgentProvider {
@@ -37,6 +39,7 @@ Item {
     controller: root.controller
     providerType: "opencode"
     label: "OPENCODE"
+    onHostChanged: root.snapshotsChanged()
   }
 
   function providerByType(providerType) {
@@ -55,6 +58,19 @@ Item {
 
   function providerForThread(thread) {
     return providerByType(thread && thread.providerType)
+  }
+
+  function snapshotHosts() {
+    return {
+      claude: claudeProvider.host,
+      opencode: openCodeProvider.host
+    }
+  }
+
+  function restoreSnapshots(snapshots) {
+    var values = snapshots && typeof snapshots === "object" ? snapshots : ({})
+    claudeProvider.restoreSnapshot(values.claude)
+    openCodeProvider.restoreSnapshot(values.opencode)
   }
 
   function host(providerType) {

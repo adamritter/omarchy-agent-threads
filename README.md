@@ -176,6 +176,11 @@ This state includes provider selections, model/effort/agent choices, pinned
 sections, and collapsed projects/remotes. Runtime window-address files are
 temporary and are stored below `$XDG_RUNTIME_DIR`.
 
+Provider thread and project snapshots are cached at
+`$XDG_RUNTIME_DIR/omarchy-agent-threads-provider-snapshot.json`. This
+session-scoped cache lets the sidebar render immediately across QML reloads;
+providers still reconnect and refresh the cached data in the background.
+
 ## Privacy and security
 
 Omarchy Shell plugins run unsandboxed with the permissions of the current user.

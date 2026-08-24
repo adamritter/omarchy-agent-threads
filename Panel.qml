@@ -1053,6 +1053,8 @@ Panel {
       return "ok"
     }
     function reloadQml(): string {
+      if (typeof root.service.flushProviderSnapshot === "function")
+        root.service.flushProviderSnapshot()
       Qt.callLater(function() { Quickshell.reload(false) })
       return "ok"
     }

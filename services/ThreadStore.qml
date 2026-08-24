@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../providers" as Providers
+import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Item {
@@ -61,6 +62,9 @@ Item {
   readonly property alias sshHostsError: remoteProvider.sshHostsError
   property bool sidebarSettingsLoaded: false
   property bool hydratingSidebarSettings: false
+  property bool providerSnapshotLoaded: false
+  property bool hydratingProviderSnapshot: false
+  property string providerSnapshot: ""
   property bool migrateOpenSidebarToActiveWorkspace: false
   property string sidebarScope: "workspace"
   property bool globalSidebarOpen: false
@@ -69,6 +73,15 @@ Item {
   property var collapsedRemotes: ({})
   property var pinnedSections: ({})
   readonly property alias lastRefreshMs: appServerClient.lastRefreshMs
+
+  onThreadsChanged: scheduleProviderSnapshot()
+  onProjectsChanged: scheduleProviderSnapshot()
+  onRateLimitsChanged: scheduleProviderSnapshot()
+  onRateLimitResetCreditsChanged: scheduleProviderSnapshot()
+  onModelsChanged: scheduleProviderSnapshot()
+  onCodexConfigChanged: scheduleProviderSnapshot()
+  onThreadStatusesChanged: scheduleProviderSnapshot()
+  onUnreadThreadsChanged: scheduleProviderSnapshot()
 
   readonly property string threadStatusesHelperPath: Qt.resolvedUrl("../bin/omarchy-codex-thread-statuses")
     .toString().replace(/^file:\/\//, "")
@@ -81,6 +94,10 @@ Item {
   readonly property string pinnedSectionId: "01984de2-8f74-7c91-a3b2-5c5e937cf318"
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME")
     || (Quickshell.env("HOME") + "/.local/state")
+  readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR")
+    || (stateHome + "/omarchy")
+  readonly property string providerSnapshotPath:
+    runtimeDir + "/omarchy-agent-threads-provider-snapshot.json"
   readonly property string sidebarSettingsPath: stateHome + "/omarchy/codex-threads.json"
   readonly property bool sidebarOpen: {
     if (sidebarScope === "global") return globalSidebarOpen
@@ -138,6 +155,7 @@ Item {
   Providers.RemoteAgentProvider {
     id: remoteProvider
     controller: root
+    onRemoteHostsChanged: root.scheduleProviderSnapshot()
   }
 
   Providers.CodexAppServerClient {
@@ -156,6 +174,75 @@ Item {
     onSettingsChanged: {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
+    onSnapshotsChanged: root.scheduleProviderSnapshot()
+  }
+
+  function providerSnapshotObject() {
+    return {
+      codex: {
+        threads: threads,
+        projects: projects,
+        rateLimits: rateLimits,
+        rateLimitResetCredits: rateLimitResetCredits,
+        models: models,
+        codexConfig: codexConfig,
+        threadStatuses: threadStatuses,
+        unreadThreads: unreadThreads,
+        activeThreadId: activeThreadId
+      },
+      remoteHosts: remoteProvider.remoteHosts,
+      localProviders: providerRegistry.snapshotHosts()
+    }
+  }
+
+  function scheduleProviderSnapshot() {
+    if (!providerSnapshotLoaded || hydratingProviderSnapshot || shuttingDown) return
+    providerSnapshotTimer.restart()
+  }
+
+  function flushProviderSnapshot() {
+    if (!providerSnapshotLoaded || hydratingProviderSnapshot) return
+    providerSnapshotTimer.stop()
+    var encoded = ProviderSnapshotLogic.encode(providerSnapshotObject())
+    if (encoded !== "" && encoded !== providerSnapshot) {
+      providerSnapshot = encoded
+      providerSnapshotFile.setText(encoded)
+    }
+  }
+
+  function attachProviderSnapshot(snapshot) {
+    if (providerSnapshotLoaded) return
+    providerSnapshot = String(snapshot || "")
+    restoreProviderSnapshot()
+    providerSnapshotLoaded = true
+    scheduleProviderSnapshot()
+  }
+
+  function restoreProviderSnapshot() {
+    var snapshot = ProviderSnapshotLogic.decode(providerSnapshot)
+    if (!snapshot) return false
+    var codex = snapshot.codex && typeof snapshot.codex === "object"
+      ? snapshot.codex : ({})
+    hydratingProviderSnapshot = true
+    threads = Array.isArray(codex.threads) ? codex.threads : []
+    projects = Array.isArray(codex.projects) ? codex.projects : []
+    rateLimits = codex.rateLimits && typeof codex.rateLimits === "object"
+      ? codex.rateLimits : ({})
+    rateLimitResetCredits = codex.rateLimitResetCredits
+      && typeof codex.rateLimitResetCredits === "object"
+      ? codex.rateLimitResetCredits : ({})
+    models = Array.isArray(codex.models) ? codex.models : []
+    codexConfig = codex.codexConfig && typeof codex.codexConfig === "object"
+      ? codex.codexConfig : ({})
+    threadStatuses = codex.threadStatuses && typeof codex.threadStatuses === "object"
+      ? codex.threadStatuses : ({})
+    unreadThreads = codex.unreadThreads && typeof codex.unreadThreads === "object"
+      ? codex.unreadThreads : ({})
+    activeThreadId = String(codex.activeThreadId || "")
+    remoteProvider.restoreSnapshots(snapshot.remoteHosts)
+    providerRegistry.restoreSnapshots(snapshot.localProviders)
+    hydratingProviderSnapshot = false
+    return true
   }
 
   function resetBackendState() {
@@ -869,7 +956,20 @@ Item {
       threadEventsRestart.restart()
   }
 
-  onActiveThreadIdChanged: markThreadSeen(activeThreadId)
+  onActiveThreadIdChanged: {
+    markThreadSeen(activeThreadId)
+    scheduleProviderSnapshot()
+  }
+
+  FileView {
+    id: providerSnapshotFile
+    path: root.providerSnapshotPath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.attachProviderSnapshot(text())
+    onLoadFailed: root.attachProviderSnapshot("")
+  }
 
   FileView {
     id: sidebarSettingsFile
@@ -879,6 +979,13 @@ Item {
     printErrors: false
     onLoaded: root.loadSidebarSettings(text())
     onLoadFailed: root.loadSidebarSettings("")
+  }
+
+  Timer {
+    id: providerSnapshotTimer
+    interval: 100
+    repeat: false
+    onTriggered: root.flushProviderSnapshot()
   }
 
   Timer {
@@ -951,6 +1058,7 @@ Item {
     threadEventsProcess.running = true
   }
   Component.onDestruction: {
+    flushProviderSnapshot()
     shuttingDown = true
     threadEventsProcess.running = false
   }

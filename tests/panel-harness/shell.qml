@@ -84,6 +84,7 @@ ShellRoot {
     function sidebarOpenOnWorkspace(workspaceId) { return false }
     function migrateSidebarOpenState(workspaceId) {}
     function refreshThreads() {}
+    function flushProviderSnapshot() {}
     function refreshActiveThread() {}
     function refreshRemotes(remoteId) {}
     function refreshSshHosts() {}

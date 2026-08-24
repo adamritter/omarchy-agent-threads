@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 
 Item {
   id: root
@@ -87,6 +88,13 @@ Item {
       next.push(String(host.id || "") === wanted ? Object.assign({}, host, patch) : host)
     }
     remoteHosts = next
+  }
+
+  function restoreSnapshots(snapshots) {
+    remoteHosts = ProviderSnapshotLogic.hydratedHosts(snapshots)
+    // If the config read won the startup race, reapply it over the cached data.
+    // This keeps current connection settings authoritative and removes stale hosts.
+    if (configLoaded) configStore.load(JSON.stringify(configStore.config))
   }
 
   function projectForId(host, projectId) {

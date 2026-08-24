@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 
 Item {
   id: root
@@ -51,6 +52,22 @@ Item {
     var status = thread ? thread.status : null
     var type = typeof status === "string" ? status : String(status && status.type || "")
     return type === "active" ? "busy" : "done"
+  }
+
+  function restoreSnapshot(snapshot) {
+    if (!snapshot || String(snapshot.providerType || "") !== providerType) return
+    host = ProviderSnapshotLogic.hydratedHost(snapshot, {
+      id: hostId,
+      label: label,
+      providerType: providerType,
+      type: "provider",
+      home: controller.localHome,
+      threads: [],
+      projects: [],
+      models: [],
+      agents: []
+    })
+    lastSnapshotSignature = ""
   }
 
   function threadById(items, threadId) {
