@@ -3,6 +3,31 @@
 set -euo pipefail
 
 plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+live_wayland="${PANEL_TEST_LIVE_WAYLAND:-0}"
+
+if [[ "$live_wayland" != "1" ]]; then
+  panel_source="$plugin_root/Panel.qml"
+  list_source="$plugin_root/ui/CodexThreadList.qml"
+
+  [[ "$(grep -c '^[[:space:]]*PanelWindow[[:space:]]*{' "$panel_source")" == "2" ]]
+  grep -q 'id: sidebarReservation' "$panel_source"
+  grep -q 'id: panel' "$panel_source"
+  grep -q 'id: threadList' "$panel_source"
+  grep -q 'id: helpOverlay' "$panel_source"
+  grep -q 'Ui.CodexThreadList' "$panel_source"
+  grep -q 'id: searchButton' "$panel_source"
+  grep -q 'onClicked: root.startSearch()' "$panel_source"
+  grep -q 'id: projectMenu' "$list_source"
+  grep -q 'panel.sidebarActions.openSelectedTerminal()' "$list_source"
+
+  "$plugin_root/scripts/test-unit" \
+    tests/tst_threadlistmodel.qml \
+    tests/tst_sidebarcontroller.qml \
+    tests/tst_keycatcher.qml
+  printf '%s\n' 'panel-render contract tests passed'
+  exit 0
+fi
+
 test_root="$(mktemp -d -t agent-threads-panel-render-XXXXXX)"
 output_file="$test_root/output.log"
 trap 'rm -rf -- "$test_root"' EXIT
@@ -13,7 +38,8 @@ ln -s -- "$plugin_root" "$test_root/AgentThreads"
 cp -- "$plugin_root/tests/panel-harness/shell.qml" "$test_root/shell.qml"
 
 set +e
-AGENT_THREADS_PANEL_TEST=1 timeout 15s quickshell --path "$test_root/shell.qml" \
+AGENT_THREADS_PANEL_TEST=1 AGENT_THREADS_PANEL_TEST_LIVE=1 \
+  timeout 15s quickshell --path "$test_root/shell.qml" \
   >"$output_file" 2>&1
 exit_code=$?
 set -e

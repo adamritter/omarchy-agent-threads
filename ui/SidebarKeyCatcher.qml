@@ -9,6 +9,7 @@ Item {
   signal pageRequested(int direction, real fraction)
   signal edgeRequested(int edge)
   signal activateRequested()
+  signal terminalRequested()
   signal returnRequested()
   signal closeRequested()
   signal deleteRequested()
@@ -63,6 +64,9 @@ Item {
       moveRequested(-1, 0); event.accepted = true; return
     }
     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+      if (event.modifiers & Qt.ShiftModifier) {
+        terminalRequested(); event.accepted = true; return
+      }
       returnRequested()
       activateRequested(); event.accepted = true; return
     }

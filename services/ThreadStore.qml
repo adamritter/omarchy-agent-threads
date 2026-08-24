@@ -74,6 +74,8 @@ Item {
     .toString().replace(/^file:\/\//, "")
   readonly property string threadEventsHelperPath: Qt.resolvedUrl("../bin/omarchy-codex-thread-events")
     .toString().replace(/^file:\/\//, "")
+  readonly property string terminalOpenHelperPath: Qt.resolvedUrl(
+    "../bin/omarchy-agent-terminal-open").toString().replace(/^file:\/\//, "")
   readonly property string localHome: Quickshell.env("HOME") || "/tmp"
   readonly property string backendHomePath: localHome
   readonly property string pinnedSectionId: "01984de2-8f74-7c91-a3b2-5c5e937cf318"
@@ -281,6 +283,19 @@ Item {
       return
     }
     remoteProvider.newThread(hostId, path)
+  }
+
+  function openTerminal(mode, endpoint, path) {
+    if (terminalOpenProcess.running) return false
+    launchError = ""
+    terminalOpenProcess.command = [
+      terminalOpenHelperPath,
+      String(mode || ""),
+      String(endpoint || ""),
+      String(path || "")
+    ]
+    terminalOpenProcess.running = true
+    return true
   }
 
   function refreshThreads() {
@@ -817,6 +832,16 @@ Item {
           console.warn("Codex Threads: invalid thread statuses:", error)
         }
       }
+    }
+  }
+
+  Process {
+    id: terminalOpenProcess
+    running: false
+    stderr: StdioCollector { id: terminalOpenStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode !== 0)
+        root.launchError = terminalOpenStderr.text.trim() || "Could not open the terminal"
     }
   }
 

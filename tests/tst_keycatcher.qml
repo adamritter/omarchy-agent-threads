@@ -17,14 +17,28 @@ TestCase {
   SignalSpy { id: pageSpy; target: catcher; signalName: "pageRequested" }
   SignalSpy { id: edgeSpy; target: catcher; signalName: "edgeRequested" }
   SignalSpy { id: textSpy; target: catcher; signalName: "textKey" }
+  SignalSpy { id: activateSpy; target: catcher; signalName: "activateRequested" }
+  SignalSpy { id: terminalSpy; target: catcher; signalName: "terminalRequested" }
 
   function init() {
     moveSpy.clear()
     pageSpy.clear()
     edgeSpy.clear()
     textSpy.clear()
+    activateSpy.clear()
+    terminalSpy.clear()
     catcher.forceActiveFocus()
     verify(catcher.activeFocus)
+  }
+
+  function test_shiftEnterRequestsTerminalWithoutActivation() {
+    keyClick(Qt.Key_Return, Qt.ShiftModifier)
+    compare(terminalSpy.count, 1)
+    compare(activateSpy.count, 0)
+
+    keyClick(Qt.Key_Return)
+    compare(terminalSpy.count, 1)
+    compare(activateSpy.count, 1)
   }
 
   function test_emitsMovementRequests() {

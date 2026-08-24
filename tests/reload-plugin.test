@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d -t agent-threads-reload-plugin-XXXXXX)"
+state_file="$test_root/state"
+calls_file="$test_root/calls"
+trap 'rm -rf -- "$test_root"' EXIT
+
+mkdir -p -- "$test_root/bin"
+printf '%s\n' before >"$state_file"
+
+cat >"$test_root/bin/omarchy-shell" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$RELOAD_TEST_CALLS"
+if [[ "$2" == "status" ]]; then
+  printf '{"instanceToken":"%s","ready":true,"providerLoading":false,"loading":false,"sidebarPresented":true}\n' \
+    "$(<"$RELOAD_TEST_STATE")"
+elif [[ "$2" == "reloadQml" ]]; then
+  printf '%s\n' after >"$RELOAD_TEST_STATE"
+  printf '%s\n' ok
+else
+  exit 1
+fi
+EOF
+
+cat >"$test_root/bin/omarchy" <<'EOF'
+#!/usr/bin/env bash
+printf 'unexpected restart: %s\n' "$*" >&2
+exit 1
+EOF
+
+chmod +x "$test_root/bin/omarchy-shell" "$test_root/bin/omarchy"
+
+output="$(RELOAD_TEST_STATE="$state_file" RELOAD_TEST_CALLS="$calls_file" \
+  PATH="$test_root/bin:$PATH" "$plugin_root/scripts/reload-plugin")"
+
+[[ "$(jq -r .instanceToken <<<"$output")" == "after" ]]
+grep -q '^adam.codex-threads reloadQml$' "$calls_file"
+if grep -q '^shell rescanPlugins$' "$calls_file"; then
+  printf '%s\n' 'Reload unexpectedly used the rescan fallback' >&2
+  exit 1
+fi
+
+printf '%s\n' 'reload-plugin tests passed'

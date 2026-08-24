@@ -1,4 +1,5 @@
 import QtQuick
+import "../logic/ActionLogic.js" as ActionLogic
 
 Item {
   id: root
@@ -60,6 +61,23 @@ Item {
       return
     }
     service.newProjectThread(path)
+  }
+
+  function openSelectedTerminal() {
+    var row = panel.selectedIndex >= 0 && panel.selectedIndex < panel.viewRows.length
+      ? panel.viewRows[panel.selectedIndex] : null
+    var target = ActionLogic.terminalTarget(
+      panel.activeProvider, panel.homePath, row, panel.activeProviderHost)
+    if (target.error !== "") {
+      if (target.error === "ssh-required")
+        service.launchError = "Opening a terminal for this remote requires an SSH connection"
+      else if (target.error === "ssh-host-missing")
+        service.launchError = "The SSH host or alias is missing"
+      else service.launchError = "The selected remote is not ready"
+      return false
+    }
+    panel.releaseSidebarFocus(true)
+    return service.openTerminal(target.mode, target.endpoint, target.path)
   }
 
   function archiveSelected() {

@@ -57,4 +57,50 @@ TestCase {
     compare(target.providerType, "claude")
     compare(target.path, "/remote/home")
   }
+
+  function test_opensLocalTerminalFromHomeThreadAndProject() {
+    var home = ActionLogic.terminalTarget("codex", "/home/test", null, null)
+    compare(home.mode, "local")
+    compare(home.path, "/home/test")
+
+    var project = ActionLogic.terminalTarget("codex", "/home/test", {
+      kind: "project", path: "/work/app"
+    }, null)
+    compare(project.mode, "local")
+    compare(project.path, "/work/app")
+  }
+
+  function test_opensSshTerminalAtHostAndProjectPaths() {
+    var host = {
+      id: "remote-one", type: "ssh", sshHost: "dev", home: "/home/dev"
+    }
+    var remote = ActionLogic.terminalTarget("codex", "/home/test", {
+      kind: "remote", remoteId: "remote-one", path: "/home/dev", host: host
+    }, null)
+    compare(remote.mode, "ssh")
+    compare(remote.endpoint, "dev")
+    compare(remote.path, "/home/dev")
+
+    var project = ActionLogic.terminalTarget("codex", "/home/test", {
+      kind: "project", remoteId: "remote-one", path: "/srv/app", host: host
+    }, null)
+    compare(project.mode, "ssh")
+    compare(project.path, "/srv/app")
+  }
+
+  function test_opensLocalProviderTerminalAndRejectsAppServer() {
+    var provider = {
+      id: "provider-claude", type: "provider", home: "/home/test"
+    }
+    var local = ActionLogic.terminalTarget(
+      "claude", "/home/test", null, provider)
+    compare(local.mode, "local")
+    compare(local.path, "/home/test")
+
+    var appServer = ActionLogic.terminalTarget("codex", "/home/test", {
+      remoteId: "server", path: "/srv/app",
+      host: { id: "server", type: "app-server", home: "/srv" }
+    }, null)
+    compare(appServer.error, "ssh-required")
+  }
 }

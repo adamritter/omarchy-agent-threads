@@ -9,6 +9,8 @@ ShellRoot {
   property var panelInstance: null
   property int phase: 0
   property bool failed: false
+  readonly property bool liveLayerChecks:
+    Quickshell.env("AGENT_THREADS_PANEL_TEST_LIVE") === "1"
   property int firstMainLayerCount: 0
   property int firstReservationLayerCount: 0
 
@@ -59,6 +61,7 @@ ShellRoot {
     property int newProjectThreadCount: 0
     property int pinnedThreadCount: 0
     property int archivedThreadCount: 0
+    property int openedTerminalCount: 0
 
     function projectPathForThread(thread) { return String(thread && thread.cwd || "") }
     function projectRootPath(project) { return String(project && project.path || "") }
@@ -95,6 +98,7 @@ ShellRoot {
     function newProjectThread(path) { newProjectThreadCount++ }
     function toggleThreadPin(thread) { pinnedThreadCount++ }
     function archiveThread(thread) { archivedThreadCount++ }
+    function openTerminal(mode, endpoint, path) { openedTerminalCount++; return true }
   }
 
   Component {
@@ -158,8 +162,17 @@ ShellRoot {
   }
 
   function probeLayers(purpose) {
+    if (!liveLayerChecks) {
+      abort("live layer probe was requested in offscreen mode")
+      return
+    }
     layerProbe.purpose = purpose
     layerProbe.running = true
+  }
+
+  function finishSuccessfully() {
+    console.log("PANEL_RENDER_PASS:render and lifecycle contract verified")
+    Qt.quit()
   }
 
   function handleLayerProbe(text) {
@@ -200,8 +213,7 @@ ShellRoot {
     if (layerProbe.purpose === "second-destroyed") {
       if (!check(counts.main === 0 && counts.reservation === 0,
         "recreated panel left layer surfaces mapped")) return
-      console.log("PANEL_RENDER_PASS:render and lifecycle contract verified")
-      Qt.quit()
+      finishSuccessfully()
     }
   }
 
@@ -300,8 +312,13 @@ ShellRoot {
         if (!testRoot.check(!testRoot.panelInstance.renameOpen,
           "close input did not close rename")) return
 
-        testRoot.phase = 10
-        testRoot.probeLayers("first-visible")
+        if (testRoot.liveLayerChecks) {
+          testRoot.phase = 10
+          testRoot.probeLayers("first-visible")
+        } else {
+          testRoot.panelInstance.setSearchText("Beta")
+          testRoot.phase = 1
+        }
         return
       }
 
@@ -327,8 +344,10 @@ ShellRoot {
         testRoot.panelInstance.close()
         testRoot.panelInstance.destroy()
         testRoot.panelInstance = null
-        testRoot.phase = 20
-        Qt.callLater(function() { testRoot.probeLayers("first-destroyed") })
+        if (testRoot.liveLayerChecks) {
+          testRoot.phase = 20
+          Qt.callLater(function() { testRoot.probeLayers("first-destroyed") })
+        } else testRoot.phase = 3
         return
       }
 
@@ -337,8 +356,16 @@ ShellRoot {
           "recreated panel did not own both visible windows")) return
         if (!testRoot.check(snapshot.renderedRows.length === 4,
           "recreated panel did not render its fake rows")) return
-        testRoot.phase = 30
-        testRoot.probeLayers("second-visible")
+        if (testRoot.liveLayerChecks) {
+          testRoot.phase = 30
+          testRoot.probeLayers("second-visible")
+        } else {
+          testRoot.panelInstance.close()
+          testRoot.panelInstance.destroy()
+          testRoot.panelInstance = null
+          testRoot.phase = 40
+          Qt.callLater(testRoot.finishSuccessfully)
+        }
       }
     }
   }

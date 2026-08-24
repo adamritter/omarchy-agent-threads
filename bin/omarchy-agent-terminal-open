@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+mode="${1:-}"
+endpoint="${2:-}"
+target_path="${3:-}"
+
+if [[ -z "$target_path" ]]; then
+  printf '%s\n' 'The terminal directory is unknown' >&2
+  exit 2
+fi
+
+if [[ "$mode" == "local" ]]; then
+  if [[ ! -d "$target_path" ]]; then
+    printf 'The terminal directory does not exist: %s\n' "$target_path" >&2
+    exit 2
+  fi
+  exec omarchy launch terminal bash -lc \
+    'cd -- "$1" && exec "${SHELL:-/bin/bash}" -l' _ "$target_path"
+fi
+
+if [[ "$mode" == "ssh" ]]; then
+  if [[ ! "$endpoint" =~ ^[A-Za-z0-9_.@:-]+$ ]]; then
+    printf '%s\n' 'Invalid SSH host or alias' >&2
+    exit 2
+  fi
+  printf -v quoted_path '%q' "$target_path"
+  remote_command="cd -- ${quoted_path} && exec \"\${SHELL:-/bin/sh}\" -l"
+  exec omarchy launch terminal ssh -t -o ConnectTimeout=8 \
+    "$endpoint" "$remote_command"
+fi
+
+printf '%s\n' 'Unknown terminal target mode' >&2
+exit 2

@@ -102,6 +102,7 @@ the scratchpad/Quakes with `Super+grave`, so that function remains available.
 | `[count]j` / `[count]k`, arrows | Move selection, optionally by a count |
 | `h` / `l`, left/right | Collapse or expand |
 | `Enter` / `o` | Open a thread or toggle a group |
+| `t` / `Shift+Enter` | Open a terminal in the selected local or SSH directory |
 | `/` | Search |
 | `P` | Select provider |
 | `Tab` / `Shift+Tab` | Switch between sidebar panels |
@@ -257,11 +258,14 @@ wiring, run the component render contract directly:
 ./scripts/test-integration tests/panel-render.test
 ```
 
-This starts a short-lived Quickshell instance with fake projects and threads.
-It checks the actual panel delegates, search and help states, both layer-shell
-windows, destroy/recreate behavior, and cleanup of its test surfaces. It does
-not read live session data or start provider processes. Like QML unit tests, it
-must run outside restricted sandboxes because it uses Wayland and Hyprland.
+The default contract checks the real panel ownership tree statically and runs
+pure QML model, controller, and key-routing tests with fake projects and
+threads. It does not instantiate layer-shell windows, read live session data,
+start provider processes, change focus, or touch the running plugin.
+
+An explicit release smoke test can additionally verify real layer-shell mapping
+and cleanup with `PANEL_TEST_LIVE_WAYLAND=1 tests/panel-render.test`. This is not
+part of `scripts/test` and must not be run during an active desktop session.
 
 Run static validation with:
 
@@ -277,16 +281,17 @@ Before handing off a change, run the complete suite outside the sandbox:
 
 Plugin files under `~/.config/omarchy/plugins/` hot-reload on save. Do not
 restart the shell for ordinary QML, JavaScript, helper, or documentation
-changes. If the automatic reload does not apply a change, rescan just the
-plugins and inspect this plugin:
+changes. If the automatic reload does not apply a change, reload the complete
+QML graph in-process and verify that a new panel generation is active:
 
 ```bash
 ./scripts/reload-plugin
 ```
 
-A full `omarchy restart shell` is a last-resort lifecycle check. Use it only
+A full `omarchy restart shell` is a last-resort lifecycle check and the reload
+script's automatic fallback when in-process reload verification fails. Use it only
 when testing process startup/shutdown, recovering from a stuck socket or child
-process, or confirming a problem that still exists after `rescanPlugins`. Qt
+process, or confirming a problem that still exists after an in-process reload. Qt
 also caches a QML directory's file listing; adding or renaming component files
 inside a directory that the running Shell has already imported can therefore
 require one restart. Editing existing component files does not. One final

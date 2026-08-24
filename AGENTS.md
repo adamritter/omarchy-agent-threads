@@ -21,11 +21,13 @@
 
 - Plugin code under this directory hot-reloads on save. Do not use
   `omarchy restart shell` as part of the normal edit-test loop.
-- If a saved change does not appear, use `./scripts/reload-plugin`, which calls
-  `omarchy-shell shell rescanPlugins` and then inspects plugin status.
+- If a saved change does not appear, use `./scripts/reload-plugin`. It requests
+  a Quickshell in-process QML graph reload, waits for a new panel generation,
+  and verifies plugin status. This refreshes imported QML types while keeping
+  the shell process alive. A process restart is only its failure fallback.
 - Only restart the complete shell when testing startup/shutdown behavior,
   recovering a stuck socket or child process, or reproducing a failure that
-  remains after a plugin rescan. Qt caches imported QML directory listings, so
+  remains after an in-process QML graph reload. Qt caches imported QML directory listings, so
   adding or renaming component files in an already imported directory is also
   a valid one-restart exception. Editing existing files is not. A final
   release-level smoke test may include one full restart.
@@ -51,8 +53,12 @@
   `ui/SidebarController.qml` owns list actions.
 - Run `tests/panel-render.test` outside the sandbox before and after any change
   to `Panel.qml` ownership, window bindings, overlay composition, or list
-  wiring. It instantiates the real panel with fake data in Quickshell and
-  verifies rendered rows, overlays, layer windows, recreation, and cleanup.
+  wiring. Its default mode checks the real ownership tree statically, then uses
+  fake data in pure QML model, controller, and key-routing tests. It does not
+  instantiate layer-shell windows or connect to the live compositor.
+- Never run `PANEL_TEST_LIVE_WAYLAND=1 tests/panel-render.test` during an active
+  user session. Live layer-shell mapping is an explicit release smoke test, not
+  part of the aggregate development suite.
 - Do not move layer-shell windows or overlay controls behind forwarded host
   properties without a live reload test. Detached plugin instances can retain
   stale windows or incorrectly visible overlays.

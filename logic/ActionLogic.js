@@ -37,3 +37,27 @@ function projectPickerTarget(activeProvider, homePath, row, selectedHost, provid
   if (path === "") path = String(host && host.home || homePath || "")
   return { hostId: hostId, providerType: providerType, path: path, error: "" }
 }
+
+function terminalTarget(activeProvider, homePath, row, providerHost) {
+  var host = row && row.host ? row.host : null
+  var remoteId = String(row && row.remoteId || "")
+  if (!row && activeProvider !== "codex") {
+    host = providerHost || null
+    remoteId = String(host && host.id || "")
+  }
+
+  var path = String(row && row.path || host && host.home || homePath || "")
+  if (remoteId !== "" && !host)
+    return { mode: "", endpoint: "", path: path, error: "remote-not-ready" }
+
+  var connectionType = String(host && host.type || "")
+  if (connectionType === "app-server")
+    return { mode: "", endpoint: "", path: path, error: "ssh-required" }
+  if (connectionType === "ssh") {
+    var endpoint = String(host.sshHost || host.address || "")
+    if (endpoint === "")
+      return { mode: "", endpoint: "", path: path, error: "ssh-host-missing" }
+    return { mode: "ssh", endpoint: endpoint, path: path, error: "" }
+  }
+  return { mode: "local", endpoint: "-", path: path, error: "" }
+}

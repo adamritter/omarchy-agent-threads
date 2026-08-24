@@ -66,6 +66,7 @@ Panel {
   property string renameTargetRemoteId: ""
   property bool helpOpen: false
   property string navigationCount: ""
+  readonly property string instanceToken: Date.now() + "-" + Math.random()
   property int navigationFindDirection: 0
   property bool remoteSetupOpen: false
   property string remoteSetupType: "ssh"
@@ -95,6 +96,7 @@ Panel {
     { keys: "↑ ↓ / [count]j k", description: "Move selection" },
     { keys: "← →  /  h l", description: "Collapse or expand project" },
     { keys: "Enter / o", description: "Open thread or toggle project" },
+    { keys: "t / Shift+Enter", description: "Open terminal here" },
     { keys: "/", description: "Search threads and projects" },
     { keys: "P", description: "Select provider" },
     { keys: "Tab / Shift+Tab", description: "Switch between panels" },
@@ -1048,12 +1050,17 @@ Panel {
       root.service.refreshRemotes()
       return "ok"
     }
+    function reloadQml(): string {
+      Qt.callLater(function() { Quickshell.reload(false) })
+      return "ok"
+    }
     function search(text: string): string {
       root.setSearchText(text)
       return String(root.visibleThreadCount)
     }
     function status(): string {
       return JSON.stringify({
+        instanceToken: root.instanceToken,
         activeProvider: root.activeProvider,
         providerLoading: root.providerLoading(),
         ready: root.service.ready,
@@ -1264,6 +1271,11 @@ Panel {
         else if (root.helpOpen) root.helpOpen = false
         else root.sidebarActions.openSelected()
       }
+      onTerminalRequested: {
+        root.clearNavigationPrefix()
+        if (!root.helpOpen && !providerMenu.opened)
+          root.sidebarActions.openSelectedTerminal()
+      }
       onCloseRequested: {
         if (root.navigationCount !== "" || root.navigationFindDirection !== 0) {
           root.clearNavigationPrefix()
@@ -1351,6 +1363,10 @@ Panel {
         }
         if (text === "o" || text === "O") {
           root.sidebarActions.openSelected()
+          return
+        }
+        if (text === "t") {
+          root.sidebarActions.openSelectedTerminal()
           return
         }
         if (text === "y" || text === "Y") {
@@ -1532,7 +1548,7 @@ Panel {
           Item {
             id: newThreadButton
             visible: !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
-            anchors.right: remoteButton.left
+            anchors.right: searchButton.left
             anchors.rightMargin: Style.space(4)
             anchors.top: parent.top
             anchors.topMargin: -Style.space(6)
@@ -1554,6 +1570,36 @@ Panel {
               cursorShape: Qt.PointingHandCursor
               onClicked: root.sidebarActions.newSelectedThread()
             }
+          }
+
+          Item {
+            id: searchButton
+            visible: !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
+            anchors.right: remoteButton.left
+            anchors.rightMargin: Style.space(4)
+            anchors.top: parent.top
+            anchors.topMargin: -Style.space(6)
+            width: visible ? Style.space(24) : 0
+            height: Style.space(24)
+
+            Text {
+              anchors.centerIn: parent
+              text: "󰍉"
+              color: searchMouse.containsMouse ? Color.accent : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            MouseArea {
+              id: searchMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.startSearch()
+            }
+
+            ToolTip.visible: searchMouse.containsMouse
+            ToolTip.text: "Search threads and projects · /"
           }
 
           Item {

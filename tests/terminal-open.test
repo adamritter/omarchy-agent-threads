@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+helper="$plugin_root/bin/omarchy-agent-terminal-open"
+test_root="$(mktemp -d -t agent-threads-terminal-open-XXXXXX)"
+capture="$test_root/arguments"
+trap 'rm -rf -- "$test_root"' EXIT
+
+mkdir -p -- "$test_root/bin" "$test_root/local folder"
+cat >"$test_root/bin/omarchy" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$TERMINAL_OPEN_CAPTURE"
+EOF
+chmod +x "$test_root/bin/omarchy"
+
+TERMINAL_OPEN_CAPTURE="$capture" PATH="$test_root/bin:$PATH" \
+  "$helper" local - "$test_root/local folder"
+mapfile -t local_args <"$capture"
+[[ "${local_args[0]}" == "launch" ]]
+[[ "${local_args[1]}" == "terminal" ]]
+[[ "${local_args[2]}" == "bash" ]]
+[[ "${local_args[6]}" == "$test_root/local folder" ]]
+
+TERMINAL_OPEN_CAPTURE="$capture" PATH="$test_root/bin:$PATH" \
+  "$helper" ssh dev.example "/srv/my app"
+mapfile -t ssh_args <"$capture"
+[[ "${ssh_args[0]}" == "launch" ]]
+[[ "${ssh_args[1]}" == "terminal" ]]
+[[ "${ssh_args[2]}" == "ssh" ]]
+[[ "${ssh_args[6]}" == "dev.example" ]]
+[[ "${ssh_args[7]}" == *"/srv/my\\ app"* ]]
+
+if TERMINAL_OPEN_CAPTURE="$capture" PATH="$test_root/bin:$PATH" \
+    "$helper" ssh 'bad host!' /srv >/dev/null 2>&1; then
+  printf '%s\n' 'Terminal launcher accepted an invalid SSH host' >&2
+  exit 1
+fi
+
+printf '%s\n' 'terminal-open tests passed'

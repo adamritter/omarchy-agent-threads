@@ -123,6 +123,11 @@ ListView {
         remoteMenu.open()
         return
       }
+      if (projectRow) {
+        panel.selectedIndex = row.index
+        projectMenu.open()
+        return
+      }
       if (!threadRow) return
       panel.selectedIndex = row.index
       threadMenu.open()
@@ -220,6 +225,87 @@ ListView {
       onTapped: row.openThreadMenu()
     }
 
+    Popup {
+      id: projectMenu
+      x: Math.max(0, row.width - width - Style.space(6))
+      y: row.height - Style.space(4)
+      width: Style.space(220)
+      padding: Style.space(4)
+      modal: true
+      dim: false
+      focus: false
+      closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+      background: BorderSurface {
+        color: Color.background
+        borderSpec: Border.flat(panel.dim, 1)
+        radius: Style.cornerRadius
+      }
+
+      contentItem: Column {
+        spacing: 0
+
+        Repeater {
+          model: [
+            { label: "Open terminal", hint: "t / Shift+Enter", action: "terminal" },
+            { label: "New thread here", hint: "n", action: "new" },
+            { label: row.pinnedSection ? "Unpin project" : "Pin project",
+              hint: "p", action: "pin" }
+          ]
+
+          delegate: Rectangle {
+            id: projectMenuChoice
+            required property var modelData
+            width: parent.width
+            height: Style.space(38)
+            radius: Style.cornerRadius
+            color: projectMenuMouse.containsMouse ? panel.faint : "transparent"
+
+            Text {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              text: projectMenuChoice.modelData.label
+              color: panel.foreground
+              font.family: panel.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            Text {
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              text: projectMenuChoice.modelData.hint
+              color: panel.dim
+              font.family: panel.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            MouseArea {
+              id: projectMenuMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                var action = String(projectMenuChoice.modelData.action || "")
+                projectMenu.close()
+                if (action === "terminal") panel.sidebarActions.openSelectedTerminal()
+                else if (action === "new") {
+                  if (row.modelData.remoteId)
+                    panel.service.newRemoteThread(
+                      row.modelData.remoteId, row.modelData.path)
+                  else panel.service.newProjectThread(row.modelData.path)
+                } else if (action === "pin") {
+                  panel.toggleSectionPin(
+                    "project", row.modelData.path, row.modelData.remoteId)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     Rectangle {
       id: threadMenuButton
       visible: row.threadRow
@@ -281,12 +367,14 @@ ListView {
             model: row.modelData.remoteId ? [
               { label: row.pinned ? "Unpin thread" : "Pin thread", hint: "p", action: "pin" },
               { label: "Open thread", hint: "Enter / o", action: "open" },
+              { label: "Open terminal", hint: "t / Shift+Enter", action: "terminal" },
               { label: "Rename…", hint: "r", action: "rename" },
               { label: "New thread here", hint: "n", action: "new" },
               { label: "Archive", hint: "y", action: "archive" }
             ] : [
               { label: row.pinned ? "Unpin thread" : "Pin thread", hint: "p", action: "pin" },
               { label: "Open thread", hint: "Enter / o", action: "open" },
+              { label: "Open terminal", hint: "t / Shift+Enter", action: "terminal" },
               { label: "Rename…", hint: "r", action: "rename" },
               { label: "New thread here", hint: "n", action: "new" },
               { label: "Move to…", hint: "›", action: "move" },
@@ -342,6 +430,8 @@ ListView {
                       panel.service.openRemoteThread(row.modelData.remoteId,
                         row.threadData, row.modelData.path)
                     else panel.service.openThread(row.threadData, row.modelData.path)
+                  } else if (action === "terminal") {
+                    panel.sidebarActions.openSelectedTerminal()
                   } else if (action === "rename") {
                     panel.startRename(row.modelData.remoteId, row.threadData)
                   } else if (action === "new") {
@@ -720,6 +810,7 @@ ListView {
 
         Repeater {
           model: [
+            { label: "Open terminal", action: "terminal" },
             { label: remoteMenu.testingThis ? "Testing…" : "Test connection", action: "test" },
             { label: "Edit connection…", action: "edit" },
             { label: "Disable remote", action: "disable" }
@@ -758,7 +849,9 @@ ListView {
                   return
                 }
                 remoteMenu.close()
-                if (action === "edit")
+                if (action === "terminal")
+                  panel.sidebarActions.openSelectedTerminal()
+                else if (action === "edit")
                   panel.openRemoteSetup(row.modelData.remoteId)
                 else if (action === "disable")
                   panel.disableRemote(row.modelData.remoteId)
