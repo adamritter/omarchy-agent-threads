@@ -19,7 +19,8 @@
 
 # Development loop
 
-- Plugin code under this directory hot-reloads on save. Do not use
+- Plugin code under this directory hot-reloads on save through
+  [Omarchy PR #7771](https://github.com/basecamp/omarchy/pull/7771). Do not use
   `omarchy restart shell` as part of the normal edit-test loop.
 - If a saved change does not appear, use `./scripts/reload-plugin`. It requests
   a Quickshell in-process QML graph reload, waits for a new panel generation,

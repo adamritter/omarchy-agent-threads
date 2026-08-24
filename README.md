@@ -292,10 +292,11 @@ Before handing off a change, run the complete suite outside the sandbox:
 ./scripts/test
 ```
 
-Plugin files under `~/.config/omarchy/plugins/` hot-reload on save. Do not
-restart the shell for ordinary QML, JavaScript, helper, or documentation
-changes. If the automatic reload does not apply a change, reload the complete
-QML graph in-process and verify that a new panel generation is active:
+Plugin files under `~/.config/omarchy/plugins/` hot-reload on save through
+[Omarchy PR #7771](https://github.com/basecamp/omarchy/pull/7771). Do not restart
+the shell for ordinary QML, JavaScript, helper, or documentation changes. If
+the automatic reload does not apply a change, reload the complete QML graph
+in-process and verify that a new panel generation is active:
 
 ```bash
 ./scripts/reload-plugin
