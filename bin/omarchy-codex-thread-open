@@ -150,7 +150,9 @@ if existing_address="$(find_existing_client)"; then
 fi
 
 before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
-omarchy launch terminal "${codex_command[@]}" >/dev/null 2>&1 &
+setsid uwsm-app -- xdg-terminal-exec --dir="$thread_cwd" \
+  bash -lc 'cd -- "$1" || exit; shift; "$@"; agent_status=$?; exit "$agent_status"' \
+  _ "$thread_cwd" "${codex_command[@]}" >/dev/null 2>&1 &
 
 for _ in $(seq 1 80); do
   new_address="$(hyprctl -j clients 2>/dev/null | jq -r --arg before "$before_addresses" '

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d -t agent-threads-codex-launch-XXXXXX)"
+capture="$test_root/arguments"
+launched="$test_root/launched"
+project_dir="$test_root/project directory"
+trap 'rm -rf -- "$test_root"' EXIT
+
+mkdir -p -- "$test_root/bin" "$project_dir" "$test_root/runtime"
+
+cat >"$test_root/bin/uwsm-app" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$CODEX_LAUNCH_CAPTURE"
+touch "$CODEX_LAUNCH_MARKER"
+EOF
+
+cat >"$test_root/bin/hyprctl" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-j" && "${2:-}" == "clients" ]]; then
+  if [[ -f "$CODEX_LAUNCH_MARKER" ]]; then
+    printf '%s\n' '[{"address":"0xagent","pid":999999}]'
+  else
+    printf '%s\n' '[]'
+  fi
+elif [[ "${1:-}" == "-j" && "${2:-}" == "activeworkspace" ]]; then
+  printf '%s\n' '{"id":1}'
+fi
+EOF
+
+chmod +x "$test_root/bin/uwsm-app" "$test_root/bin/hyprctl"
+
+run_helper() {
+  local helper="$1"
+  shift
+  rm -f -- "$capture" "$launched"
+  CODEX_LAUNCH_CAPTURE="$capture" CODEX_LAUNCH_MARKER="$launched" \
+    XDG_RUNTIME_DIR="$test_root/runtime" PATH="$test_root/bin:$PATH" \
+    "$helper" "$@" >/dev/null
+  mapfile -t launch_args <"$capture"
+  [[ "${launch_args[0]}" == "--" ]]
+  [[ "${launch_args[1]}" == "xdg-terminal-exec" ]]
+  [[ "${launch_args[2]}" == "--dir=$project_dir" ]]
+  [[ "${launch_args[3]}" == "bash" ]]
+  [[ "${launch_args[4]}" == "-lc" ]]
+  [[ "${launch_args[5]}" == *'agent_status=$?'* ]]
+  [[ "${launch_args[7]}" == "$project_dir" ]]
+  [[ "${launch_args[8]}" == "codex" ]]
+}
+
+run_helper "$plugin_root/bin/omarchy-codex-thread-open" \
+  fixture-thread "$project_dir"
+[[ "${launch_args[9]}" == "-C" ]]
+[[ "${launch_args[10]}" == "$project_dir" ]]
+[[ "${launch_args[11]}" == "resume" ]]
+[[ "${launch_args[12]}" == "fixture-thread" ]]
+
+run_helper "$plugin_root/bin/omarchy-codex-project-new" "$project_dir"
+[[ "${launch_args[9]}" == "-C" ]]
+[[ "${launch_args[10]}" == "$project_dir" ]]
+
+printf '%s\n' 'codex-launch-directory tests passed'
