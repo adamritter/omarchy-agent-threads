@@ -23,6 +23,8 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'onClicked: root.startSearch()' "$panel_source"
   grep -q 'JSON.parse(sidebarActions.activeThreadCursorPoint())' "$panel_source"
   grep -q 'pointerHoverSuppressed = true' "$panel_source"
+  grep -q 'name === "activespecial"' "$panel_source"
+  grep -q 'activeWorkspaceKey' "$panel_source"
   grep -q 'function nextThread(): string' "$panel_source"
   grep -q 'function previousThread(): string' "$panel_source"
   grep -q 'root.service.flushProviderSnapshot()' "$panel_source"

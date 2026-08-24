@@ -4,15 +4,24 @@ set -euo pipefail
 
 active_workspace="$(hyprctl activeworkspace -j)"
 monitors="$(hyprctl monitors -j)"
+workspaces="$(hyprctl workspaces -j)"
 clients="$(hyprctl clients -j)"
 
 jq -cn \
   --argjson workspace "$active_workspace" \
   --argjson monitors "$monitors" \
+  --argjson workspaces "$workspaces" \
   --argjson clients "$clients" '
-    ($workspace.id // 0) as $workspace_id
-    | ($workspace.monitorID // -1) as $monitor_id
+    ($workspace.monitorID // -1) as $monitor_id
     | ($monitors | map(select(.id == $monitor_id)) | first // {}) as $monitor
+    | ($monitor.specialWorkspace // {}) as $special
+    | (($special.id // 0) != 0) as $is_special
+    | (if $is_special then ($special.id // 0) else ($workspace.id // 0) end)
+        as $workspace_id
+    | (if $is_special then ($special.name // "")
+        else (($workspace.id // 0) | tostring) end) as $workspace_key
+    | ($workspaces | map(select((.id // 0) == $workspace_id)) | first
+        // $workspace) as $effective_workspace
     | (($monitor.width // 0) / ($monitor.scale // 1)) as $width
     | (($monitor.height // 0) / ($monitor.scale // 1)) as $height
     | ($clients | any(
@@ -25,8 +34,11 @@ jq -cn \
         and ((.size[1] // 0) >= ($height - 4)))) as $geometry_fullscreen
     | {
         workspaceId: $workspace_id,
-        nativeFullscreen: ($workspace.hasfullscreen == true),
+        workspaceKey: $workspace_key,
+        workspaceName: ($effective_workspace.name // $workspace_key),
+        specialWorkspace: $is_special,
+        nativeFullscreen: ($effective_workspace.hasfullscreen == true),
         geometryFullscreen: $geometry_fullscreen,
-        hasfullscreen: (($workspace.hasfullscreen == true) or $geometry_fullscreen)
+        hasfullscreen: (($effective_workspace.hasfullscreen == true) or $geometry_fullscreen)
       }
   '

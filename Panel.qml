@@ -90,6 +90,7 @@ Panel {
   property bool internalFocusTransfer: false
   property bool applyingWorkspaceSidebarState: false
   property int activeWorkspaceId: 0
+  property string activeWorkspaceKey: ""
 
   onSidebarItemFocusedChanged: {
     if (!sidebarItemFocused && keyboardFocusRequested
@@ -697,10 +698,10 @@ Panel {
   }
 
   function applySidebarOpenState() {
-    if (!bar || activeWorkspaceId <= 0 || !service.sidebarSettingsLoaded) return
+    if (!bar || activeWorkspaceKey === "" || !service.sidebarSettingsLoaded) return
     applyingWorkspaceSidebarState = true
-    service.migrateSidebarOpenState(activeWorkspaceId)
-    if (service.sidebarOpenOnWorkspace(activeWorkspaceId)) open()
+    service.migrateSidebarOpenState(activeWorkspaceKey)
+    if (service.sidebarOpenOnWorkspace(activeWorkspaceKey)) open()
     else close()
     Qt.callLater(function() { root.applyingWorkspaceSidebarState = false })
   }
@@ -775,12 +776,12 @@ Panel {
   }
 
   function toggleSidebarScope() {
-    if (activeWorkspaceId <= 0) {
+    if (activeWorkspaceKey === "") {
       queryFullscreenState()
       return
     }
     service.setSidebarScope(service.sidebarScope === "global" ? "workspace" : "global",
-                            activeWorkspaceId, opened)
+                            activeWorkspaceKey, opened)
     applySidebarOpenState()
   }
 
@@ -797,6 +798,7 @@ Panel {
     try { state = JSON.parse(String(text || "{}")) } catch (e) { return }
     var workspaceFullscreen = state.hasfullscreen === true
     var workspaceId = Number(state.workspaceId || 0)
+    var workspaceKey = String(state.workspaceKey || (workspaceId !== 0 ? workspaceId : ""))
     var internalState = workspaceFullscreen ? 2 : 0
     var clientState = 0
     var wasSuppressed = fullscreenSuppressed
@@ -804,10 +806,13 @@ Panel {
     activeWorkspaceGeometryFullscreen = state.geometryFullscreen === true
     fullscreenInternalState = internalState
     fullscreenClientState = clientState
-    if (workspaceId > 0 && workspaceId !== activeWorkspaceId) {
+    if (workspaceKey !== "" && workspaceKey !== activeWorkspaceKey) {
       releaseSidebarFocus(true)
       activeWorkspaceId = workspaceId
+      activeWorkspaceKey = workspaceKey
       applySidebarOpenState()
+    } else if (workspaceId !== 0) {
+      activeWorkspaceId = workspaceId
     }
     if (!wasSuppressed && fullscreenSuppressed) releaseSidebarFocus(true)
   }
@@ -857,8 +862,8 @@ Panel {
 
   onOpenedChanged: {
     if (!bar) return
-    if (!applyingWorkspaceSidebarState && activeWorkspaceId > 0)
-      service.setSidebarOpenOnWorkspace(activeWorkspaceId, opened)
+    if (!applyingWorkspaceSidebarState && activeWorkspaceKey !== "")
+      service.setSidebarOpenOnWorkspace(activeWorkspaceKey, opened)
     if (opened) {
       nowMs = Date.now()
       service.refreshThreads()
@@ -931,6 +936,7 @@ Panel {
     function onRawEvent(event) {
       var name = String(event && (event.name || event.event || event.type) || "")
       if (name === "workspace" || name === "workspacev2"
+          || name === "activespecial" || name === "activespecialv2"
           || name === "focusedmon" || name === "focusedmonv2"
           || name === "fullscreen" || name === "fullscreenv2"
           || name === "activewindow" || name === "activewindowv2"
@@ -1047,8 +1053,8 @@ Panel {
         ? "workspace" : "global"
       if (wanted !== "workspace" && wanted !== "global")
         return root.service.sidebarScope
-      if (root.activeWorkspaceId <= 0) return root.service.sidebarScope
-      root.service.setSidebarScope(wanted, root.activeWorkspaceId, root.opened)
+      if (root.activeWorkspaceKey === "") return root.service.sidebarScope
+      root.service.setSidebarScope(wanted, root.activeWorkspaceKey, root.opened)
       root.applySidebarOpenState()
       return root.service.sidebarScope
     }
@@ -1106,8 +1112,9 @@ Panel {
         helpOpen: root.helpOpen,
         sidebarFocused: root.sidebarFocused,
         sidebarOpen: root.service.sidebarOpen,
-        sidebarOpenOnWorkspace: root.service.sidebarOpenOnWorkspace(root.activeWorkspaceId),
+        sidebarOpenOnWorkspace: root.service.sidebarOpenOnWorkspace(root.activeWorkspaceKey),
         activeWorkspaceId: root.activeWorkspaceId,
+        activeWorkspaceKey: root.activeWorkspaceKey,
         sidebarScope: root.service.sidebarScope,
         sidebarPresented: root.sidebarPresented,
         fullscreenSuppressed: root.fullscreenSuppressed,
