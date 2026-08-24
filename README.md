@@ -88,12 +88,19 @@ o.bind("SUPER + A", "Focus Agent Threads", "omarchy-shell -q adam.codex-threads 
 -- SUPER + S defaults to the scratchpad; SUPER + grave already opens scratchpad/Quakes.
 hl.unbind("SUPER + S")
 o.bind("SUPER + S", "Toggle Agent Threads", "omarchy-shell -q adam.codex-threads toggle")
+
+-- Select only thread rows, skipping project/remote headers and wrapping at the ends.
+o.bind("SUPER + CTRL + DOWN", "Next agent thread", "omarchy-shell -q adam.codex-threads nextThread")
+o.bind("SUPER + CTRL + UP", "Previous agent thread", "omarchy-shell -q adam.codex-threads previousThread")
 ```
 
 `Super+A` is the fast keyboard-navigation entry point. `Super+S` only opens or
 closes the sidebar and does not force keyboard focus. Rebinding `Super+S`
 replaces its default scratchpad action. Current Omarchy releases already expose
 the scratchpad/Quakes with `Super+grave`, so that function remains available.
+The `nextThread` and `previousThread` IPC actions switch from the active thread
+to the next or previous visible thread. They also update the sidebar selection,
+skip project, remote, and “show more” rows, and wrap at either end.
 
 ## Controls
 

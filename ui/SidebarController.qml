@@ -41,6 +41,56 @@ Item {
     }
   }
 
+  function adjacentThreadIndex(startIndex, direction) {
+    var rows = panel.viewRows || []
+    if (rows.length === 0) return -1
+    var step = Number(direction) < 0 ? -1 : 1
+    var start = Number(startIndex)
+    if (start < 0 || start >= rows.length) start = step > 0 ? -1 : 0
+    for (var offset = 1; offset <= rows.length; offset++) {
+      var index = (start + step * offset) % rows.length
+      if (index < 0) index += rows.length
+      if (rows[index] && rows[index].kind === "thread") return index
+    }
+    return -1
+  }
+
+  function selectThreadIndex(index) {
+    if (index < 0 || index >= panel.viewRows.length) return ""
+    panel.selectedIndex = index
+    if (panel.opened)
+      listView.positionViewAtIndex(index, ListView.Contain)
+    return panel.rowKey(panel.viewRows[index])
+  }
+
+  function selectAdjacentThread(direction) {
+    return selectThreadIndex(adjacentThreadIndex(panel.selectedIndex, direction))
+  }
+
+  function activeThreadRowIndex() {
+    var activeId = String(service.activeThreadId || "")
+    if (activeId === "") return -1
+    var rows = panel.viewRows || []
+    for (var index = 0; index < rows.length; index++) {
+      var row = rows[index]
+      if (row && row.kind === "thread" && row.thread
+          && String(row.thread.id || "") === activeId) return index
+    }
+    return -1
+  }
+
+  function activateAdjacentThread(direction) {
+    var index = adjacentThreadIndex(activeThreadRowIndex(), direction)
+    if (index < 0) return ""
+    var row = panel.viewRows[index]
+    var key = selectThreadIndex(index)
+    panel.releaseSidebarFocus(true)
+    if (row.remoteId)
+      service.openRemoteThread(row.remoteId, row.thread, row.path)
+    else service.openThread(row.thread, row.path)
+    return key
+  }
+
   function newSelectedThread() {
     var path = panel.homePath
     if (panel.selectedIndex >= 0 && panel.selectedIndex < panel.viewRows.length) {

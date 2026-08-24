@@ -1058,6 +1058,12 @@ Panel {
       root.sidebarActions.followActiveThread(true)
       return root.rowKey(root.viewRows[root.selectedIndex])
     }
+    function nextThread(): string {
+      return root.sidebarActions.activateAdjacentThread(1)
+    }
+    function previousThread(): string {
+      return root.sidebarActions.activateAdjacentThread(-1)
+    }
     function cursorPoint(): string { return root.sidebarActions.activeThreadCursorPoint() }
     function refresh(): string {
       root.service.refreshThreads()
