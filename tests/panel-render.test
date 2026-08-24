@@ -9,9 +9,13 @@ if [[ "$live_wayland" != "1" ]]; then
   panel_source="$plugin_root/Panel.qml"
   list_source="$plugin_root/ui/CodexThreadList.qml"
 
-  [[ "$(grep -c '^[[:space:]]*PanelWindow[[:space:]]*{' "$panel_source")" == "2" ]]
-  grep -q 'id: sidebarReservation' "$panel_source"
+  [[ "$(grep -c '^[[:space:]]*PanelWindow[[:space:]]*{' "$panel_source")" == "1" ]]
+  if grep -q 'id: sidebarReservation' "$panel_source"; then
+    printf '%s\n' 'Panel.qml still owns a separate reservation window' >&2
+    exit 1
+  fi
   grep -q 'id: panel' "$panel_source"
+  grep -q 'exclusiveZone: root.sidebarContentWidth' "$panel_source"
   grep -q 'id: threadList' "$panel_source"
   grep -q 'id: helpOverlay' "$panel_source"
   grep -q 'Ui.CodexThreadList' "$panel_source"

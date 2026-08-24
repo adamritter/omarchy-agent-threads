@@ -32,7 +32,6 @@ Panel {
   readonly property string workspaceStateHelperPath: Qt.resolvedUrl(
     "bin/omarchy-agent-workspace-state").toString().replace(/^file:\/\//, "")
   readonly property int sidebarContentWidth: Style.space(380)
-  readonly property int sidebarReserveWidth: sidebarContentWidth + Style.gapsOut
   property bool fullscreenSuppressionEnabled: true
   readonly property bool fullscreenSuppressed: fullscreenSuppressionEnabled
     && activeWorkspaceHasFullscreen
@@ -540,7 +539,6 @@ Panel {
     return {
       opened: opened,
       sidebarPresented: sidebarPresented,
-      reservationVisible: sidebarReservation.visible,
       panelVisible: panel.visible,
       layerNamespace: layerNamespace,
       headerText: headerTitle.text,
@@ -736,12 +734,12 @@ Panel {
 
     var point
     try { point = JSON.parse(sidebarActions.visibleListCursorPoint()) }
-    catch (error) { point = ({ x: sidebarReserveWidth / 2, y: 1 }) }
+    catch (error) { point = ({ x: sidebarContentWidth / 2, y: 1 }) }
     var targetScreen = panel.screen
     var layerTop = Style.gapsOut
       + (bar && bar.position === "top" ? bar.barSize : 0)
     var pointX = Math.round(Number(targetScreen ? targetScreen.x : 0)
-      + Number(point.x || sidebarReserveWidth / 2))
+      + Number(point.x || sidebarContentWidth / 2))
     var pointY = Math.round(Number(targetScreen ? targetScreen.y : 0)
       + layerTop + Number(point.y || 1))
     Hyprland.dispatch("hl.dsp.cursor.move({ x = " + pointX
@@ -1135,33 +1133,6 @@ Panel {
     }
   }
 
-  // Keep compositor reservation separate from the visible overlay surface.
-  PanelWindow {
-    id: sidebarReservation
-
-    screen: button.QsWindow.window ? button.QsWindow.window.screen : null
-    visible: root.sidebarPresented
-    color: "transparent"
-    implicitWidth: root.sidebarReserveWidth
-    exclusionMode: ExclusionMode.Normal
-    exclusiveZone: root.sidebarReserveWidth
-
-    WlrLayershell.namespace: root.layerNamespace + "-reservation"
-    WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-
-    anchors {
-      top: true
-      bottom: true
-      left: true
-    }
-
-    mask: Region {
-      width: 0
-      height: 0
-    }
-  }
-
   // A persistent layer-shell sidebar rather than a popup. It has no full-screen
   // dismissal overlay, so clicking an application leaves it mapped.
   PanelWindow {
@@ -1170,11 +1141,12 @@ Panel {
     screen: button.QsWindow.window ? button.QsWindow.window.screen : null
     visible: root.sidebarPresented
     color: "transparent"
-    implicitWidth: root.sidebarReserveWidth
-    exclusionMode: ExclusionMode.Ignore
+    implicitWidth: root.sidebarContentWidth
+    exclusionMode: ExclusionMode.Normal
+    exclusiveZone: root.sidebarContentWidth
 
     WlrLayershell.namespace: root.layerNamespace
-    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: root.sidebarPresented && root.keyboardFocusRequested
       ? (root.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
       : WlrKeyboardFocus.None
@@ -1186,20 +1158,15 @@ Panel {
     }
 
     margins {
-      // Overlay layers do not inherit the bar's exclusive edge, so include it.
       top: root.bar && root.bar.position === "top"
-        ? root.bar.barSize + Style.gapsOut
-        : Style.gapsOut
+        ? root.bar.barSize : 0
       bottom: root.bar && root.bar.position === "bottom"
-        ? root.bar.barSize + Style.gapsOut
-        : Style.gapsOut
+        ? root.bar.barSize : 0
     }
 
     BorderSurface {
       id: card
       anchors.fill: parent
-      anchors.leftMargin: Style.gapsOut
-      anchors.rightMargin: 0
       color: Color.popups.background
       borderSpec: root.sidebarFocused
         ? Border.surfaceSpec("popups", "border", Color.popups.border,

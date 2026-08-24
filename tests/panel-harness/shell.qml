@@ -12,7 +12,6 @@ ShellRoot {
   readonly property bool liveLayerChecks:
     Quickshell.env("AGENT_THREADS_PANEL_TEST_LIVE") === "1"
   property int firstMainLayerCount: 0
-  property int firstReservationLayerCount: 0
 
   QtObject {
     id: fakeService
@@ -149,16 +148,14 @@ ShellRoot {
   function layerCounts(text) {
     var parsed
     try { parsed = JSON.parse(String(text || "{}")) }
-    catch (error) { return { valid: false, main: 0, reservation: 0 } }
+    catch (error) { return { valid: false, main: 0 } }
     var namespaces = []
     collectLayerNamespaces(parsed, namespaces)
     var main = 0
-    var reservation = 0
     for (var index = 0; index < namespaces.length; index++) {
       if (namespaces[index] === "agent-threads-panel-test") main++
-      else if (namespaces[index] === "agent-threads-panel-test-reservation") reservation++
     }
-    return { valid: true, main: main, reservation: reservation }
+    return { valid: true, main: main }
   }
 
   function probeLayers(purpose) {
@@ -180,27 +177,23 @@ ShellRoot {
     if (!check(counts.valid, "hyprctl returned invalid layer JSON")) return
 
     if (layerProbe.purpose === "first-visible") {
-      if (!check(counts.main > 0 && counts.reservation > 0,
-        "the first panel did not map both layer roles")) return
-      if (!check(counts.main === counts.reservation,
-        "the first panel mapped mismatched layer roles")) return
+      if (!check(counts.main > 0,
+        "the first panel did not map its layer surface")) return
       firstMainLayerCount = counts.main
-      firstReservationLayerCount = counts.reservation
       panelInstance.setSearchText("Beta")
       phase = 1
       return
     }
 
     if (layerProbe.purpose === "first-destroyed") {
-      if (!check(counts.main === 0 && counts.reservation === 0,
+      if (!check(counts.main === 0,
         "destroyed panel left layer surfaces mapped")) return
       phase = 3
       return
     }
 
     if (layerProbe.purpose === "second-visible") {
-      if (!check(counts.main === firstMainLayerCount
-          && counts.reservation === firstReservationLayerCount,
+      if (!check(counts.main === firstMainLayerCount,
         "recreated panel mapped duplicate or missing layer surfaces")) return
       panelInstance.close()
       panelInstance.destroy()
@@ -211,7 +204,7 @@ ShellRoot {
     }
 
     if (layerProbe.purpose === "second-destroyed") {
-      if (!check(counts.main === 0 && counts.reservation === 0,
+      if (!check(counts.main === 0,
         "recreated panel left layer surfaces mapped")) return
       finishSuccessfully()
     }
@@ -251,8 +244,8 @@ ShellRoot {
       if (testRoot.phase === 0) {
         if (!testRoot.check(snapshot.opened, "panel did not open")) return
         if (!testRoot.check(snapshot.sidebarPresented, "sidebar was not presented")) return
-        if (!testRoot.check(snapshot.reservationVisible && snapshot.panelVisible,
-          "owned layer-shell windows were not both visible")) return
+        if (!testRoot.check(snapshot.panelVisible,
+          "owned layer-shell window was not visible")) return
         if (!testRoot.check(snapshot.headerText === "CODEX  ▾",
           "unexpected header: " + snapshot.headerText)) return
         if (!testRoot.check(snapshot.statusText === "1 projects · 3 threads · newest first",
@@ -352,8 +345,8 @@ ShellRoot {
       }
 
       if (testRoot.phase === 4) {
-        if (!testRoot.check(snapshot.panelVisible && snapshot.reservationVisible,
-          "recreated panel did not own both visible windows")) return
+        if (!testRoot.check(snapshot.panelVisible,
+          "recreated panel did not own its visible window")) return
         if (!testRoot.check(snapshot.renderedRows.length === 4,
           "recreated panel did not render its fake rows")) return
         if (testRoot.liveLayerChecks) {
