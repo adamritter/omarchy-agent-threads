@@ -902,6 +902,7 @@ Panel {
       root.restoreProviderViewState(root.activeProvider)
     }
     function onActiveThreadIdChanged() { root.sidebarActions.followActiveThread(false) }
+    function onLaunchingThreadIdChanged() { root.sidebarActions.followActiveThread(false) }
     function onSidebarSettingsLoadedChanged() { root.applySidebarOpenState() }
     function onSidebarOpenWorkspacesChanged() {
       if (!root.applyingWorkspaceSidebarState) root.applySidebarOpenState()

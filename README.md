@@ -100,7 +100,8 @@ replaces its default scratchpad action. Current Omarchy releases already expose
 the scratchpad/Quakes with `Super+grave`, so that function remains available.
 The `nextThread` and `previousThread` IPC actions switch from the active thread
 to the next or previous visible thread. They also update the sidebar selection,
-skip project, remote, and “show more” rows, and wrap at either end.
+and skip project, remote, and “show more” rows. `nextThread` wraps from the last
+thread to the first; `previousThread` stops at the first thread.
 
 ## Controls
 

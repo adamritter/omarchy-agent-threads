@@ -26,14 +26,17 @@ TestCase {
     id: fakeService
     property string launchError: ""
     property string activeThreadId: ""
+    property string launchingThreadId: ""
     function openThread(thread, path) {
       testCase.openedThreadCount++
       testCase.openedThreadId = String(thread.id || "")
+      launchingThreadId = testCase.openedThreadId
     }
     function openRemoteThread(remoteId, thread, path) {
       testCase.openedRemoteThreadCount++
       testCase.openedRemoteId = String(remoteId || "")
       testCase.openedThreadId = String(thread.id || "")
+      launchingThreadId = testCase.openedThreadId
     }
     function openTerminal(mode, endpoint, path) {
       testCase.terminalCount++
@@ -80,6 +83,7 @@ TestCase {
     openedRemoteId = ""
     fakeService.launchError = ""
     fakeService.activeThreadId = ""
+    fakeService.launchingThreadId = ""
     fakeListView.positionedIndex = -1
   }
 
@@ -126,13 +130,41 @@ TestCase {
     compare(selectedIndex, 3)
     compare(openedThreadCount, 1)
     compare(openedThreadId, "beta")
+    compare(controller.followTargetThreadId(), "beta")
     compare(releaseCount, 1)
 
     fakeService.activeThreadId = "beta"
+    fakeService.launchingThreadId = ""
     compare(controller.activateAdjacentThread(-1), "thread:alpha")
     compare(selectedIndex, 1)
     compare(openedThreadCount, 2)
     compare(openedThreadId, "alpha")
+  }
+
+  function test_previousActivationStopsAtFirstThread() {
+    viewRows = [
+      { kind: "project", path: "/work/a" },
+      { kind: "thread", path: "/work/a", thread: { id: "alpha" } },
+      { kind: "project", path: "/work/b" },
+      { kind: "thread", path: "/work/b", thread: { id: "beta" } }
+    ]
+    fakeService.activeThreadId = "alpha"
+    selectedIndex = 1
+
+    compare(controller.activateAdjacentThread(-1), "")
+    compare(selectedIndex, 1)
+    compare(openedThreadCount, 0)
+    compare(openedRemoteThreadCount, 0)
+    compare(releaseCount, 0)
+  }
+
+  function test_followTargetPrefersPendingActivation() {
+    fakeService.activeThreadId = "old"
+    fakeService.launchingThreadId = "requested"
+    compare(controller.followTargetThreadId(), "requested")
+
+    fakeService.launchingThreadId = ""
+    compare(controller.followTargetThreadId(), "old")
   }
 
   function test_activatesRemoteThreadThroughRemoteProvider() {

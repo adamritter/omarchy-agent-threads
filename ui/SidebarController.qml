@@ -41,14 +41,16 @@ Item {
     }
   }
 
-  function adjacentThreadIndex(startIndex, direction) {
+  function adjacentThreadIndex(startIndex, direction, wrap) {
     var rows = panel.viewRows || []
     if (rows.length === 0) return -1
     var step = Number(direction) < 0 ? -1 : 1
     var start = Number(startIndex)
     if (start < 0 || start >= rows.length) start = step > 0 ? -1 : 0
     for (var offset = 1; offset <= rows.length; offset++) {
-      var index = (start + step * offset) % rows.length
+      var candidate = start + step * offset
+      if (wrap === false && (candidate < 0 || candidate >= rows.length)) return -1
+      var index = candidate % rows.length
       if (index < 0) index += rows.length
       if (rows[index] && rows[index].kind === "thread") return index
     }
@@ -64,7 +66,7 @@ Item {
   }
 
   function selectAdjacentThread(direction) {
-    return selectThreadIndex(adjacentThreadIndex(panel.selectedIndex, direction))
+    return selectThreadIndex(adjacentThreadIndex(panel.selectedIndex, direction, true))
   }
 
   function activeThreadRowIndex() {
@@ -79,8 +81,14 @@ Item {
     return -1
   }
 
+  function followTargetThreadId() {
+    return String(service.launchingThreadId || service.activeThreadId || "")
+  }
+
   function activateAdjacentThread(direction) {
-    var index = adjacentThreadIndex(activeThreadRowIndex(), direction)
+    var activeIndex = activeThreadRowIndex()
+    if (activeIndex < 0) return ""
+    var index = adjacentThreadIndex(activeIndex, direction, Number(direction) >= 0)
     if (index < 0) return ""
     var row = panel.viewRows[index]
     var key = selectThreadIndex(index)
@@ -254,7 +262,7 @@ Item {
 
   function followActiveThread(force) {
     // Refreshes must not overwrite a selection made while the sidebar is focused.
-    var activeId = String(service.activeThreadId || "")
+    var activeId = followTargetThreadId()
     if (activeId === "") {
       followedActiveThreadId = ""
       return
@@ -308,14 +316,15 @@ Item {
   }
 
   function activeThreadCursorPoint() {
-    var activeThread = threadForId(service.activeThreadId)
+    var targetThreadId = followTargetThreadId()
+    var activeThread = threadForId(targetThreadId)
     if (!activeThread) return visibleListCursorPoint()
     followActiveThread(true)
 
-    var index = rowIndexForThread(service.activeThreadId)
+    var index = rowIndexForThread(targetThreadId)
     if (index < 0) return visibleListCursorPoint()
 
-    followedActiveThreadId = String(service.activeThreadId || "")
+    followedActiveThreadId = targetThreadId
     panel.selectedIndex = index
     listView.positionViewAtIndex(index, ListView.Contain)
     listView.forceLayout()
