@@ -3,7 +3,6 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import readline from "node:readline"
 import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
@@ -11,6 +10,8 @@ const [configPath = "", hostId = "", action = "snapshot", actionValue = "",
   actionExtra = "", actionName = ""] = process.argv.slice(2)
 const timeoutMs = 60000
 const pinnedSectionId = "01984de2-8f74-7c91-a3b2-5c5e937cf318"
+const SSH_STDOUT_LIMIT = 16 * 1024 * 1024
+const SSH_STDERR_LIMIT = 256 * 1024
 let nextRequestId = 1
 
 function fail(message) {
@@ -95,6 +96,51 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", `'"'"'`)}'`
 }
 
+function collectSshOutput(child, providerName) {
+  return new Promise((resolve, reject) => {
+    const stdout = { chunks: [], bytes: 0, limit: SSH_STDOUT_LIMIT, label: "stdout", size: "16 MiB" }
+    const stderr = { chunks: [], bytes: 0, limit: SSH_STDERR_LIMIT, label: "stderr", size: "256 KiB" }
+    let finished = false
+
+    function finishWithError(error) {
+      if (finished) return
+      finished = true
+      child.stdout.destroy()
+      child.stderr.destroy()
+      child.stdin.destroy()
+      child.kill("SIGTERM")
+      reject(error)
+    }
+
+    function collect(stream, state) {
+      stream.on("data", chunk => {
+        if (finished) return
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+        if (state.bytes + buffer.length > state.limit) {
+          finishWithError(new Error(
+            `remote ${providerName} SSH ${state.label} exceeded the ${state.size} limit`))
+          return
+        }
+        state.chunks.push(buffer)
+        state.bytes += buffer.length
+      })
+    }
+
+    collect(child.stdout, stdout)
+    collect(child.stderr, stderr)
+    child.on("error", finishWithError)
+    child.on("close", code => {
+      if (finished) return
+      finished = true
+      resolve({
+        code,
+        stdout: Buffer.concat(stdout.chunks, stdout.bytes).toString("utf8"),
+        stderr: Buffer.concat(stderr.chunks, stderr.bytes).toString("utf8")
+      })
+    })
+  })
+}
+
 function createSshTransport(host) {
   const sshHost = String(host.sshHost || "").trim()
   if (!/^[A-Za-z0-9_.@:-]+$/.test(sshHost)) fail("invalid SSH host or alias")
@@ -109,28 +155,95 @@ function createSshTransport(host) {
     sshHost,
     remoteCommand
   ], { stdio: ["pipe", "pipe", "pipe"] })
-  let stderr = ""
-  child.stderr.on("data", chunk => { stderr += String(chunk) })
 
   return new Promise((resolve, reject) => {
     let settled = false
+    let closedIntentionally = false
+    let failure = null
+    let errorHandler = () => {}
+    let messageHandler = () => {}
+    const stderr = { chunks: [], bytes: 0 }
+    let lineChunks = []
+    let lineBytes = 0
+
+    function reportFailure(error) {
+      if (failure) return
+      failure = error
+      child.stdout.destroy()
+      child.stderr.destroy()
+      child.stdin.destroy()
+      child.kill("SIGTERM")
+      if (settled) errorHandler(error)
+      else reject(error)
+    }
+
+    function appendLinePart(buffer) {
+      if (lineBytes + buffer.length > SSH_STDOUT_LIMIT) {
+        reportFailure(new Error("remote Codex SSH response line exceeded the 16 MiB limit"))
+        return false
+      }
+      if (buffer.length > 0) lineChunks.push(buffer)
+      lineBytes += buffer.length
+      return true
+    }
+
+    function emitLine() {
+      let line = Buffer.concat(lineChunks, lineBytes).toString("utf8")
+      if (line.endsWith("\r")) line = line.slice(0, -1)
+      lineChunks = []
+      lineBytes = 0
+      messageHandler(line)
+    }
+
+    child.stdout.on("data", chunk => {
+      if (failure) return
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      let start = 0
+      for (let index = 0; index < buffer.length; index++) {
+        if (buffer[index] !== 0x0a) continue
+        if (!appendLinePart(buffer.subarray(start, index))) return
+        emitLine()
+        start = index + 1
+      }
+      appendLinePart(buffer.subarray(start))
+    })
+    child.stdout.on("end", () => {
+      if (!failure && lineBytes > 0) emitLine()
+    })
+    child.stderr.on("data", chunk => {
+      if (failure) return
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      if (stderr.bytes + buffer.length > SSH_STDERR_LIMIT) {
+        reportFailure(new Error("remote Codex SSH stderr exceeded the 256 KiB limit"))
+        return
+      }
+      stderr.chunks.push(buffer)
+      stderr.bytes += buffer.length
+    })
     child.on("spawn", () => {
       settled = true
-      const lines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity })
-      let handler = () => {}
-      lines.on("line", line => handler(line))
       resolve({
-        send(message) { child.stdin.write(JSON.stringify(message) + "\n") },
+        send(message) {
+          if (failure) throw failure
+          child.stdin.write(JSON.stringify(message) + "\n")
+        },
         close() {
+          closedIntentionally = true
           child.stdin.end()
           setTimeout(() => { if (!child.killed) child.kill("SIGTERM") }, 100)
         },
-        setMessageHandler(nextHandler) { handler = nextHandler }
+        setMessageHandler(nextHandler) { messageHandler = nextHandler },
+        setErrorHandler(nextHandler) {
+          errorHandler = nextHandler
+          if (failure) errorHandler(failure)
+        }
       })
     })
-    child.on("error", error => { if (!settled) reject(error) })
+    child.on("error", reportFailure)
     child.on("exit", code => {
-      if (!settled) reject(new Error(stderr.trim() || `ssh exited with status ${code}`))
+      if (closedIntentionally || failure) return
+      const stderrText = Buffer.concat(stderr.chunks, stderr.bytes).toString("utf8").trim()
+      reportFailure(new Error(stderrText || `ssh exited with status ${code}`))
     })
   })
 }
@@ -140,7 +253,7 @@ function providerTypeForHost(host) {
   return value === "claude" || value === "opencode" ? value : "codex"
 }
 
-function runRemoteClaude(host) {
+async function runRemoteClaude(host) {
   if (host.type !== "ssh") fail("Claude remotes require SSH")
   const sshHost = String(host.sshHost || "").trim()
   if (!/^[A-Za-z0-9_.@:-]+$/.test(sshHost)) fail("invalid SSH host or alias")
@@ -166,47 +279,32 @@ function runRemoteClaude(host) {
     remoteCommand
   ], { stdio: ["pipe", "pipe", "pipe"] })
 
-  return new Promise((resolve, reject) => {
-    let stdout = ""
-    let stderr = ""
-    child.stdout.on("data", chunk => { stdout += String(chunk) })
-    child.stderr.on("data", chunk => { stderr += String(chunk) })
-    child.on("error", reject)
-    child.on("close", code => {
-      if (code !== 0) {
-        reject(new Error(stderr.trim() || `remote Claude query exited with status ${code}`))
-        return
-      }
-      try {
-        const response = stdout.trim()
-        if (response === "") {
-          reject(new Error(stderr.trim() || "remote Claude helper returned no response"))
-          return
-        }
-        const result = JSON.parse(response)
-        if (!result || typeof result !== "object" || Array.isArray(result))
-          throw new Error("invalid remote Claude response")
-        if (action === "snapshot") {
-          process.stdout.write(JSON.stringify({
-            ...result,
-            hostId,
-            label: String(host.label || host.id || "Remote"),
-            providerType: "claude",
-            type: "ssh"
-          }) + "\n")
-        } else {
-          process.stdout.write(JSON.stringify({ ...result, hostId, action }) + "\n")
-        }
-        resolve()
-      } catch {
-        reject(new Error("invalid remote Claude response"))
-      }
-    })
-    child.stdin.end(helperSource)
-  })
+  const outputPromise = collectSshOutput(child, "Claude")
+  child.stdin.end(helperSource)
+  const { code, stdout, stderr } = await outputPromise
+  if (code !== 0)
+    throw new Error(stderr.trim() || `remote Claude query exited with status ${code}`)
+  const response = stdout.trim()
+  if (response === "")
+    throw new Error(stderr.trim() || "remote Claude helper returned no response")
+  let result
+  try { result = JSON.parse(response) } catch { throw new Error("invalid remote Claude response") }
+  if (!result || typeof result !== "object" || Array.isArray(result))
+    throw new Error("invalid remote Claude response")
+  if (action === "snapshot") {
+    process.stdout.write(JSON.stringify({
+      ...result,
+      hostId,
+      label: String(host.label || host.id || "Remote"),
+      providerType: "claude",
+      type: "ssh"
+    }) + "\n")
+  } else {
+    process.stdout.write(JSON.stringify({ ...result, hostId, action }) + "\n")
+  }
 }
 
-function runRemoteOpenCode(host) {
+async function runRemoteOpenCode(host) {
   if (host.type !== "ssh") fail("OpenCode remotes require SSH")
   const sshHost = String(host.sshHost || "").trim()
   if (!/^[A-Za-z0-9_.@:-]+$/.test(sshHost)) fail("invalid SSH host or alias")
@@ -293,36 +391,25 @@ runRemoteOpenCodeHelper().catch(error => {
     remoteCommand
   ], { stdio: ["pipe", "pipe", "pipe"] })
 
-  return new Promise((resolve, reject) => {
-    let stdout = ""
-    let stderr = ""
-    child.stdout.on("data", chunk => { stdout += String(chunk) })
-    child.stderr.on("data", chunk => { stderr += String(chunk) })
-    child.on("error", reject)
-    child.on("close", code => {
-      if (code !== 0) {
-        reject(new Error(stderr.trim() || `remote OpenCode query exited with status ${code}`))
-        return
-      }
-      try {
-        const result = JSON.parse(stdout.trim() || "{}")
-        if (!result || typeof result !== "object" || Array.isArray(result))
-          throw new Error("invalid remote OpenCode response")
-        const envelope = action === "snapshot" ? {
-          ...result,
-          hostId,
-          label: String(host.label || host.id || "Remote"),
-          providerType: "opencode",
-          type: "ssh"
-        } : { ...result, hostId, action }
-        process.stdout.write(JSON.stringify(envelope) + "\n")
-        resolve()
-      } catch {
-        reject(new Error(stderr.trim() || "invalid remote OpenCode response"))
-      }
-    })
-    child.stdin.end(helperSource)
-  })
+  const outputPromise = collectSshOutput(child, "OpenCode")
+  child.stdin.end(helperSource)
+  const { code, stdout, stderr } = await outputPromise
+  if (code !== 0)
+    throw new Error(stderr.trim() || `remote OpenCode query exited with status ${code}`)
+  let result
+  try { result = JSON.parse(stdout.trim() || "{}") } catch {
+    throw new Error(stderr.trim() || "invalid remote OpenCode response")
+  }
+  if (!result || typeof result !== "object" || Array.isArray(result))
+    throw new Error(stderr.trim() || "invalid remote OpenCode response")
+  const envelope = action === "snapshot" ? {
+    ...result,
+    hostId,
+    label: String(host.label || host.id || "Remote"),
+    providerType: "opencode",
+    type: "ssh"
+  } : { ...result, hostId, action }
+  process.stdout.write(JSON.stringify(envelope) + "\n")
 }
 
 async function connect(host) {
@@ -341,6 +428,12 @@ async function main() {
   }
   const transport = await connect(host)
   const pending = new Map()
+  if (transport.setErrorHandler) {
+    transport.setErrorHandler(error => {
+      for (const callback of pending.values()) callback.reject(error)
+      pending.clear()
+    })
+  }
   transport.setMessageHandler(line => {
     const text = String(line || "").trim()
     if (text === "") return

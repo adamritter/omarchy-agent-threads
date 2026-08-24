@@ -216,6 +216,10 @@ contain no copied SSH keys or provider access tokens.
 
 ## Development
 
+Before publishing a commit or tag, complete the security and verification steps
+in [RELEASE.md](RELEASE.md). The checklist requires a repository-wide review of
+sibling implementations whenever a security pattern is found.
+
 Keep logic that does not require rendered controls, Quickshell services, or
 Wayland state in `logic/`. The QML views and services call these modules, and
 Qt Quick tests exercise them without loading the live plugin. Existing pure

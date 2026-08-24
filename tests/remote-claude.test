@@ -29,6 +29,10 @@ printf '%s\n' \
   'helper_file="$REMOTE_FIXTURE_HOME/remote-helper.mjs"' \
   'tee "$helper_file" >/dev/null' \
   '[[ -s "$helper_file" ]]' \
+  'case "${REMOTE_QUERY_OUTPUT:-}" in' \
+  '  oversized-stdout) head -c $((17 * 1024 * 1024)) /dev/zero | tr '\''\0'\'' x; exit 0 ;;' \
+  '  oversized-stderr) head -c $((300 * 1024)) /dev/zero | tr '\''\0'\'' x >&2; exit 1 ;;' \
+  'esac' \
   'if [[ "$remote_command" == *" '\''archive'\'' "* ]]; then' \
   '  touch "$REMOTE_FIXTURE_HOME/archived"' \
   '  printf "%s\n" '\''{"ok":true}'\''' \
@@ -82,5 +86,23 @@ snapshot="$($plugin_root/bin/omarchy-codex-remote-query \
   "$config" remote-claude snapshot)"
 jq -e --arg id "$session_id" '[.threads[] | select(.id == $id)] | length == 0' \
   <<<"$snapshot" >/dev/null
+
+if REMOTE_QUERY_OUTPUT=oversized-stdout \
+    $plugin_root/bin/omarchy-codex-remote-query "$config" remote-claude snapshot \
+    >"$test_root/oversized-stdout" 2>"$test_root/oversized-stdout-error"; then
+  echo "Remote Claude unexpectedly accepted oversized SSH stdout" >&2
+  exit 1
+fi
+grep -F -- "remote Claude SSH stdout exceeded the 16 MiB limit" \
+  "$test_root/oversized-stdout-error" >/dev/null
+
+if REMOTE_QUERY_OUTPUT=oversized-stderr \
+    $plugin_root/bin/omarchy-codex-remote-query "$config" remote-claude snapshot \
+    >"$test_root/oversized-stderr" 2>"$test_root/oversized-stderr-error"; then
+  echo "Remote Claude unexpectedly accepted oversized SSH stderr" >&2
+  exit 1
+fi
+grep -F -- "remote Claude SSH stderr exceeded the 256 KiB limit" \
+  "$test_root/oversized-stderr-error" >/dev/null
 
 printf '%s\n' "remote-claude tests passed"

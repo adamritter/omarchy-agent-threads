@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t codex-threads-remote-codex-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+stub_bin="$test_root/bin"
+mkdir -p -- "$stub_bin"
+
+cat > "$stub_bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+
+set -euo pipefail
+case "${REMOTE_QUERY_OUTPUT:-}" in
+  oversized-stdout)
+    head -c $((17 * 1024 * 1024)) /dev/zero | tr '\0' x
+    exit 0
+    ;;
+  oversized-stderr)
+    head -c $((300 * 1024)) /dev/zero | tr '\0' x >&2
+    exit 1
+    ;;
+esac
+
+while IFS= read -r request; do
+  id="$(jq -r '.id' <<<"$request")"
+  method="$(jq -r '.method' <<<"$request")"
+  case "$method" in
+    initialize)
+      jq -cn --argjson id "$id" '{id:$id,result:{}}'
+      ;;
+    thread/list)
+      jq -cn --argjson id "$id" \
+        '{id:$id,result:{data:[{id:"remote-thread",cwd:"/work",name:"Remote thread"}]}}'
+      ;;
+    project/list)
+      jq -cn --argjson id "$id" '{id:$id,result:{data:[]}}'
+      ;;
+  esac
+done
+EOF
+chmod +x "$stub_bin/ssh"
+
+config="$test_root/remotes.json"
+jq -n '{version:2,remotes:[{
+  id:"remote-codex",label:"Fixture Codex",type:"ssh",providerType:"codex",
+  sshHost:"fixture",codexCommand:"codex",home:"/work"
+}]}' > "$config"
+
+snapshot="$(PATH="$stub_bin:$PATH" "$plugin_root/bin/omarchy-codex-remote-query" \
+  "$config" remote-codex snapshot)"
+jq -e '
+  .hostId == "remote-codex" and .type == "ssh" and .home == "/work"
+  and (.threads[] | select(.id == "remote-thread") | .cwd == "/work")
+' <<<"$snapshot" >/dev/null
+
+if PATH="$stub_bin:$PATH" REMOTE_QUERY_OUTPUT=oversized-stdout \
+    "$plugin_root/bin/omarchy-codex-remote-query" "$config" remote-codex snapshot \
+    >"$test_root/oversized-stdout" 2>"$test_root/oversized-stdout-error"; then
+  echo "Remote Codex unexpectedly accepted an oversized SSH response line" >&2
+  exit 1
+fi
+grep -F -- "remote Codex SSH response line exceeded the 16 MiB limit" \
+  "$test_root/oversized-stdout-error" >/dev/null
+
+if PATH="$stub_bin:$PATH" REMOTE_QUERY_OUTPUT=oversized-stderr \
+    "$plugin_root/bin/omarchy-codex-remote-query" "$config" remote-codex snapshot \
+    >"$test_root/oversized-stderr" 2>"$test_root/oversized-stderr-error"; then
+  echo "Remote Codex unexpectedly accepted oversized SSH stderr" >&2
+  exit 1
+fi
+grep -F -- "remote Codex SSH stderr exceeded the 256 KiB limit" \
+  "$test_root/oversized-stderr-error" >/dev/null
+
+printf '%s\n' "remote-codex tests passed"

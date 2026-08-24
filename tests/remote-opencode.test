@@ -16,6 +16,10 @@ printf '%s\n' \
   'printf "%s\n" "$remote_command" >> "$REMOTE_OPENCODE_SSH_LOG"' \
   'tee "$REMOTE_OPENCODE_HELPER" >/dev/null' \
   '[[ -s "$REMOTE_OPENCODE_HELPER" ]]' \
+  'case "${REMOTE_QUERY_OUTPUT:-}" in' \
+  '  oversized-stdout) head -c $((17 * 1024 * 1024)) /dev/zero | tr '\''\0'\'' x; exit 0 ;;' \
+  '  oversized-stderr) head -c $((300 * 1024)) /dev/zero | tr '\''\0'\'' x >&2; exit 1 ;;' \
+  'esac' \
   'if [[ "$remote_command" == *opencode*archive*ses_remote_fixture* ]]; then' \
   '  printf "%s\n" '\''{"ok":true}'\''' \
   'elif [[ "$remote_command" == *opencode*rename*ses_remote_fixture* ]]; then' \
@@ -62,5 +66,23 @@ grep -F -- " opencode 'archive' 'ses_remote_fixture' '/work' ''" "$ssh_log" >/de
 grep -F -- " opencode 'pin' 'ses_remote_fixture' '' 'true'" "$ssh_log" >/dev/null
 grep -F -- " opencode 'rename' 'ses_remote_fixture' '/work' '' 'Remote renamed'" \
   "$ssh_log" >/dev/null
+
+if REMOTE_QUERY_OUTPUT=oversized-stdout \
+    "$plugin_root/bin/omarchy-codex-remote-query" "$config" remote-opencode snapshot \
+    >"$test_root/oversized-stdout" 2>"$test_root/oversized-stdout-error"; then
+  echo "Remote OpenCode unexpectedly accepted oversized SSH stdout" >&2
+  exit 1
+fi
+grep -F -- "remote OpenCode SSH stdout exceeded the 16 MiB limit" \
+  "$test_root/oversized-stdout-error" >/dev/null
+
+if REMOTE_QUERY_OUTPUT=oversized-stderr \
+    "$plugin_root/bin/omarchy-codex-remote-query" "$config" remote-opencode snapshot \
+    >"$test_root/oversized-stderr" 2>"$test_root/oversized-stderr-error"; then
+  echo "Remote OpenCode unexpectedly accepted oversized SSH stderr" >&2
+  exit 1
+fi
+grep -F -- "remote OpenCode SSH stderr exceeded the 256 KiB limit" \
+  "$test_root/oversized-stderr-error" >/dev/null
 
 printf '%s\n' "remote-opencode tests passed"
