@@ -29,4 +29,46 @@ if $helper ssh 'bad host!' list / >/dev/null 2>&1; then
   exit 1
 fi
 
+fake_bin="$test_root/bin"
+mkdir -p -- "$fake_bin"
+cat > "$fake_bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+
+set -euo pipefail
+cat >/dev/null
+
+case "${FAKE_SSH_OUTPUT:-}" in
+  oversized-stdout)
+    head -c $((17 * 1024 * 1024)) /dev/zero | tr '\0' x
+    ;;
+  oversized-stderr)
+    head -c $((300 * 1024)) /dev/zero | tr '\0' x >&2
+    ;;
+  *)
+    printf '%s\n' '{"path":"/","parent":"/","home":"/home/test","entries":[],"truncated":false}'
+    ;;
+esac
+EOF
+chmod +x "$fake_bin/ssh"
+
+remote_listing="$(PATH="$fake_bin:$PATH" "$helper" ssh test-host list /)"
+jq -e '.path == "/" and .home == "/home/test" and .entries == []' \
+  <<<"$remote_listing" >/dev/null
+
+if PATH="$fake_bin:$PATH" FAKE_SSH_OUTPUT=oversized-stdout \
+    "$helper" ssh test-host list / > "$test_root/stdout-limit.json"; then
+  echo "Directory picker unexpectedly accepted oversized SSH stdout" >&2
+  exit 1
+fi
+jq -e '.error == "SSH stdout exceeded the 16 MiB limit"' \
+  "$test_root/stdout-limit.json" >/dev/null
+
+if PATH="$fake_bin:$PATH" FAKE_SSH_OUTPUT=oversized-stderr \
+    "$helper" ssh test-host list / > "$test_root/stderr-limit.json"; then
+  echo "Directory picker unexpectedly accepted oversized SSH stderr" >&2
+  exit 1
+fi
+jq -e '.error == "SSH stderr exceeded the 256 KiB limit"' \
+  "$test_root/stderr-limit.json" >/dev/null
+
 printf '%s\n' "directory-picker tests passed"

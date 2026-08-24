@@ -6,6 +6,9 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
+const SSH_STDOUT_LIMIT = 16 * 1024 * 1024
+const SSH_STDERR_LIMIT = 256 * 1024
+
 const [mode = "local", target = "-", action = "list", rawPath = "", folderName = ""] =
   process.argv.slice(2)
 
@@ -103,12 +106,37 @@ function runRemote() {
     sshHost,
     `node --input-type=module - ${remoteArguments}`
   ], { stdio: ["pipe", "pipe", "pipe"] })
-  let stdout = ""
-  let stderr = ""
+  const stdout = { chunks: [], bytes: 0, limit: SSH_STDOUT_LIMIT, label: "stdout", size: "16 MiB" }
+  const stderr = { chunks: [], bytes: 0, limit: SSH_STDERR_LIMIT, label: "stderr", size: "256 KiB" }
   let finished = false
   const timeout = setTimeout(() => child.kill("SIGTERM"), 20000)
-  child.stdout.on("data", chunk => { stdout += String(chunk) })
-  child.stderr.on("data", chunk => { stderr += String(chunk) })
+
+  function stopForOutputLimit(stream) {
+    if (finished) return
+    finished = true
+    clearTimeout(timeout)
+    child.stdout.destroy()
+    child.stderr.destroy()
+    child.stdin.destroy()
+    child.kill("SIGTERM")
+    fail(`SSH ${stream.label} exceeded the ${stream.size} limit`)
+  }
+
+  function collect(stream, state) {
+    stream.on("data", chunk => {
+      if (finished) return
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      if (state.bytes + buffer.length > state.limit) {
+        stopForOutputLimit(state)
+        return
+      }
+      state.chunks.push(buffer)
+      state.bytes += buffer.length
+    })
+  }
+
+  collect(child.stdout, stdout)
+  collect(child.stderr, stderr)
   child.on("error", error => {
     if (finished) return
     finished = true
@@ -119,8 +147,10 @@ function runRemote() {
     if (finished) return
     finished = true
     clearTimeout(timeout)
-    if (stdout.trim() !== "") process.stdout.write(stdout)
-    else fail(stderr.trim() || `SSH directory operation exited with code ${exitCode}`)
+    const stdoutText = Buffer.concat(stdout.chunks, stdout.bytes).toString("utf8")
+    const stderrText = Buffer.concat(stderr.chunks, stderr.bytes).toString("utf8")
+    if (stdoutText.trim() !== "") process.stdout.write(stdoutText)
+    else fail(stderrText.trim() || `SSH directory operation exited with code ${exitCode}`)
     if (exitCode !== 0) process.exitCode = exitCode || 2
   })
   child.stdin.end(helperSource)
