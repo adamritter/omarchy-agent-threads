@@ -3,6 +3,7 @@ import QtQuick.Controls
 import qs.Commons
 import qs.Ui
 import "." as Components
+import "../logic/PresentationLogic.js" as PresentationLogic
 
 ListView {
   id: root
@@ -99,6 +100,9 @@ ListView {
         === String(panel.service.remoteActionHostId || "")
     readonly property bool moving: threadRow && !modelData.remoteId
       && String(threadData.id || "") === panel.service.movingThreadId
+    readonly property string backgroundRole: PresentationLogic.rowBackgroundRole(
+      activeThread, mouse.containsMouse, index === panel.selectedIndex,
+      panel.sidebarFocused)
 
     function renderSnapshot() {
       return {
@@ -113,6 +117,7 @@ ListView {
         blocked: blocked,
         unread: unread,
         pinned: pinned || pinnedSection,
+        backgroundRole: backgroundRole,
         depth: Number(modelData.depth || 0)
       }
     }
@@ -137,11 +142,12 @@ ListView {
     height: sectionRow ? Style.space(52)
       : (moreRow ? Style.space(38) : threadContent.implicitHeight + Style.space(8))
     radius: Style.cornerRadius
-    color: activeThread
-      ? Style.selectedFillFor(panel.foreground, Color.accent)
-      : (mouse.containsMouse
-          || (panel.sidebarFocused && index === panel.selectedIndex)
-          ? panel.faint : "transparent")
+    color: backgroundRole === "active" || backgroundRole === "focused-selection"
+      ? panel.focusedSelectionFill
+      : (backgroundRole === "hover"
+          ? panel.faint
+          : (backgroundRole === "unfocused-selection"
+              ? panel.unfocusedSelectionFill : "transparent"))
 
     Text {
       visible: row.threadRow && !row.busy && !row.blocked && !row.unread

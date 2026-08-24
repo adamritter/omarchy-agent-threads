@@ -288,8 +288,8 @@ QML graph in-process and verify that a new panel generation is active:
 ./scripts/reload-plugin
 ```
 
-A full `omarchy restart shell` is a last-resort lifecycle check and the reload
-script's automatic fallback when in-process reload verification fails. Use it only
+A full `omarchy restart shell` is a last-resort lifecycle check. The reload
+script reports validation, IPC, or readiness failures without restarting. Use a restart only
 when testing process startup/shutdown, recovering from a stuck socket or child
 process, or confirming a problem that still exists after an in-process reload. Qt
 also caches a QML directory's file listing; adding or renaming component files

@@ -20,6 +20,13 @@ function threadIndent(grouped, depth) {
   return hierarchyIndent(isFinite(value) && value > 0 ? value : 1)
 }
 
+function rowBackgroundRole(activeThread, hovered, selected, focused) {
+  if (selected) return focused ? "focused-selection" : "unfocused-selection"
+  if (activeThread) return "active"
+  if (hovered) return "hover"
+  return "none"
+}
+
 function statusText(state) {
   if (state.providerError !== "") return state.providerError
   if (state.activeProvider === "codex" && !state.providerReady)

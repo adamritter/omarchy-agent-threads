@@ -25,6 +25,10 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Util.alpha(foreground, 0.58)
   readonly property color faint: Util.alpha(foreground, 0.10)
+  readonly property color focusedSelectionFill: Style.selectedFillFor(
+    foreground, Color.accent)
+  readonly property color unfocusedSelectionFill: Util.alpha(
+    focusedSelectionFill, focusedSelectionFill.a * 0.5)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property string homePath: Quickshell.env("HOME") || "/tmp"
   readonly property string workPath: homePath + "/Work"

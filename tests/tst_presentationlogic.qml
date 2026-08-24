@@ -47,6 +47,19 @@ TestCase {
     compare(PresentationLogic.threadIndent(true, 2), 64)
   }
 
+  function test_selectsRowBackgroundByFocusState() {
+    compare(PresentationLogic.rowBackgroundRole(false, false, true, true),
+      "focused-selection")
+    compare(PresentationLogic.rowBackgroundRole(false, false, true, false),
+      "unfocused-selection")
+    compare(PresentationLogic.rowBackgroundRole(false, true, true, false),
+      "unfocused-selection")
+    compare(PresentationLogic.rowBackgroundRole(true, false, true, false),
+      "unfocused-selection")
+    compare(PresentationLogic.rowBackgroundRole(true, false, false, false), "active")
+    compare(PresentationLogic.rowBackgroundRole(false, false, false, false), "none")
+  }
+
   function test_prioritizesErrorsAndOperations() {
     var state = baseState()
     state.providerError = "Connection failed"

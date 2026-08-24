@@ -2,15 +2,23 @@
 
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 plugin_target="adam.codex-threads"
+ipc_timeout="${RELOAD_IPC_TIMEOUT:-0.5s}"
+status_deadline_seconds="${RELOAD_STATUS_DEADLINE_SECONDS:-10}"
+
+if [[ "${RELOAD_SKIP_STATIC_CHECK:-0}" != "1" ]]; then
+  "$script_dir/check-static"
+fi
 
 plugin_status() {
-  omarchy-shell "$plugin_target" status 2>/dev/null
+  OMARCHY_SHELL_IPC_TIMEOUT="$ipc_timeout" \
+    omarchy-shell "$plugin_target" status 2>/dev/null
 }
 
 wait_for_status() {
-  local attempt status
-  for ((attempt = 0; attempt < 50; attempt++)); do
+  local deadline=$((SECONDS + status_deadline_seconds)) status
+  while (( SECONDS < deadline )); do
     if status="$(plugin_status)"; then
       printf '%s\n' "$status"
       return 0
@@ -22,7 +30,8 @@ wait_for_status() {
 
 request_qml_reload() {
   local response
-  response="$(omarchy-shell "$plugin_target" reloadQml 2>&1)" || return 1
+  response="$(OMARCHY_SHELL_IPC_TIMEOUT="$ipc_timeout" \
+    omarchy-shell "$plugin_target" reloadQml 2>&1)" || return 1
   [[ "$response" == "ok" ]]
 }
 
@@ -33,14 +42,21 @@ presented_before="$(jq -r '.sidebarPresented // false' <<<"$status_before" 2>/de
 # Older installed revisions do not expose reloadQml yet. A rescan upgrades the
 # entry component first; subsequent development reloads take the fast path.
 if ! request_qml_reload; then
-  omarchy-shell shell rescanPlugins
-  status_before="$(wait_for_status)"
+  OMARCHY_SHELL_IPC_TIMEOUT="$ipc_timeout" omarchy-shell shell rescanPlugins
+  if ! status_before="$(wait_for_status)"; then
+    printf '%s\n' 'Plugin IPC target did not return after rescan.' >&2
+    exit 1
+  fi
   token_before="$(jq -r '.instanceToken // empty' <<<"$status_before")"
   presented_before="$(jq -r '.sidebarPresented // false' <<<"$status_before")"
-  request_qml_reload
+  if ! request_qml_reload; then
+    printf '%s\n' 'Plugin does not expose the in-process QML reload method.' >&2
+    exit 1
+  fi
 fi
 
-for ((attempt = 0; attempt < 100; attempt++)); do
+deadline=$((SECONDS + status_deadline_seconds))
+while (( SECONDS < deadline )); do
   status_after="$(plugin_status || true)"
   token_after="$(jq -r '.instanceToken // empty' <<<"$status_after" 2>/dev/null || true)"
   ready_after="$(jq -r '.ready // false' <<<"$status_after" 2>/dev/null || true)"
@@ -60,6 +76,5 @@ for ((attempt = 0; attempt < 100; attempt++)); do
   sleep 0.1
 done
 
-printf '%s\n' 'In-process QML reload did not produce a new panel generation; restarting the shell.' >&2
-omarchy restart shell
-wait_for_status
+printf '%s\n' 'In-process QML reload did not become ready before the deadline.' >&2
+exit 1

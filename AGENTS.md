@@ -24,7 +24,8 @@
 - If a saved change does not appear, use `./scripts/reload-plugin`. It requests
   a Quickshell in-process QML graph reload, waits for a new panel generation,
   and verifies plugin status. This refreshes imported QML types while keeping
-  the shell process alive. A process restart is only its failure fallback.
+  the shell process alive. It validates QML first and fails on a bounded
+  deadline rather than restarting the shell automatically.
 - Only restart the complete shell when testing startup/shutdown behavior,
   recovering a stuck socket or child process, or reproducing a failure that
   remains after an in-process QML graph reload. Qt caches imported QML directory listings, so

@@ -14,6 +14,10 @@ printf '%s\n' before >"$state_file"
 cat >"$test_root/bin/omarchy-shell" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$RELOAD_TEST_CALLS"
+if [[ "${RELOAD_TEST_MODE:-ready}" == "unavailable" ]]; then
+  [[ "$1 $2" == "shell rescanPlugins" ]] && exit 0
+  exit 1
+fi
 if [[ "$2" == "status" ]]; then
   printf '{"instanceToken":"%s","ready":true,"providerLoading":false,"loading":false,"sidebarPresented":true}\n' \
     "$(<"$RELOAD_TEST_STATE")"
@@ -33,13 +37,27 @@ EOF
 
 chmod +x "$test_root/bin/omarchy-shell" "$test_root/bin/omarchy"
 
-output="$(RELOAD_TEST_STATE="$state_file" RELOAD_TEST_CALLS="$calls_file" \
+output="$(RELOAD_SKIP_STATIC_CHECK=1 RELOAD_TEST_STATE="$state_file" \
+  RELOAD_TEST_CALLS="$calls_file" \
   PATH="$test_root/bin:$PATH" "$plugin_root/scripts/reload-plugin")"
 
 [[ "$(jq -r .instanceToken <<<"$output")" == "after" ]]
 grep -q '^adam.codex-threads reloadQml$' "$calls_file"
 if grep -q '^shell rescanPlugins$' "$calls_file"; then
   printf '%s\n' 'Reload unexpectedly used the rescan fallback' >&2
+  exit 1
+fi
+
+start_seconds=$SECONDS
+if RELOAD_SKIP_STATIC_CHECK=1 RELOAD_STATUS_DEADLINE_SECONDS=1 \
+    RELOAD_TEST_MODE=unavailable RELOAD_TEST_STATE="$state_file" \
+    RELOAD_TEST_CALLS="$calls_file" PATH="$test_root/bin:$PATH" \
+    "$plugin_root/scripts/reload-plugin" >/dev/null 2>&1; then
+  printf '%s\n' 'Reload unexpectedly succeeded without an IPC target' >&2
+  exit 1
+fi
+if (( SECONDS - start_seconds > 3 )); then
+  printf '%s\n' 'Unavailable IPC target exceeded the reload deadline' >&2
   exit 1
 fi
 
