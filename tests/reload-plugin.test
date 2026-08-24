@@ -19,8 +19,13 @@ if [[ "${RELOAD_TEST_MODE:-ready}" == "unavailable" ]]; then
   exit 1
 fi
 if [[ "$2" == "status" ]]; then
-  printf '{"instanceToken":"%s","ready":true,"providerLoading":false,"loading":false,"sidebarPresented":true}\n' \
-    "$(<"$RELOAD_TEST_STATE")"
+  if [[ "${RELOAD_TEST_MODE:-ready}" == "snapshot" ]]; then
+    printf '{"instanceToken":"%s","ready":false,"providerLoading":true,"loading":true,"sidebarPresented":true,"providerSnapshotRestored":true}\n' \
+      "$(<"$RELOAD_TEST_STATE")"
+  else
+    printf '{"instanceToken":"%s","ready":true,"providerLoading":false,"loading":false,"sidebarPresented":true,"providerSnapshotRestored":false}\n' \
+      "$(<"$RELOAD_TEST_STATE")"
+  fi
 elif [[ "$2" == "reloadQml" ]]; then
   printf '%s\n' after >"$RELOAD_TEST_STATE"
   printf '%s\n' ok
@@ -47,6 +52,12 @@ if grep -q '^shell rescanPlugins$' "$calls_file"; then
   printf '%s\n' 'Reload unexpectedly used the rescan fallback' >&2
   exit 1
 fi
+
+printf '%s\n' before >"$state_file"
+snapshot_output="$(RELOAD_SKIP_STATIC_CHECK=1 RELOAD_TEST_MODE=snapshot \
+  RELOAD_TEST_STATE="$state_file" RELOAD_TEST_CALLS="$calls_file" \
+  PATH="$test_root/bin:$PATH" "$plugin_root/scripts/reload-plugin")"
+[[ "$(jq -r .instanceToken <<<"$snapshot_output")" == "after" ]]
 
 start_seconds=$SECONDS
 if RELOAD_SKIP_STATIC_CHECK=1 RELOAD_STATUS_DEADLINE_SECONDS=1 \

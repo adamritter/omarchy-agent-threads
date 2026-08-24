@@ -36,8 +36,10 @@ request_qml_reload() {
 }
 
 status_before="$(plugin_status || true)"
-token_before="$(jq -r '.instanceToken // empty' <<<"$status_before" 2>/dev/null || true)"
-presented_before="$(jq -r '.sidebarPresented // false' <<<"$status_before" 2>/dev/null || true)"
+mapfile -t before_fields < <(jq -r '[.instanceToken // "", .sidebarPresented // false][]' \
+  <<<"$status_before" 2>/dev/null || true)
+token_before="${before_fields[0]:-}"
+presented_before="${before_fields[1]:-false}"
 
 # Older installed revisions do not expose reloadQml yet. A rescan upgrades the
 # entry component first; subsequent development reloads take the fast path.
@@ -47,8 +49,10 @@ if ! request_qml_reload; then
     printf '%s\n' 'Plugin IPC target did not return after rescan.' >&2
     exit 1
   fi
-  token_before="$(jq -r '.instanceToken // empty' <<<"$status_before")"
-  presented_before="$(jq -r '.sidebarPresented // false' <<<"$status_before")"
+  mapfile -t before_fields < <(jq -r \
+    '[.instanceToken // "", .sidebarPresented // false][]' <<<"$status_before")
+  token_before="${before_fields[0]:-}"
+  presented_before="${before_fields[1]:-false}"
   if ! request_qml_reload; then
     printf '%s\n' 'Plugin does not expose the in-process QML reload method.' >&2
     exit 1
@@ -58,18 +62,28 @@ fi
 deadline=$((SECONDS + status_deadline_seconds))
 while (( SECONDS < deadline )); do
   status_after="$(plugin_status || true)"
-  token_after="$(jq -r '.instanceToken // empty' <<<"$status_after" 2>/dev/null || true)"
-  ready_after="$(jq -r '.ready // false' <<<"$status_after" 2>/dev/null || true)"
-  provider_loading_after="$(jq -r 'if .providerLoading == false then "false" else "true" end' \
-    <<<"$status_after" 2>/dev/null || true)"
-  loading_after="$(jq -r 'if .loading == false then "false" else "true" end' \
-    <<<"$status_after" 2>/dev/null || true)"
-  presented_after="$(jq -r '.sidebarPresented // false' <<<"$status_after" 2>/dev/null || true)"
+  mapfile -t after_fields < <(jq -r '[
+    .instanceToken // "",
+    .ready // false,
+    (if .providerLoading == false then false else true end),
+    (if .loading == false then false else true end),
+    .sidebarPresented // false,
+    .providerSnapshotRestored // false
+  ][]' <<<"$status_after" 2>/dev/null || true)
+  token_after="${after_fields[0]:-}"
+  ready_after="${after_fields[1]:-false}"
+  provider_loading_after="${after_fields[2]:-true}"
+  loading_after="${after_fields[3]:-true}"
+  presented_after="${after_fields[4]:-false}"
+  snapshot_restored_after="${after_fields[5]:-false}"
+  backend_ready_after=false
+  if [[ "$ready_after" == "true" && "$provider_loading_after" == "false"
+      && "$loading_after" == "false" ]]; then
+    backend_ready_after=true
+  fi
   if [[ -n "$token_after" && "$token_after" != "$token_before"
-      && "$ready_after" == "true"
-      && "$provider_loading_after" == "false"
-      && "$loading_after" == "false"
-      && ("$presented_before" != "true" || "$presented_after" == "true") ]]; then
+      && ("$presented_before" != "true" || "$presented_after" == "true")
+      && ("$snapshot_restored_after" == "true" || "$backend_ready_after" == "true") ]]; then
     printf '%s\n' "$status_after"
     exit 0
   fi

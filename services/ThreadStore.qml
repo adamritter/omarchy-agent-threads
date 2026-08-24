@@ -63,6 +63,7 @@ Item {
   property bool sidebarSettingsLoaded: false
   property bool hydratingSidebarSettings: false
   property bool providerSnapshotLoaded: false
+  property bool providerSnapshotRestored: false
   property bool hydratingProviderSnapshot: false
   property string providerSnapshot: ""
   property bool migrateOpenSidebarToActiveWorkspace: false
@@ -213,7 +214,7 @@ Item {
   function attachProviderSnapshot(snapshot) {
     if (providerSnapshotLoaded) return
     providerSnapshot = String(snapshot || "")
-    restoreProviderSnapshot()
+    providerSnapshotRestored = restoreProviderSnapshot()
     providerSnapshotLoaded = true
     scheduleProviderSnapshot()
   }

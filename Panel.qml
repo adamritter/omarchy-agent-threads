@@ -1067,6 +1067,7 @@ Panel {
         instanceToken: root.instanceToken,
         activeProvider: root.activeProvider,
         providerLoading: root.providerLoading(),
+        providerSnapshotRestored: root.service.providerSnapshotRestored,
         ready: root.service.ready,
         loading: root.service.loading,
         threadCount: root.service.threads.length,

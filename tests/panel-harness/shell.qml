@@ -32,6 +32,7 @@ ShellRoot {
     property bool sshHostsLoading: false
     property bool ready: true
     property bool loading: false
+    property bool providerSnapshotRestored: true
     property string errorText: ""
     property string launchError: ""
     property string launchingThreadId: ""
