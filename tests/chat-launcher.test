@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d -t agent-chat-launcher-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+mkdir -p -- "$test_root/bin"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'if [[ "${1:-}" == "-j" && "${2:-}" == "activeworkspace" ]]; then' \
+  '  printf "%s\n" "{\"id\":3,\"name\":\"3\"}"' \
+  '  exit 0' \
+  'fi' \
+  'if [[ "${1:-}" == "-j" && "${2:-}" == "clients" ]]; then' \
+  '  if [[ "${CHAT_WINDOW_OPEN:-0}" == "1" || ("${CHAT_WINDOW_OPEN_AFTER_LAUNCH:-0}" == "1" && -s "$QUICKSHELL_LOG") ]]; then' \
+  '    printf "%s\n" "[{\"class\":\"org.omarchy.agent-chat\",\"title\":\"Agent Chat\",\"address\":\"0xabc123\"}]"' \
+  '  else' \
+  '    printf "%s\n" "[]"' \
+  '  fi' \
+  '  exit 0' \
+  'fi' \
+  'printf "%s\n" "$*" >> "$HYPR_LOG"' > "$test_root/bin/hyprctl"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'printf "%s|%s|%s|%s\n" "${LD_PRELOAD:-}" "${AGENT_CHAT_ORIGINAL_LD_PRELOAD:-}" "${AGENT_CHAT_OPTIONS:-}" "$*" >> "$QUICKSHELL_LOG"' \
+  'if [[ "${1:-}" == "ipc" ]]; then printf "%s\n" "ok"; fi' > "$test_root/bin/quickshell"
+
+chmod +x "$test_root/bin/hyprctl" "$test_root/bin/quickshell"
+export PATH="$test_root/bin:$PATH"
+export HYPR_LOG="$test_root/hypr.log"
+export QUICKSHELL_LOG="$test_root/quickshell.log"
+
+CHAT_WINDOW_OPEN=0 CHAT_WINDOW_OPEN_AFTER_LAUNCH=1 AGENT_CHAT_WEBENGINE_SHIM=/usr/lib/libc.so.6 \
+  "$plugin_root/bin/omarchy-agent-chat" --thread thread-new --fast -m gpt-test
+grep -F -- "/usr/lib/libc.so.6||" "$QUICKSHELL_LOG" >/dev/null
+grep -F -- "|--no-duplicate --daemonize --path $plugin_root/agent-chat.qml" \
+  "$QUICKSHELL_LOG" >/dev/null
+cut -d '|' -f 3 "$QUICKSHELL_LOG" | jq -e '
+  .threadId == "thread-new"
+  and .serviceTier == "fast"
+  and .model == "gpt-test"
+' >/dev/null
+grep -F -- '//@ pragma AppId org.omarchy.agent-chat' "$plugin_root/agent-chat.qml" >/dev/null
+grep -F -- 'hl.dsp.window.move({ workspace = "3", follow = false, window = "address:0xabc123" })' "$HYPR_LOG" >/dev/null
+grep -F -- 'hl.dsp.focus({ window = "address:0xabc123" })' "$HYPR_LOG" >/dev/null
+
+rm -f -- "$QUICKSHELL_LOG"
+rm -f -- "$HYPR_LOG"
+CHAT_WINDOW_OPEN=1 "$plugin_root/bin/omarchy-agent-chat"
+test ! -e "$QUICKSHELL_LOG"
+grep -F -- 'hl.dsp.window.move({ workspace = "3", follow = false, window = "address:0xabc123" })' "$HYPR_LOG" >/dev/null
+grep -F -- 'hl.dsp.focus({ window = "address:0xabc123" })' "$HYPR_LOG" >/dev/null
+
+CHAT_WINDOW_OPEN=1 "$plugin_root/bin/omarchy-agent-chat" resume thread-existing --effort high
+grep -F -- "ipc --path $plugin_root/agent-chat.qml call agentChat open" \
+  "$QUICKSHELL_LOG" >/dev/null
+grep -F -- '"threadId":"thread-existing"' "$QUICKSHELL_LOG" >/dev/null
+grep -F -- '"effort":"high"' "$QUICKSHELL_LOG" >/dev/null
+
+"$plugin_root/bin/omarchy-agent-chat" --help | grep -F -- '--remote ADDR' >/dev/null
+
+printf 'chat launcher tests passed\n'

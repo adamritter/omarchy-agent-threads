@@ -41,6 +41,73 @@ monitoring local and remote coding-agent sessions.
 Optional providers remain inactive until selected, so they do not continuously
 poll or start their helper server in the background.
 
+### AgentProvider library
+
+`providers/AgentProviderLibrary.qml` is the reusable frontend boundary. It owns
+the existing Codex App Server client, local Claude/OpenCode providers, and all
+remote transports, then exposes them as normalized hosts. Provider and
+connection are separate fields:
+
+```text
+providerType:   codex | claude | opencode
+connectionType: local | ssh | app-server
+```
+
+`allHosts` contains every local and remote host. Each host has normalized
+`threads`, `projects`, `models`, `agents`, and `capabilities` fields. Frontends
+route operations through `refreshHost`, `openThread`, `createThread`,
+`renameThread`, `archiveThread`, and `toggleThreadPin` instead of selecting a
+provider-specific implementation. `supplementalHosts` omits the local Codex
+host and exists for the sidebar's legacy view model.
+
+The library still uses the existing provider-native transports: local stdio,
+SSH, direct Codex App Server WebSocket, and the OpenCode headless API. It does
+not proxy or translate their wire protocols into a new daemon.
+
+### Standalone Agent Chat
+
+The plugin also includes a separate, single-conversation QuickShell application
+with a regular desktop window. It is intentionally a Codex GUI rather than a
+second thread browser, so it has no host or thread-list sidebar:
+
+```bash
+~/.config/omarchy/plugins/agent-threads/bin/omarchy-agent-chat
+~/.config/omarchy/plugins/agent-threads/bin/omarchy-agent-chat \
+  -C ~/src/project -m gpt-5.6-terra --effort high --fast --approve-for-me
+~/.config/omarchy/plugins/agent-threads/bin/omarchy-agent-chat \
+  resume THREAD_ID "Continue the task"
+~/.config/omarchy/plugins/agent-threads/bin/omarchy-agent-chat \
+  --remote wss://agent.example.test \
+  --remote-auth-token-env CODEX_REMOTE_TOKEN resume THREAD_ID
+```
+
+The launcher accepts a thread ID, local or remote App Server endpoint, model,
+reasoning effort, Fast service tier, approval policy, sandbox mode, working
+directory, and repeatable Codex `-c KEY=VALUE` overrides. Run it with `--help`
+for the complete list. Calling the launcher again focuses the existing window;
+explicit options are handed to that process over QuickShell IPC, so a second
+window is not created.
+
+Local Codex conversations open inline through the Codex App Server, with full
+history loading, streaming assistant and tool output, Stop, approval prompts,
+and runtime model/reasoning-effort/Fast/approval controls. Remote `ws://`,
+`wss://`, and `unix://` App Server transports reuse the plugin's existing
+remoting helpers.
+
+The conversation transcript uses one local-only Qt WebEngine view. Markdown is
+sanitized before insertion, and MathJax CHTML renders inline `$...$` /
+`\\(...\\)` math and display `$$...$$` / `\\[...\\]` math with real selectable
+webfont glyphs instead of images. Scripts, fonts, and the Marked parser are
+vendored under `app/web/vendor/`, so rendering does not require network access.
+The view blocks remote requests, persistent storage, plugins, and popup windows.
+
+Qt WebEngine must initialize before QuickShell creates its application object,
+while QuickShell currently creates that object with an empty argument list. The
+launcher builds a small user-cache compatibility shim from
+`native/webengine-preload.cpp` and loads it only into the Agent Chat process. It
+does not replace or modify the system QuickShell binary, and removes itself from
+the environment before provider child processes start.
+
 When OpenCode is selected, the plugin starts a localhost-only headless server
 for session discovery and creates each new session before opening its TUI. This
 makes window mapping immediate and reliable even before the first prompt. Model,
@@ -56,6 +123,8 @@ cannot block the long-running Shell process.
 - A current Omarchy release with the Shell plugin system.
 - Codex CLI available as `codex`.
 - Node.js 22 or newer, `jq`, `inotifywait`, `hyprctl`, and standard procps tools.
+- Qt 6 WebEngine with development headers, `pkg-config`, and a C++ compiler for
+  the standalone Agent Chat compatibility shim.
 - `ssh` for SSH remotes and `curl` plus `ss` for OpenCode integration.
 - Claude Code and OpenCode CLIs are optional and only required for their
   respective providers.

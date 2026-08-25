@@ -1,0 +1,208 @@
+#!/usr/bin/env node
+
+"use strict";
+
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const readline = require("node:readline");
+
+const pluginRoot = path.resolve(__dirname, "..");
+const chatLauncher = path.join(pluginRoot, "bin", "omarchy-agent-chat");
+
+function printUsage(stream) {
+  stream.write([
+    "omarchy-agent-math-render is an internal Agent Chat helper.",
+    "It reads newline-delimited render requests from standard input and does not open a window.",
+    "",
+    "Launch the graphical application with:",
+    `  ${chatLauncher}`,
+    ""
+  ].join("\n"));
+}
+
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  printUsage(process.stdout);
+  process.exit(0);
+}
+
+if (process.stdin.isTTY) {
+  printUsage(process.stderr);
+  process.exit(2);
+}
+
+const mathJaxRoot = path.join(pluginRoot, "app", "mathjax", "js");
+const { mathjax } = require(path.join(mathJaxRoot, "mathjax.js"));
+const { TeX } = require(path.join(mathJaxRoot, "input", "tex.js"));
+const { SVG } = require(path.join(mathJaxRoot, "output", "svg.js"));
+const { liteAdaptor } = require(path.join(mathJaxRoot, "adaptors", "liteAdaptor.js"));
+const { RegisterHTMLHandler } = require(path.join(mathJaxRoot, "handlers", "html.js"));
+
+const maxDocumentCharacters = 200000;
+const maxFormulaCharacters = 20000;
+const maxFormulas = 100;
+
+function createCacheDirectory() {
+  const requestedRuntime = process.env.XDG_RUNTIME_DIR;
+  if (requestedRuntime) {
+    const target = path.join(requestedRuntime, "omarchy-agent-chat-math");
+    try {
+      fs.mkdirSync(target, { recursive: true, mode: 0o700 });
+      fs.chmodSync(target, 0o700);
+      return target;
+    } catch (error) {
+      // Sandboxed tests can expose an XDG path that is not writable or mount-visible.
+    }
+  }
+  return fs.mkdtempSync(path.join(os.tmpdir(), `omarchy-agent-chat-${process.getuid()}-`));
+}
+
+const cacheDirectory = createCacheDirectory();
+
+const adaptor = liteAdaptor();
+RegisterHTMLHandler(adaptor);
+const tex = new TeX();
+const svgOutput = new SVG({ fontCache: "none" });
+const document = mathjax.document("", { InputJax: tex, OutputJax: svgOutput });
+
+function escapedAt(value, index) {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === "\\"; cursor--) backslashes++;
+  return backslashes % 2 === 1;
+}
+
+function closingIndex(value, delimiter, start, inline) {
+  for (let cursor = start; cursor <= value.length - delimiter.length; cursor++) {
+    if (inline && value[cursor] === "\n") return -1;
+    if (value.startsWith(delimiter, cursor) && !escapedAt(value, cursor)) return cursor;
+  }
+  return -1;
+}
+
+function svgForFormula(formula, display) {
+  const key = crypto.createHash("sha256")
+    .update(display ? "display\0" : "inline\0")
+    .update(formula)
+    .digest("hex");
+  const target = path.join(cacheDirectory, `${key}.svg`);
+  if (!fs.existsSync(target)) {
+    const node = document.convert(formula, { display, em: 16, ex: 8, containerWidth: 760 });
+    let markup = adaptor.outerHTML(node);
+    const svgStart = markup.indexOf("<svg");
+    const svgEnd = markup.lastIndexOf("</svg>");
+    if (svgStart < 0 || svgEnd < svgStart) throw new Error("MathJax did not produce SVG output");
+    markup = markup.slice(svgStart, svgEnd + 6)
+      .replaceAll("currentColor", "#ececec");
+    const widthMatch = markup.match(/width="([0-9.]+)ex"/);
+    const heightMatch = markup.match(/height="([0-9.]+)ex"/);
+    if (widthMatch && heightMatch) {
+      let width = Number(widthMatch[1]) * 8;
+      let height = Number(heightMatch[1]) * 8;
+      const maximum = display ? 740 : 680;
+      if (width > maximum) {
+        height *= maximum / width;
+        width = maximum;
+      }
+      markup = markup
+        .replace(widthMatch[0], `width="${Math.max(1, width).toFixed(2)}px"`)
+        .replace(heightMatch[0], `height="${Math.max(1, height).toFixed(2)}px"`);
+    }
+    fs.writeFileSync(target, markup, { encoding: "utf8", mode: 0o600 });
+  }
+  return `file://${target}`;
+}
+
+function renderMarkdownMath(source) {
+  const value = String(source || "").slice(0, maxDocumentCharacters);
+  let result = "";
+  let cursor = 0;
+  let fenced = false;
+  let formulas = 0;
+
+  while (cursor < value.length) {
+    const lineStart = cursor === 0 || value[cursor - 1] === "\n";
+    if (lineStart && (value.startsWith("```", cursor) || value.startsWith("~~~", cursor))) {
+      const end = value.indexOf("\n", cursor);
+      const lineEnd = end < 0 ? value.length : end + 1;
+      result += value.slice(cursor, lineEnd);
+      cursor = lineEnd;
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) {
+      result += value[cursor++];
+      continue;
+    }
+    if (value[cursor] === "`") {
+      const end = closingIndex(value, "`", cursor + 1, true);
+      if (end >= 0) {
+        result += value.slice(cursor, end + 1);
+        cursor = end + 1;
+        continue;
+      }
+    }
+
+    let open = "";
+    let close = "";
+    let display = false;
+    if (value.startsWith("$$", cursor) && !escapedAt(value, cursor)) {
+      open = close = "$$";
+      display = true;
+    } else if (value.startsWith("\\[", cursor) && !escapedAt(value, cursor)) {
+      open = "\\[";
+      close = "\\]";
+      display = true;
+    } else if (value.startsWith("\\(", cursor) && !escapedAt(value, cursor)) {
+      open = "\\(";
+      close = "\\)";
+    } else if (value[cursor] === "$" && !escapedAt(value, cursor)
+        && value[cursor + 1] && !/\s/.test(value[cursor + 1])) {
+      open = close = "$";
+    }
+
+    if (open && formulas < maxFormulas) {
+      const end = closingIndex(value, close, cursor + open.length, !display);
+      if (end >= 0 && (display || !/\s/.test(value[end - 1] || ""))) {
+        const formula = value.slice(cursor + open.length, end).trim();
+        if (formula && formula.length <= maxFormulaCharacters) {
+          try {
+            const uri = svgForFormula(formula, display);
+            result += display
+              ? `\n\n![Math formula](${uri})\n\n`
+              : `![Math formula](${uri})`;
+            cursor = end + close.length;
+            formulas++;
+            continue;
+          } catch (error) {
+            // Preserve invalid TeX verbatim so a rendering error never loses content.
+          }
+        }
+      }
+    }
+    result += value[cursor++];
+  }
+  return result;
+}
+
+function respond(message) {
+  const requestId = String(message && message.requestId || "");
+  try {
+    process.stdout.write(JSON.stringify({
+      requestId,
+      markdown: renderMarkdownMath(message && message.content)
+    }) + "\n");
+  } catch (error) {
+    process.stdout.write(JSON.stringify({ requestId, error: String(error.message || error) }) + "\n");
+  }
+}
+
+readline.createInterface({ input: process.stdin, crlfDelay: Infinity })
+  .on("line", line => {
+    if (line.length > maxDocumentCharacters * 2) return;
+    try {
+      respond(JSON.parse(line));
+    } catch (error) {
+      process.stdout.write(JSON.stringify({ requestId: "", error: "Invalid render request" }) + "\n");
+    }
+  });

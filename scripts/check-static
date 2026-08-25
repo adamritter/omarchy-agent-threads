@@ -18,7 +18,9 @@ done < <(find "$plugin_dir/bin" -maxdepth 1 -type f -exec grep -Il '^#!/usr/bin/
 while IFS= read -r file; do
   qmllint "$file"
 done < <(find "$plugin_dir/services" "$plugin_dir/providers" \
-  "$plugin_dir/ui" -type f -name '*.qml' | sort)
+  "$plugin_dir/ui" "$plugin_dir/app" -type f -name '*.qml' | sort)
+
+qmllint "$plugin_dir/agent-chat.qml"
 
 while IFS= read -r file; do
   qmllint "$file"

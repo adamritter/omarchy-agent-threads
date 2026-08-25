@@ -1,4 +1,6 @@
+AgentProviderLibrary 1.0 AgentProviderLibrary.qml
 CodexAppServerClient 1.0 CodexAppServerClient.qml
+CodexConversationClient 1.0 CodexConversationClient.qml
 LocalAgentProvider 1.0 LocalAgentProvider.qml
 LocalCodexProvider 1.0 LocalCodexProvider.qml
 ProviderRegistry 1.0 ProviderRegistry.qml

@@ -1,0 +1,200 @@
+#!/usr/bin/env node
+
+import path from "node:path"
+
+const args = process.argv.slice(2)
+
+const help = `Usage: omarchy-agent-chat [OPTIONS] [PROMPT]
+       omarchy-agent-chat resume [OPTIONS] THREAD_ID [PROMPT]
+
+Open a single-thread Codex GUI backed by the Codex App Server.
+
+Options:
+      --thread THREAD_ID          Open a specific Codex thread
+      --remote ADDR              Connect to ws://, wss://, or unix:// app server
+      --remote-auth-token-env VAR
+                                 Read the remote bearer token from VAR
+  -m, --model MODEL              Override the model
+      --effort EFFORT            Override reasoning effort
+      --fast                     Enable the Fast service tier
+      --no-fast                  Use the default service tier
+  -a, --ask-for-approval POLICY  untrusted, on-request, or never
+      --approve-for-me           Route approvals through Codex auto review
+  -s, --sandbox MODE             read-only, workspace-write, or danger-full-access
+  -C, --cd DIR                   Set the working directory
+  -c, --config KEY=VALUE         Forward a Codex configuration override
+      --yolo                     Bypass approvals and sandboxing (dangerous)
+  -h, --help                     Show this help
+`
+
+function fail(message) {
+  process.stderr.write(`Agent Chat: ${message}\n`)
+  process.exit(2)
+}
+
+function takeValue(index, option) {
+  if (index + 1 >= args.length) fail(`${option} requires a value`)
+  return args[index + 1]
+}
+
+function scalar(value) {
+  const text = String(value || "").trim()
+  if ((text.startsWith('"') && text.endsWith('"'))
+      || (text.startsWith("'") && text.endsWith("'"))) return text.slice(1, -1)
+  return text
+}
+
+function validateRemote(value) {
+  if (value === "unix://") return value
+  let parsed
+  try { parsed = new URL(value) } catch { fail("--remote must be a valid endpoint URL") }
+  if (!["ws:", "wss:", "unix:"].includes(parsed.protocol))
+    fail("--remote accepts ws://, wss://, or unix:// endpoints")
+  return value
+}
+
+function validateChoice(option, value, choices) {
+  if (!choices.includes(value)) fail(`${option} must be one of: ${choices.join(", ")}`)
+  return value
+}
+
+const options = {
+  explicit: args.length > 0,
+  threadId: "",
+  remote: "",
+  remoteAuthTokenEnv: "",
+  model: "",
+  effort: "",
+  serviceTier: "",
+  approvalPolicy: "",
+  approvalsReviewer: "user",
+  sandbox: "",
+  cwd: process.cwd(),
+  prompt: "",
+  configOverrides: []
+}
+
+let resume = false
+const positional = []
+
+for (let index = 0; index < args.length; index++) {
+  const arg = args[index]
+  if (arg === "-h" || arg === "--help") {
+    process.stdout.write(help)
+    process.exit(0)
+  }
+  if (arg === "resume" && positional.length === 0 && !resume) {
+    resume = true
+    continue
+  }
+  if (arg === "--") {
+    positional.push(...args.slice(index + 1))
+    break
+  }
+  if (arg === "--thread") {
+    options.threadId = takeValue(index, arg)
+    index++
+    continue
+  }
+  if (arg === "--remote") {
+    options.remote = validateRemote(takeValue(index, arg))
+    index++
+    continue
+  }
+  if (arg === "--remote-auth-token-env") {
+    options.remoteAuthTokenEnv = takeValue(index, arg)
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(options.remoteAuthTokenEnv))
+      fail("--remote-auth-token-env must name an environment variable")
+    index++
+    continue
+  }
+  if (arg === "-m" || arg === "--model") {
+    options.model = takeValue(index, arg)
+    index++
+    continue
+  }
+  if (arg === "--effort" || arg === "--reasoning-effort") {
+    options.effort = takeValue(index, arg)
+    index++
+    continue
+  }
+  if (arg === "--fast") {
+    options.serviceTier = "fast"
+    continue
+  }
+  if (arg === "--no-fast") {
+    options.serviceTier = "default"
+    continue
+  }
+  if (arg === "-a" || arg === "--ask-for-approval") {
+    options.approvalPolicy = validateChoice(arg, takeValue(index, arg),
+      ["untrusted", "on-request", "never"])
+    index++
+    continue
+  }
+  if (arg === "--approve-for-me") {
+    options.approvalsReviewer = "auto_review"
+    options.sandbox = "workspace-write"
+    continue
+  }
+  if (arg === "-s" || arg === "--sandbox") {
+    options.sandbox = validateChoice(arg, takeValue(index, arg),
+      ["read-only", "workspace-write", "danger-full-access"])
+    index++
+    continue
+  }
+  if (arg === "--dangerously-bypass-approvals-and-sandbox" || arg === "--yolo") {
+    options.approvalPolicy = "never"
+    options.approvalsReviewer = "user"
+    options.sandbox = "danger-full-access"
+    continue
+  }
+  if (arg === "-C" || arg === "--cd") {
+    options.cwd = path.resolve(takeValue(index, arg))
+    index++
+    continue
+  }
+  if (arg === "-c" || arg === "--config") {
+    const override = takeValue(index, arg)
+    const separator = override.indexOf("=")
+    if (separator <= 0) fail(`${arg} requires KEY=VALUE`)
+    options.configOverrides.push(override)
+    const key = override.slice(0, separator).trim()
+    const value = scalar(override.slice(separator + 1))
+    if (key === "model") options.model = value
+    else if (key === "model_reasoning_effort") options.effort = value
+    else if (key === "service_tier") options.serviceTier = value
+    else if (key === "approval_policy") options.approvalPolicy = value
+    else if (key === "approvals_reviewer") options.approvalsReviewer = value
+    else if (key === "sandbox_mode") options.sandbox = value
+    index++
+    continue
+  }
+  if (arg.startsWith("-")) fail(`unknown option: ${arg}`)
+  positional.push(arg)
+}
+
+if (resume) {
+  if (options.threadId === "") {
+    if (positional.length === 0) fail("resume requires THREAD_ID")
+    options.threadId = positional.shift()
+  }
+} else if (options.threadId !== "" && positional.length > 1) {
+  fail("only one prompt argument is supported")
+}
+
+if (positional.length > 1) fail("only one prompt argument is supported")
+if (positional.length === 1) options.prompt = positional[0]
+if (options.threadId.trim() === "" && resume) fail("resume requires a non-empty THREAD_ID")
+if (options.remoteAuthTokenEnv !== "" && options.remote === "")
+  fail("--remote-auth-token-env requires --remote")
+if (options.remote.startsWith("unix://") && options.remoteAuthTokenEnv !== "")
+  fail("--remote-auth-token-env is only valid for ws:// or wss://")
+
+validateChoice("approval policy", options.approvalPolicy || "on-request",
+  ["untrusted", "on-request", "never"])
+validateChoice("approvals reviewer", options.approvalsReviewer, ["user", "auto_review"])
+if (options.sandbox !== "") validateChoice("sandbox", options.sandbox,
+  ["read-only", "workspace-write", "danger-full-access"])
+
+process.stdout.write(JSON.stringify(options))

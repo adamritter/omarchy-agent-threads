@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$(cd -- "${script_dir}/.." && pwd)"
+options_parser="$plugin_dir/bin/omarchy-agent-chat-options"
+
+for argument in "$@"; do
+  if [[ "$argument" == "-h" || "$argument" == "--help" ]]; then
+    exec "$options_parser" "$@"
+  fi
+done
+
+launch_options="$($options_parser "$@")"
+explicit_options="$(jq -r '.explicit == true' <<<"$launch_options")"
+
+agent_chat_address() {
+  hyprctl -j clients 2>/dev/null \
+    | jq -r '.[] | select((.class == "org.omarchy.agent-chat" or .class == "org.quickshell") and .title == "Agent Chat") | .address' \
+    | head -1 || true
+}
+
+target_workspace="$(hyprctl -j activeworkspace 2>/dev/null | jq -r '.id // empty' || true)"
+if [[ ! "$target_workspace" =~ ^[1-9][0-9]*$ ]]; then
+  target_workspace=""
+fi
+
+place_and_focus() {
+  local address="$1"
+  if [[ -n "$target_workspace" ]]; then
+    hyprctl eval "hl.dispatch(hl.dsp.window.move({ workspace = \"${target_workspace}\", follow = false, window = \"address:${address}\" }))" \
+      >/dev/null
+  fi
+  hyprctl eval "hl.dispatch(hl.dsp.focus({ window = \"address:${address}\" }))" \
+    >/dev/null
+}
+
+existing_address="$(agent_chat_address)"
+if [[ "$existing_address" =~ ^0x[0-9a-fA-F]+$ ]]; then
+  if [[ "$explicit_options" == "true" ]]; then
+    ipc_result="$(quickshell ipc --path "$plugin_dir/agent-chat.qml" \
+      call agentChat open "$launch_options")"
+    if [[ "$ipc_result" != "ok" ]]; then
+      printf 'Agent Chat is busy and could not switch thread or server.\n' >&2
+      exit 1
+    fi
+  fi
+  place_and_focus "$existing_address"
+  exit 0
+fi
+
+webengine_shim="${AGENT_CHAT_WEBENGINE_SHIM:-}"
+if [[ -z "$webengine_shim" ]]; then
+  webengine_shim="$($plugin_dir/bin/omarchy-agent-webengine-shim)"
+fi
+if [[ ! -s "$webengine_shim" ]]; then
+  printf 'Agent Chat WebEngine compatibility shim is missing: %s\n' "$webengine_shim" >&2
+  exit 1
+fi
+
+AGENT_CHAT_ORIGINAL_LD_PRELOAD="${LD_PRELOAD:-}" \
+AGENT_CHAT_OPTIONS="$launch_options" \
+LD_PRELOAD="$webengine_shim${LD_PRELOAD:+:$LD_PRELOAD}" \
+  quickshell --no-duplicate --daemonize --path "$plugin_dir/agent-chat.qml"
+
+for _ in {1..40}; do
+  new_address="$(agent_chat_address)"
+  if [[ "$new_address" =~ ^0x[0-9a-fA-F]+$ ]]; then
+    place_and_focus "$new_address"
+    break
+  fi
+  sleep 0.05
+done

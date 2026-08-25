@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+window="$plugin_root/app/ChatWindow.qml"
+
+grep -F -- 'import Quickshell.Io' "$window" >/dev/null
+grep -F -- 'target: "agentChat"' "$window" >/dev/null
+grep -F -- 'WebTranscript {' "$window" >/dev/null
+grep -F -- 'conversationTitle: conversation.activeThreadId' "$window" >/dev/null
+grep -F -- 'conversationDetail: root.workingDirectory' "$window" >/dev/null
+grep -F -- 'id: composerToolbar' "$window" >/dev/null
+grep -F -- 'height: Math.max(88, Math.min(204, composer.implicitHeight + 54))' "$window" >/dev/null
+grep -F -- 'text: "Fast responses"' "$window" >/dev/null
+grep -F -- 'id: optionsMenu' "$window" >/dev/null
+grep -F -- 'conversation.configure(next)' "$window" >/dev/null
+
+if grep -F -- 'Layout.preferredHeight: 54' "$window" >/dev/null; then
+  printf 'conversation header is still fixed above the transcript\n' >&2
+  exit 1
+fi
+
+composer_line="$(grep -nF 'id: composerFrame' "$window" | cut -d: -f1)"
+new_chat_line="$(grep -nF 'id: newChatButton' "$window" | cut -d: -f1)"
+model_line="$(grep -nF 'id: modelSelector' "$window" | cut -d: -f1)"
+if (( new_chat_line <= composer_line || model_line <= composer_line )); then
+  printf 'chat controls are not embedded in the composer\n' >&2
+  exit 1
+fi
+
+if grep -F -- 'ThreadStore' "$window" >/dev/null; then
+  printf 'standalone chat still depends on the thread sidebar store\n' >&2
+  exit 1
+fi
+if grep -F -- 'id: threadList' "$window" >/dev/null; then
+  printf 'standalone chat still contains the thread sidebar list\n' >&2
+  exit 1
+fi
+if grep -F -- 'activeHostId' "$window" >/dev/null; then
+  printf 'standalone chat still exposes a sidebar host selector\n' >&2
+  exit 1
+fi
+
+printf 'chat UI tests passed\n'

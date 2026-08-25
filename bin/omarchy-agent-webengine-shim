@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$(cd -- "${script_dir}/.." && pwd)"
+source_file="$plugin_dir/native/webengine-preload.cpp"
+
+if ! command -v pkg-config >/dev/null || ! pkg-config --exists Qt6WebEngineQuick; then
+  printf 'Agent Chat requires the Qt 6 WebEngine development package and pkg-config.\n' >&2
+  exit 1
+fi
+if ! command -v c++ >/dev/null; then
+  printf 'Agent Chat requires a C++ compiler to build its local WebEngine compatibility shim.\n' >&2
+  exit 1
+fi
+
+qt_version="$(pkg-config --modversion Qt6WebEngineQuick)"
+cache_home="${XDG_CACHE_HOME:-${HOME:?HOME is not set}/.cache}"
+build_dir="$cache_home/omarchy-agent-chat/webengine-shim/$qt_version"
+output_file="$build_dir/libagent-chat-webengine-init.so"
+
+if [[ -s "$output_file" && "$output_file" -nt "$source_file" ]]; then
+  printf '%s\n' "$output_file"
+  exit 0
+fi
+
+mkdir -p -- "$build_dir"
+temporary_file="$(mktemp "$build_dir/.webengine-shim-XXXXXX.so")"
+trap 'rm -f -- "$temporary_file"' EXIT
+
+c++ -std=c++17 -O2 -shared -fPIC "$source_file" -o "$temporary_file" -ldl
+mv -f -- "$temporary_file" "$output_file"
+trap - EXIT
+printf '%s\n' "$output_file"

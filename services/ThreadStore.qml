@@ -20,9 +20,9 @@ Item {
   property var codexConfig: ({})
   property var threadStatuses: ({})
   property var unreadThreads: ({})
-  readonly property alias ready: appServerClient.ready
-  readonly property alias loading: appServerClient.loading
-  readonly property alias refreshQueued: appServerClient.refreshQueued
+  readonly property alias ready: agentProviders.ready
+  readonly property alias loading: agentProviders.loading
+  readonly property alias refreshQueued: agentProviders.refreshQueued
   property bool shuttingDown: false
   property string errorText: ""
   property string launchError: ""
@@ -40,26 +40,24 @@ Item {
   property string pendingMovePath: ""
   property string pendingMoveName: ""
   property string activeThreadId: ""
-  readonly property alias remoteConfigLoaded: remoteProvider.configLoaded
-  readonly property alias remoteConfig: remoteProvider.remoteConfig
-  readonly property var remoteHosts: remoteProvider.remoteHosts.concat(providerRegistry.hosts)
-  readonly property alias remoteQueryHostId: remoteProvider.queryHostId
-  readonly property string remoteActionHostId: remoteProvider.actionHostId !== ""
-    ? remoteProvider.actionHostId
-    : providerRegistry.actionHostId
-  property alias remoteAddError: remoteProvider.addError
-  readonly property alias remoteTestHostId: remoteProvider.managementTestHostId
-  readonly property alias remoteTestRunning: remoteProvider.managementTestRunning
-  readonly property alias remoteTestSucceeded: remoteProvider.managementTestSucceeded
-  readonly property alias remoteTestMessage: remoteProvider.managementTestMessage
-  readonly property alias remoteClaudeInstallHostId: remoteProvider.installHostId
-  readonly property alias remoteClaudeInstallRunning: remoteProvider.installRunning
-  readonly property alias remoteClaudeInstallMessage: remoteProvider.installMessage
-  readonly property alias remoteClaudeLoginHostId: remoteProvider.loginHostId
-  readonly property alias remoteClaudeLoginRunning: remoteProvider.loginRunning
-  readonly property alias sshHosts: remoteProvider.sshHosts
-  readonly property alias sshHostsLoading: remoteProvider.sshHostsLoading
-  readonly property alias sshHostsError: remoteProvider.sshHostsError
+  readonly property alias remoteConfigLoaded: agentProviders.remoteConfigLoaded
+  readonly property alias remoteConfig: agentProviders.remoteConfig
+  readonly property alias remoteHosts: agentProviders.supplementalHosts
+  readonly property alias remoteQueryHostId: agentProviders.remoteQueryHostId
+  readonly property alias remoteActionHostId: agentProviders.actionHostId
+  property alias remoteAddError: agentProviders.remoteAddError
+  readonly property alias remoteTestHostId: agentProviders.remoteTestHostId
+  readonly property alias remoteTestRunning: agentProviders.remoteTestRunning
+  readonly property alias remoteTestSucceeded: agentProviders.remoteTestSucceeded
+  readonly property alias remoteTestMessage: agentProviders.remoteTestMessage
+  readonly property alias remoteClaudeInstallHostId: agentProviders.remoteClaudeInstallHostId
+  readonly property alias remoteClaudeInstallRunning: agentProviders.remoteClaudeInstallRunning
+  readonly property alias remoteClaudeInstallMessage: agentProviders.remoteClaudeInstallMessage
+  readonly property alias remoteClaudeLoginHostId: agentProviders.remoteClaudeLoginHostId
+  readonly property alias remoteClaudeLoginRunning: agentProviders.remoteClaudeLoginRunning
+  readonly property alias sshHosts: agentProviders.sshHosts
+  readonly property alias sshHostsLoading: agentProviders.sshHostsLoading
+  readonly property alias sshHostsError: agentProviders.sshHostsError
   property bool sidebarSettingsLoaded: false
   property bool hydratingSidebarSettings: false
   property bool providerSnapshotLoaded: false
@@ -73,7 +71,7 @@ Item {
   property var collapsedProjects: ({})
   property var collapsedRemotes: ({})
   property var pinnedSections: ({})
-  readonly property alias lastRefreshMs: appServerClient.lastRefreshMs
+  readonly property alias lastRefreshMs: agentProviders.lastRefreshMs
 
   onThreadsChanged: scheduleProviderSnapshot()
   onProjectsChanged: scheduleProviderSnapshot()
@@ -153,24 +151,8 @@ Item {
 
   signal threadLaunchRequested(string threadId)
 
-  Providers.RemoteAgentProvider {
-    id: remoteProvider
-    controller: root
-    onRemoteHostsChanged: root.scheduleProviderSnapshot()
-  }
-
-  Providers.CodexAppServerClient {
-    id: appServerClient
-    controller: root
-  }
-
-  Providers.LocalCodexProvider {
-    id: localCodexProvider
-    controller: root
-  }
-
-  Providers.ProviderRegistry {
-    id: providerRegistry
+  Providers.AgentProviderLibrary {
+    id: agentProviders
     controller: root
     onSettingsChanged: {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
@@ -191,8 +173,8 @@ Item {
         unreadThreads: unreadThreads,
         activeThreadId: activeThreadId
       },
-      remoteHosts: remoteProvider.remoteHosts,
-      localProviders: providerRegistry.snapshotHosts()
+      remoteHosts: agentProviders.configuredRemoteHosts,
+      localProviders: agentProviders.snapshotLocalProviders()
     }
   }
 
@@ -240,137 +222,105 @@ Item {
     unreadThreads = codex.unreadThreads && typeof codex.unreadThreads === "object"
       ? codex.unreadThreads : ({})
     activeThreadId = String(codex.activeThreadId || "")
-    remoteProvider.restoreSnapshots(snapshot.remoteHosts)
-    providerRegistry.restoreSnapshots(snapshot.localProviders)
+    agentProviders.restoreRemoteHosts(snapshot.remoteHosts)
+    agentProviders.restoreLocalProviders(snapshot.localProviders)
     hydratingProviderSnapshot = false
     return true
   }
 
   function resetBackendState() {
-    appServerClient.reset()
+    agentProviders.reset()
   }
 
   function startAppServer() {
-    appServerClient.start()
+    agentProviders.start()
   }
 
   function remoteHostById(hostId) {
-    var provider = localAgentProvider(hostId)
-    if (provider) return provider.host
-    return remoteProvider.hostById(hostId)
+    return agentProviders.hostById(hostId)
   }
 
   function remotePathForThread(host, thread) {
-    var provider = localAgentProvider(host ? host.id : "")
-    if (provider) return provider.pathForThread(thread)
-    return remoteProvider.pathForThread(host, thread)
+    return agentProviders.pathForThread(host ? host.id : "", thread)
   }
 
   function remoteThreadStatus(thread) {
     var provider = localAgentProviderForThread(thread)
-    if (provider) return provider.threadStatus(thread)
-    return remoteProvider.threadStatus(thread)
+    var hostId = provider ? provider.hostId : ""
+    return agentProviders.threadStatus(hostId, thread)
   }
 
   function refreshRemotes(hostId) {
-    var provider = localAgentProvider(hostId)
-    if (provider) {
-      provider.refresh()
-      return
-    }
-    remoteProvider.refresh(hostId)
+    agentProviders.refreshSupplementalHosts(hostId)
   }
 
   function localAgentProvider(hostId) {
-    return providerRegistry.providerForHost(hostId)
+    return agentProviders.localProviderForHost(hostId)
   }
 
   function localAgentProviderForThread(thread) {
-    return providerRegistry.providerForThread(thread)
+    return agentProviders.localProviderForThread(thread)
   }
 
   function addRemote(label, type, address, home, tokenFile, providerType) {
-    return remoteProvider.add(label, type, address, home, tokenFile, providerType)
+    return agentProviders.addRemote(label, type, address, home, tokenFile, providerType)
   }
 
   function updateRemote(hostId, label, type, address, home, tokenFile, providerType) {
-    return remoteProvider.updateRemote(
+    return agentProviders.updateRemote(
       hostId, label, type, address, home, tokenFile, providerType)
   }
 
   function removeRemote(hostId) {
-    return remoteProvider.removeRemote(hostId)
+    return agentProviders.removeRemote(hostId)
   }
 
   function testRemote(hostId) {
-    return remoteProvider.testRemote(hostId)
+    return agentProviders.testRemote(hostId)
   }
 
   function installRemoteClaude(hostId) {
-    return remoteProvider.installClaude(hostId)
+    return agentProviders.installRemoteClaude(hostId)
   }
 
   function loginRemoteClaude(hostId) {
-    return remoteProvider.loginClaude(hostId)
+    return agentProviders.loginRemoteClaude(hostId)
   }
 
   function sshHostEnabled(alias, providerType) {
-    return remoteProvider.sshHostEnabled(alias, providerType)
+    return agentProviders.sshHostEnabled(alias, providerType)
   }
 
   function remoteIdForSshHost(alias, providerType) {
-    return remoteProvider.remoteIdForSshHost(alias, providerType)
+    return agentProviders.remoteIdForSshHost(alias, providerType)
   }
 
   function refreshSshHosts() {
-    remoteProvider.refreshSshHosts()
+    agentProviders.refreshSshHosts()
   }
 
   function archiveRemoteThread(hostId, thread) {
-    var provider = localAgentProvider(hostId)
-    if (provider) {
-      provider.archiveThread(thread)
-      return
-    }
-    remoteProvider.archiveThread(hostId, thread)
+    agentProviders.archiveThread(hostId, thread)
   }
 
   function renameRemoteThread(hostId, thread, name) {
     var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
     if (normalized === "" || renamingThreadId !== "") return false
-    var provider = localAgentProvider(hostId)
-    var started = provider
-      ? provider.renameThread(thread, normalized)
-      : remoteProvider.renameThread(hostId, thread, normalized)
+    var started = agentProviders.renameThread(hostId, thread, normalized)
     if (!started) launchError = "Could not start the thread rename"
     return !!started
   }
 
   function toggleRemoteThreadPin(hostId, thread) {
-    var provider = localAgentProvider(hostId)
-    if (provider) {
-      provider.toggleThreadPin(thread)
-      return
-    }
-    remoteProvider.toggleThreadPin(hostId, thread)
+    agentProviders.toggleThreadPin(hostId, thread)
   }
 
   function openRemoteThread(hostId, thread, path) {
-    var provider = localAgentProvider(hostId)
-    if (provider) {
-      provider.openThread(thread, path)
-      return
-    }
-    remoteProvider.openThread(hostId, thread, path)
+    agentProviders.openThread(hostId, thread, path)
   }
 
   function newRemoteThread(hostId, path) {
-    var provider = localAgentProvider(hostId)
-    if (provider) {
-      provider.newThread(path)
-      return
-    }
-    remoteProvider.newThread(hostId, path)
+    agentProviders.createThread(hostId, path)
   }
 
   function openTerminal(mode, endpoint, path) {
@@ -387,7 +337,7 @@ Item {
   }
 
   function refreshThreads() {
-    appServerClient.refreshThreads()
+    agentProviders.refreshThreads()
   }
 
   function threadIsPinned(thread) {
@@ -399,25 +349,25 @@ Item {
   }
 
   function refreshProjects() {
-    appServerClient.refreshProjects()
+    agentProviders.refreshProjects()
   }
 
   function refreshRateLimits() {
-    appServerClient.refreshRateLimits()
+    agentProviders.refreshRateLimits()
   }
 
   function refreshModels() {
-    appServerClient.refreshModels()
+    agentProviders.refreshModels()
   }
 
   function refreshConfig() {
-    appServerClient.refreshConfig()
+    agentProviders.refreshConfig()
   }
 
   function setSelectedModel(value) {
     persisted.selectedModel = String(value || "")
     if (persisted.selectedEffort === "") return
-    var supported = selectedModelEfforts()
+    var supported = agentProviders.modelEfforts("codex", persisted.selectedModel)
     if (supported.indexOf(persisted.selectedEffort) < 0)
       persisted.selectedEffort = ""
   }
@@ -427,121 +377,83 @@ Item {
   }
 
   function selectedModelInfo() {
-    var wanted = String(persisted.selectedModel || codexConfig.model || "")
-    var fallback = null
-    for (var i = 0; i < models.length; i++) {
-      var entry = models[i]
-      if (wanted !== "" && String(entry.model || entry.id || "") === wanted) return entry
-      if (entry.isDefault === true) fallback = entry
-    }
-    return fallback || (models.length > 0 ? models[0] : null)
+    return agentProviders.modelState("codex").model
   }
 
   function effectiveModel() {
-    var configured = String(persisted.selectedModel || codexConfig.model || "")
-    if (configured !== "") return configured
-    var info = selectedModelInfo() || ({})
-    return String(info.model || info.id || "")
+    return agentProviders.effectiveModel("codex")
   }
 
   function effectiveEffort() {
-    var configured = String(persisted.selectedEffort
-      || codexConfig.model_reasoning_effort || "")
-    if (configured !== "") return configured
-    var info = selectedModelInfo() || ({})
-    return String(info.defaultReasoningEffort || "")
+    return agentProviders.effectiveEffort("codex")
   }
 
-  function selectedModelEfforts() {
-    var info = selectedModelInfo()
-    var entries = info && Array.isArray(info.supportedReasoningEfforts)
-      ? info.supportedReasoningEfforts : []
-    var result = []
-    for (var i = 0; i < entries.length; i++) {
-      var effort = String(entries[i] && entries[i].reasoningEffort || entries[i] || "")
-      if (effort !== "" && result.indexOf(effort) < 0) result.push(effort)
-    }
-    return result
+  function selectedModelEfforts(modelId) {
+    return agentProviders.modelEfforts("codex", modelId)
   }
 
   function providerHost(providerType) {
-    return providerRegistry.host(providerType)
+    return agentProviders.providerHost(providerType)
   }
 
   function modelsForProvider(providerType) {
-    var type = String(providerType || "codex")
-    if (type === "codex") return models || []
-    return providerRegistry.models(type)
+    return agentProviders.models(providerType)
   }
 
   function agentsForProvider(providerType) {
-    return providerRegistry.agents(providerType)
+    return agentProviders.agents(providerType)
   }
 
   function selectedModelForProvider(providerType) {
-    var type = String(providerType || "codex")
-    return type === "codex" ? persisted.selectedModel : providerRegistry.selectedModel(type)
+    return agentProviders.selectedModel(providerType)
   }
 
   function selectedEffortForProvider(providerType) {
-    var type = String(providerType || "codex")
-    return type === "codex" ? persisted.selectedEffort : providerRegistry.selectedEffort(type)
+    return agentProviders.selectedEffort(providerType)
   }
 
   function selectedAgentForProvider(providerType) {
-    return providerRegistry.selectedAgent(providerType)
+    return agentProviders.selectedAgent(providerType)
   }
 
   function defaultModelForProvider(providerType) {
-    var type = String(providerType || "codex")
-    if (type === "codex") return effectiveModel()
-    return providerRegistry.defaultModel(type)
+    return agentProviders.defaultModel(providerType)
   }
 
   function defaultEffortForProvider(providerType, modelId) {
-    var type = String(providerType || "codex")
-    if (type === "codex") return effectiveEffort()
-    return providerRegistry.defaultEffort(type, modelId)
+    return agentProviders.defaultEffort(providerType, modelId)
   }
 
   function defaultAgentForProvider(providerType) {
-    return providerRegistry.defaultAgent(providerType)
+    return agentProviders.defaultAgent(providerType)
   }
 
   function effectiveModelForProvider(providerType) {
-    var type = String(providerType || "codex")
-    return type === "codex" ? effectiveModel() : providerRegistry.effectiveModel(type)
+    return agentProviders.effectiveModel(providerType)
   }
 
   function effectiveEffortForProvider(providerType) {
-    var type = String(providerType || "codex")
-    return type === "codex" ? effectiveEffort() : providerRegistry.effectiveEffort(type)
+    return agentProviders.effectiveEffort(providerType)
   }
 
   function effectiveAgentForProvider(providerType) {
-    return providerRegistry.effectiveAgent(providerType)
+    return agentProviders.effectiveAgent(providerType)
   }
 
   function modelEffortsForProvider(providerType, modelId) {
-    var type = String(providerType || "codex")
-    if (type === "codex") return selectedModelEfforts()
-    return providerRegistry.modelEfforts(type, modelId)
+    return agentProviders.modelEfforts(providerType, modelId)
   }
 
   function setModelForProvider(providerType, value) {
-    var type = String(providerType || "codex")
-    if (type === "codex") setSelectedModel(value)
-    else providerRegistry.setModel(type, value)
+    agentProviders.setModel(providerType, value)
   }
 
   function setEffortForProvider(providerType, value) {
-    var type = String(providerType || "codex")
-    if (type === "codex") setSelectedEffort(value)
-    else providerRegistry.setEffort(type, value)
+    agentProviders.setEffort(providerType, value)
   }
 
   function setAgentForProvider(providerType, value) {
-    providerRegistry.setAgent(providerType, value)
+    agentProviders.setAgent(providerType, value)
   }
 
   function projectForId(projectId) {
@@ -588,7 +500,7 @@ Item {
       return
     }
 
-    appServerClient.createProject(threadId, pendingMoveName, path)
+    agentProviders.createProject(threadId, pendingMoveName, path)
   }
 
   function assignMovingThreadToProject(projectId) {
@@ -596,11 +508,11 @@ Item {
       failThreadMove("Could not resolve the target Codex project")
       return
     }
-    appServerClient.moveThread(movingThreadId, projectId)
+    agentProviders.moveThread(movingThreadId, projectId)
   }
 
   function failThreadMove(message, silent) {
-    appServerClient.clearMoveRequests()
+    agentProviders.clearMoveRequests()
     movingThreadId = ""
     pendingMovePath = ""
     pendingMoveName = ""
@@ -608,7 +520,7 @@ Item {
   }
 
   function finishThreadMove() {
-    appServerClient.clearMoveRequests()
+    agentProviders.clearMoveRequests()
     movingThreadId = ""
     pendingMovePath = ""
     pendingMoveName = ""
@@ -674,7 +586,7 @@ Item {
     threadStatusesProcess.running = true
   }
 
-  function archiveThread(thread) {
+  function archiveLocalCodexThread(thread) {
     if (!thread || !thread.id || archivingThreadId !== "") return
 
     archivingThreadId = String(thread.id)
@@ -683,19 +595,19 @@ Item {
     setArchiveTombstone(archivingThreadId, true)
     threads = threadsWithoutArchiveTombstones(threads)
     errorText = ""
-    if (!appServerClient.archiveThread(archivingThreadId)) {
+    if (!agentProviders.archiveLocalCodexRpc(archivingThreadId)) {
       restoreArchivedThread()
       errorText = "Could not reach the Codex App Server"
     }
   }
 
-  function renameThread(thread, name) {
+  function renameLocalCodexThread(thread, name) {
     var id = String(thread && thread.id || "")
     var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
     if (id === "" || normalized === "" || renamingThreadId !== "") return false
     renamingThreadId = id
     errorText = ""
-    if (!appServerClient.renameThread(id, normalized)) {
+    if (!agentProviders.renameLocalCodexRpc(id, normalized)) {
       renamingThreadId = ""
       errorText = "Could not reach the Codex App Server"
       return false
@@ -703,14 +615,14 @@ Item {
     return true
   }
 
-  function toggleThreadPin(thread) {
+  function toggleLocalCodexThreadPin(thread) {
     var id = String(thread && thread.id || "")
     if (id === "" || pinningThreadId !== "") return
 
     pinningThreadId = id
     pendingPinValue = thread.isPinned !== true
     errorText = ""
-    if (!appServerClient.setThreadPinned(id, pendingPinValue, pinnedSectionId)) {
+    if (!agentProviders.pinLocalCodexRpc(id, pendingPinValue, pinnedSectionId)) {
       pinningThreadId = ""
       pendingPinValue = false
       errorText = "Could not reach the Codex App Server"
@@ -752,24 +664,36 @@ Item {
     archivingThreadId = ""
   }
 
+  function archiveThread(thread) {
+    return agentProviders.archiveThread("provider-codex", thread)
+  }
+
+  function renameThread(thread, name) {
+    return agentProviders.renameThread("provider-codex", thread, name)
+  }
+
+  function toggleThreadPin(thread) {
+    return agentProviders.toggleThreadPin("provider-codex", thread)
+  }
+
   function openThread(thread, cwdOverride) {
-    localCodexProvider.openThread(thread, cwdOverride)
+    return agentProviders.openThread("provider-codex", thread, cwdOverride)
   }
 
   function newProjectThread(projectPath) {
-    localCodexProvider.newThread(projectPath)
+    return agentProviders.createThread("provider-codex", projectPath)
   }
 
   function clearPendingNewThread() {
-    localCodexProvider.clearPendingNew()
+    agentProviders.clearPendingLocalCodexThread()
   }
 
   function resolvePendingNewThread() {
-    localCodexProvider.resolvePendingNew()
+    agentProviders.resolvePendingLocalCodexThread()
   }
 
   function refreshActiveThread() {
-    localCodexProvider.refreshActiveThread()
+    agentProviders.refreshActiveThread()
   }
 
   function scheduleEventRefresh() {
@@ -868,7 +792,7 @@ Item {
       persisted.selectedEffort = String(parsed.effort || "")
       var providerSettings = parsed.providerSettings && typeof parsed.providerSettings === "object"
         ? parsed.providerSettings : ({})
-      providerRegistry.loadSettings(providerSettings)
+      agentProviders.loadSettings(providerSettings)
       collapsedProjects = parsed.collapsedProjects
         && typeof parsed.collapsedProjects === "object"
         && !Array.isArray(parsed.collapsedProjects)
@@ -903,7 +827,7 @@ Item {
       collapsedProjects: collapsedProjects,
       collapsedRemotes: collapsedRemotes,
       pinnedSections: pinnedSections,
-      providerSettings: providerRegistry.settingsObject()
+      providerSettings: agentProviders.settingsObject()
     }, null, 2) + "\n")
   }
 

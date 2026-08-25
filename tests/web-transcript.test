@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d -t agent-chat-web-transcript-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+
+node --check "$plugin_root/app/web/transcript.js"
+grep -F -- 'MathJax.tex2chtmlPromise' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'MathJax.chtmlStylesheet()' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'conversationTitle.textContent' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'id="conversation-header"' "$plugin_root/app/web/transcript.html" >/dev/null
+grep -F -- '#conversation-header' "$plugin_root/app/web/transcript.css" >/dev/null
+grep -F -- 'connect-src '\''none' "$plugin_root/app/web/transcript.html" >/dev/null
+grep -F -- 'vendor/mathjax/es5/tex-chtml.js' "$plugin_root/app/web/transcript.html" >/dev/null
+grep -F -- 'vendor/marked/marked.umd.js' "$plugin_root/app/web/transcript.html" >/dev/null
+test -s "$plugin_root/app/web/vendor/mathjax/es5/output/chtml/fonts/woff-v2/MathJax_Main-Regular.woff"
+test -s "$plugin_root/app/web/vendor/marked/LICENSE.md"
+
+shim="$(XDG_CACHE_HOME="$test_root/cache" "$plugin_root/bin/omarchy-agent-webengine-shim")"
+test -s "$shim"
+file "$shim" | grep -F -- 'shared object' >/dev/null
+if ldd "$shim" | grep -F -- 'Qt6WebEngine' >/dev/null; then
+  printf 'WebEngine shim must load Qt lazily only inside QuickShell\n' >&2
+  exit 1
+fi
+AGENT_CHAT_ORIGINAL_LD_PRELOAD=/usr/lib/libc.so.6 LD_PRELOAD="$shim" \
+  bash -c 'test "${LD_PRELOAD:-}" = /usr/lib/libc.so.6'
+
+printf 'web transcript tests passed\n'

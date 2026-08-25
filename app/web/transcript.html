@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Agent Chat transcript</title>
+  <link rel="stylesheet" href="transcript.css">
+  <script src="mathjax-config.js"></script>
+  <script src="vendor/marked/marked.umd.js"></script>
+  <script defer src="vendor/mathjax/es5/tex-chtml.js"></script>
+  <script defer src="transcript.js"></script>
+</head>
+<body>
+  <header id="conversation-header">
+    <h1 id="conversation-title">New conversation</h1>
+    <p id="conversation-detail"></p>
+  </header>
+  <main id="transcript" aria-live="polite"></main>
+  <section id="empty-state">
+    <div class="empty-mark">✦</div>
+    <h1>What are we building?</h1>
+    <p>Markdown, code, and selectable LaTeX math render locally.</p>
+  </section>
+  <div id="busy-indicator" role="status" aria-label="Codex is working" hidden>
+    <i></i><i></i><i></i>
+  </div>
+</body>
+</html>

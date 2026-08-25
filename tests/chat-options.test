@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+parser="$plugin_root/bin/omarchy-agent-chat-options"
+
+result="$(node "$parser" resume \
+  --remote wss://agent.example.test/socket \
+  --remote-auth-token-env CODEX_REMOTE_TOKEN \
+  -m gpt-test --effort xhigh --fast \
+  -a never -s read-only -C ./workspace thread-123 'continue the task')"
+
+jq -e '
+  .explicit == true
+  and .threadId == "thread-123"
+  and .remote == "wss://agent.example.test/socket"
+  and .remoteAuthTokenEnv == "CODEX_REMOTE_TOKEN"
+  and .model == "gpt-test"
+  and .effort == "xhigh"
+  and .serviceTier == "fast"
+  and .approvalPolicy == "never"
+  and .sandbox == "read-only"
+  and .prompt == "continue the task"
+  and (.cwd | endswith("/workspace"))
+' <<<"$result" >/dev/null
+
+result="$(node "$parser" --approve-for-me \
+  -c model=codex-test \
+  -c model_reasoning_effort=high \
+  -c service_tier=fast)"
+jq -e '
+  .approvalsReviewer == "auto_review"
+  and .sandbox == "workspace-write"
+  and .model == "codex-test"
+  and .effort == "high"
+  and .serviceTier == "fast"
+  and (.configOverrides | length == 3)
+' <<<"$result" >/dev/null
+
+result="$(node "$parser" --yolo --thread thread-danger)"
+jq -e '
+  .threadId == "thread-danger"
+  and .approvalPolicy == "never"
+  and .approvalsReviewer == "user"
+  and .sandbox == "danger-full-access"
+' <<<"$result" >/dev/null
+
+if node "$parser" --remote ssh://host >/dev/null 2>&1; then
+  printf 'unsupported remote scheme unexpectedly succeeded\n' >&2
+  exit 1
+fi
+if node "$parser" --remote-auth-token-env TOKEN >/dev/null 2>&1; then
+  printf 'token env without remote unexpectedly succeeded\n' >&2
+  exit 1
+fi
+if node "$parser" resume >/dev/null 2>&1; then
+  printf 'resume without thread unexpectedly succeeded\n' >&2
+  exit 1
+fi
+
+node "$parser" --help | grep -F -- '--approve-for-me' >/dev/null
+
+printf 'chat option tests passed\n'
