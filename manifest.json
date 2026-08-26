@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "adam.codex-threads",
   "name": "Agent Threads",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "author": "Adam Ritter",
   "description": "A Herdr replacement using native windows, so I don't have to learn its window-management key bindings. It's a keyboard-controlled sidebar for local or remote Codex, Claude Code, and OpenCode threads. I use Super+S to toggle it and Super+A to focus it and switch threads. It shows busy threads and supports projects, remotes, pinning, renaming, vi-like navigation, and global/per-workspace visibility. State persists across restarts, and the selected thread follows you when you jump to its terminal.",
   "kinds": [
