@@ -189,6 +189,45 @@
     return element;
   }
 
+  function diffLineClass(line) {
+    if (/^(diff --git |(?:ADD|DELETE|UPDATE|MOVE)  |--- |\+\+\+ )/.test(line))
+      return "diff-file";
+    if (/^@@/.test(line)) return "diff-hunk";
+    if (/^\+(?!\+\+ )/.test(line)) return "diff-addition";
+    if (/^-(?!--- )/.test(line)) return "diff-deletion";
+    if (/^(index |new file |deleted file |similarity index |rename (?:from|to) |Binary files )/.test(line))
+      return "diff-meta";
+    return "diff-context";
+  }
+
+  function looksLikeDiff(value) {
+    const text = String(value || "");
+    return /(^|\n)(?:diff --git |@@ |(?:ADD|DELETE|UPDATE|MOVE)  )/.test(text)
+      && /(^|\n)[+-][^+-]/.test(text);
+  }
+
+  function diffElement(value) {
+    const pre = document.createElement("pre");
+    pre.className = "details-body diff-view";
+    const lines = String(value || "").split("\n");
+    lines.forEach((line, index) => {
+      const span = textElement("span", `diff-line ${diffLineClass(line)}`, line);
+      pre.append(span);
+      if (index < lines.length - 1) pre.append(document.createTextNode("\n"));
+    });
+    return pre;
+  }
+
+  function decorateMarkdownDiffs(root) {
+    for (const pre of Array.from(root.querySelectorAll("pre"))) {
+      const value = pre.textContent || "";
+      if (!looksLikeDiff(value)) continue;
+      const replacement = diffElement(value);
+      replacement.classList.remove("details-body");
+      pre.replaceWith(replacement);
+    }
+  }
+
   async function updateMessage(node, message, signature) {
     const role = String(message.role || "assistant");
     const revision = String(++renderRevision);
@@ -200,7 +239,9 @@
     } else if (role === "tool") {
       const details = document.createElement("details");
       details.append(textElement("summary", "", message.title || "Tool"));
-      const body = textElement("pre", "details-body", message.content || "");
+      const content = String(message.content || "");
+      const body = message.kind === "file" || looksLikeDiff(content)
+        ? diffElement(content) : textElement("pre", "details-body", content);
       details.append(body);
       node.replaceChildren(details);
     } else if (role === "reasoning") {
@@ -216,6 +257,7 @@
       const body = document.createElement("div");
       await renderMarkdown(body, message.content || "");
       if (node.dataset.renderRevision !== revision) return;
+      decorateMarkdownDiffs(body);
       node.replaceChildren(...Array.from(body.childNodes));
     }
     if (node.dataset.renderRevision === revision) node.dataset.signature = signature;
@@ -240,7 +282,8 @@
         role,
         String(message && message.title || ""),
         String(message && message.content || ""),
-        String(message && message.status || "")
+        String(message && message.status || ""),
+        String(message && message.kind || "")
       ]);
       let node = existing.get(key);
       if (!node) {
@@ -259,5 +302,20 @@
     if (stickToBottom || busy) window.scrollTo({ top: document.documentElement.scrollHeight });
   }
 
-  window.AgentChat = { setState };
+  function scrollPage(direction) {
+    const sign = Number(direction) < 0 ? -1 : 1;
+    window.scrollBy({
+      top: Math.round(window.innerHeight * 0.85) * sign,
+      behavior: "smooth"
+    });
+  }
+
+  function scrollEdge(edge) {
+    window.scrollTo({
+      top: Number(edge) < 0 ? 0 : document.documentElement.scrollHeight,
+      behavior: "smooth"
+    });
+  }
+
+  window.AgentChat = { setState, scrollPage, scrollEdge };
 }());

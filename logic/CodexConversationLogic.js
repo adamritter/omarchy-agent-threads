@@ -41,12 +41,31 @@ function fileChangeText(item) {
   var changes = item && item.changes && typeof item.changes === "object"
     ? item.changes : (item && item.fileChanges && typeof item.fileChanges === "object"
       ? item.fileChanges : ({}))
+  if (Array.isArray(changes)) {
+    var rendered = []
+    for (var changeIndex = 0; changeIndex < changes.length; changeIndex++) {
+      var entry = changes[changeIndex] || ({})
+      var kindValue = entry.kind && typeof entry.kind === "object"
+        ? entry.kind.type : (entry.kind || entry.type)
+      var kind = text(kindValue || "update").toUpperCase()
+      var path = text(entry.path || entry.move_path)
+      var diff = text(entry.diff || entry.unified_diff || entry.content)
+      var section = (kind + "  " + path).trim()
+      if (diff !== "") section += "\n" + diff
+      if (section !== "") rendered.push(section)
+    }
+    if (rendered.length > 0) return rendered.join("\n\n")
+    return text(item && (item.diff || item.output))
+  }
   var paths = Object.keys(changes)
   if (paths.length === 0) return text(item && (item.diff || item.output))
   var lines = []
   for (var i = 0; i < paths.length; i++) {
     var change = changes[paths[i]] || ({})
-    lines.push(text(change.type || "update").toUpperCase() + "  " + paths[i])
+    var type = text(change.type || "update").toUpperCase()
+    var header = type + "  " + paths[i]
+    var patch = text(change.diff || change.unified_diff || change.content)
+    lines.push(patch !== "" ? header + "\n" + patch : header)
   }
   return lines.join("\n")
 }
@@ -66,6 +85,7 @@ function itemMessage(item) {
   if (item.type === "reasoning") {
     var summary = Array.isArray(item.summary) ? item.summary.join("\n\n") : text(item.summary)
     var content = summary || (Array.isArray(item.content) ? item.content.join("\n\n") : text(item.content))
+    if (content.trim() === "") return null
     return { id: id, role: "reasoning", content: bounded(content, maxToolCharacters),
       title: "Reasoning", status: status }
   }
@@ -76,7 +96,9 @@ function itemMessage(item) {
       title: commandTitle(item), status: status, detail: text(item.command), kind: "command" }
   }
   if (item.type === "fileChange") {
-    return { id: id, role: "tool", content: bounded(fileChangeText(item), maxToolCharacters),
+    var fileContent = fileChangeText(item)
+    if (fileContent.trim() === "") return null
+    return { id: id, role: "tool", content: bounded(fileContent, maxToolCharacters),
       title: "File changes", status: status, kind: "file" }
   }
   if (item.type === "mcpToolCall") {

@@ -12,6 +12,12 @@ grep -F -- 'MathJax.chtmlStylesheet()' "$plugin_root/app/web/transcript.js" >/de
 grep -F -- 'conversationTitle.textContent' "$plugin_root/app/web/transcript.js" >/dev/null
 grep -F -- 'id="conversation-header"' "$plugin_root/app/web/transcript.html" >/dev/null
 grep -F -- '#conversation-header' "$plugin_root/app/web/transcript.css" >/dev/null
+grep -F -- 'function diffLineClass(line)' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'message.kind === "file"' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'function scrollEdge(edge)' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'window.AgentChat = { setState, scrollPage, scrollEdge }' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- '.diff-addition' "$plugin_root/app/web/transcript.css" >/dev/null
+grep -F -- '.diff-deletion' "$plugin_root/app/web/transcript.css" >/dev/null
 grep -F -- 'connect-src '\''none' "$plugin_root/app/web/transcript.html" >/dev/null
 grep -F -- 'vendor/mathjax/es5/tex-chtml.js' "$plugin_root/app/web/transcript.html" >/dev/null
 grep -F -- 'vendor/marked/marked.umd.js' "$plugin_root/app/web/transcript.html" >/dev/null

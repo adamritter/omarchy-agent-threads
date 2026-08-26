@@ -29,6 +29,20 @@ Item {
       "window.AgentChat && window.AgentChat.setState(" + JSON.stringify(state) + ")")
   }
 
+  function scrollPage(direction) {
+    if (!pageReady) return
+    webView.runJavaScript(
+      "window.AgentChat && window.AgentChat.scrollPage("
+        + (Number(direction) < 0 ? "-1" : "1") + ")")
+  }
+
+  function scrollEdge(edge) {
+    if (!pageReady) return
+    webView.runJavaScript(
+      "window.AgentChat && window.AgentChat.scrollEdge("
+        + (Number(edge) < 0 ? "-1" : "1") + ")")
+  }
+
   WebEngineProfile {
     id: transcriptProfile
     offTheRecord: true

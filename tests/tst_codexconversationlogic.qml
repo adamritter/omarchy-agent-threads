@@ -59,6 +59,33 @@ TestCase {
     verify(message.content.indexOf("[Output truncated]") >= 0)
   }
 
+  function test_preservesStructuredFileDiffs() {
+    var message = ConversationLogic.itemMessage({
+      id: "f1",
+      type: "fileChange",
+      status: "completed",
+      changes: [{
+        path: "src/app.js",
+        kind: { type: "update", move_path: null },
+        diff: "@@ -1 +1 @@\n-old value\n+new value"
+      }]
+    })
+    compare(message.kind, "file")
+    verify(message.content.indexOf("UPDATE  src/app.js") === 0)
+    verify(message.content.indexOf("@@ -1 +1 @@") >= 0)
+    verify(message.content.indexOf("-old value") >= 0)
+    verify(message.content.indexOf("+new value") >= 0)
+  }
+
+  function test_omitsEmptyReasoningAndFileChanges() {
+    compare(ConversationLogic.itemMessage({
+      id: "r1", type: "reasoning", summary: [], content: []
+    }), null)
+    compare(ConversationLogic.itemMessage({
+      id: "f1", type: "fileChange", changes: []
+    }), null)
+  }
+
   function test_describesApprovalsWithoutTrustingMarkup() {
     var summary = ConversationLogic.approvalSummary(
       "item/commandExecution/requestApproval", { command: "rm example" })

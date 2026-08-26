@@ -380,6 +380,15 @@ Item {
         messages, params.itemId, params.delta, "tool", "Tool output")
       return
     }
+    if (method === "item/fileChange/patchUpdated") {
+      messages = ConversationLogic.upsertItem(messages, {
+        id: params.itemId,
+        type: "fileChange",
+        changes: params.changes,
+        status: "inProgress"
+      })
+      return
+    }
     if (method === "turn/completed") {
       var completed = params.turn || ({})
       var items = Array.isArray(completed.items) ? completed.items : []

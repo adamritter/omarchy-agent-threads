@@ -189,6 +189,26 @@ FloatingWindow {
 
   Component.onCompleted: applyLaunchOptions(initialOptions)
 
+  Shortcut {
+    sequence: "PgUp"
+    onActivated: transcriptView.scrollPage(-1)
+  }
+
+  Shortcut {
+    sequence: "PgDown"
+    onActivated: transcriptView.scrollPage(1)
+  }
+
+  Shortcut {
+    sequence: "Ctrl+Home"
+    onActivated: transcriptView.scrollEdge(-1)
+  }
+
+  Shortcut {
+    sequence: "Ctrl+End"
+    onActivated: transcriptView.scrollEdge(1)
+  }
+
   ColumnLayout {
     anchors.fill: parent
     spacing: 0
@@ -198,6 +218,7 @@ FloatingWindow {
       Layout.fillHeight: true
 
       WebTranscript {
+        id: transcriptView
         anchors.fill: parent
         messages: conversation.messages
         busy: conversation.busy

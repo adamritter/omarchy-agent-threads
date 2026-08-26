@@ -10,6 +10,14 @@ grep -F -- 'target: "agentChat"' "$window" >/dev/null
 grep -F -- 'WebTranscript {' "$window" >/dev/null
 grep -F -- 'conversationTitle: conversation.activeThreadId' "$window" >/dev/null
 grep -F -- 'conversationDetail: root.workingDirectory' "$window" >/dev/null
+grep -F -- 'sequence: "PgUp"' "$window" >/dev/null
+grep -F -- 'sequence: "PgDown"' "$window" >/dev/null
+grep -F -- 'transcriptView.scrollPage(-1)' "$window" >/dev/null
+grep -F -- 'transcriptView.scrollPage(1)' "$window" >/dev/null
+grep -F -- 'sequence: "Ctrl+Home"' "$window" >/dev/null
+grep -F -- 'sequence: "Ctrl+End"' "$window" >/dev/null
+grep -F -- 'transcriptView.scrollEdge(-1)' "$window" >/dev/null
+grep -F -- 'transcriptView.scrollEdge(1)' "$window" >/dev/null
 grep -F -- 'id: composerToolbar' "$window" >/dev/null
 grep -F -- 'height: Math.max(88, Math.min(204, composer.implicitHeight + 54))' "$window" >/dev/null
 grep -F -- 'text: "Fast responses"' "$window" >/dev/null
