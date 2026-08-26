@@ -10,6 +10,7 @@ remote_auth_file="${5:-}"
 mapping_namespace="${6:-}"
 selected_model="${7:-}"
 selected_effort="${8:-}"
+selected_service_tier="${9:-}"
 
 if [[ ! "$thread_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
   echo "Invalid Codex thread id" >&2
@@ -25,6 +26,10 @@ if [[ -n "$selected_model" && ! "$selected_model" =~ ^[A-Za-z0-9._-]+$ ]]; then
 fi
 if [[ -n "$selected_effort" && ! "$selected_effort" =~ ^(none|minimal|low|medium|high|xhigh|max)$ ]]; then
   echo "Invalid Codex reasoning effort" >&2
+  exit 2
+fi
+if [[ -n "$selected_service_tier" && ! "$selected_service_tier" =~ ^(default|fast)$ ]]; then
+  echo "Invalid Codex service tier" >&2
   exit 2
 fi
 
@@ -59,6 +64,8 @@ fi
 [[ -z "$selected_model" ]] || codex_command+=(--model "$selected_model")
 [[ -z "$selected_effort" ]] \
   || codex_command+=(-c "model_reasoning_effort=\"${selected_effort}\"")
+[[ -z "$selected_service_tier" ]] \
+  || codex_command+=(-c "service_tier=\"${selected_service_tier}\"")
 codex_command+=(-C "$thread_cwd" resume "$thread_id")
 
 runtime_root="${XDG_RUNTIME_DIR:-/tmp}"

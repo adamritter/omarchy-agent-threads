@@ -110,6 +110,17 @@ grep -F -- "claude --resume $resume_session --model sonnet --effort medium" \
   "$OMARCHY_STUB_LOG" >/dev/null
 
 jq '.remotes += [{
+  id:"remote-codex",label:"Remote Codex",type:"ssh",providerType:"codex",
+  sshHost:"fixture",codexCommand:"codex",home:"/work"
+}]' "$test_root/remotes.json" > "$test_root/remotes-next.json"
+mv -- "$test_root/remotes-next.json" "$test_root/remotes.json"
+rm -f -- "$HYPR_STUB_COUNT"
+remote_codex_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
+  "$test_root/remotes.json" remote-codex /work "" gpt-test high "" fast)"
+jq -e '.address == "0xabc123"' <<<"$remote_codex_result" >/dev/null
+grep -F -- 'service_tier=\"fast\"' "$OMARCHY_STUB_LOG" >/dev/null
+
+jq '.remotes += [{
   id:"remote-opencode",label:"Remote OpenCode",type:"ssh",providerType:"opencode",
   sshHost:"fixture",opencodeCommand:"opencode",opencodePort:43962,home:"/work"
 }]' "$test_root/remotes.json" > "$test_root/remotes-next.json"

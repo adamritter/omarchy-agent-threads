@@ -67,7 +67,24 @@ function normalizeThreadFrontend(value) {
     ? "agent-chat" : "terminal"
 }
 
-function agentChatCommand(helperPath, threadId, cwd, model, effort) {
+function normalizeCodexServiceTier(value) {
+  return String(value || "").toLowerCase() === "fast" ? "fast" : "default"
+}
+
+function nextChoiceId(currentValue, entries) {
+  var choices = Array.isArray(entries) ? entries : []
+  var ids = []
+  for (var i = 0; i < choices.length; i++) {
+    var entry = choices[i]
+    var id = String(entry && typeof entry === "object" ? entry.id || "" : entry || "")
+    if (ids.indexOf(id) < 0) ids.push(id)
+  }
+  if (ids.length === 0) return ""
+  var currentIndex = ids.indexOf(String(currentValue || ""))
+  return ids[(currentIndex + 1) % ids.length]
+}
+
+function agentChatCommand(helperPath, threadId, cwd, model, effort, serviceTier) {
   var command = [String(helperPath || "")]
   var id = String(threadId || "").trim()
   if (id !== "") command.push("resume", id)
@@ -76,5 +93,7 @@ function agentChatCommand(helperPath, threadId, cwd, model, effort) {
   var selectedEffort = String(effort || "").trim()
   if (selectedModel !== "") command.push("--model", selectedModel)
   if (selectedEffort !== "") command.push("--effort", selectedEffort)
+  command.push(normalizeCodexServiceTier(serviceTier) === "fast"
+    ? "--fast" : "--no-fast")
   return command
 }

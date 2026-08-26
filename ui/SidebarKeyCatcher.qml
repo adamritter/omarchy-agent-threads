@@ -10,6 +10,7 @@ Item {
   signal edgeRequested(int edge)
   signal activateRequested()
   signal terminalRequested()
+  signal fastToggleRequested()
   signal returnRequested()
   signal closeRequested()
   signal deleteRequested()
@@ -22,6 +23,12 @@ Item {
     if (blocked) return
 
     var control = event.modifiers & Qt.ControlModifier
+    var meta = event.modifiers & Qt.MetaModifier
+    if (control && meta && event.key === Qt.Key_F) {
+      fastToggleRequested()
+      event.accepted = true
+      return
+    }
     if (control && (event.key === Qt.Key_D || event.key === Qt.Key_U)) {
       pageRequested(event.key === Qt.Key_D ? 1 : -1, 0.5)
       event.accepted = true

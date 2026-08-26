@@ -8,6 +8,7 @@ import qs.Commons
 import qs.Ui
 import "services" as Services
 import "ui" as Ui
+import "logic/ActionLogic.js" as ActionLogic
 import "logic/NavigationLogic.js" as NavigationLogic
 
 Panel {
@@ -112,6 +113,11 @@ Panel {
     { keys: "y", description: "Archive selected thread" },
     { keys: "R", description: "Add remote host (SSH or App Server)" },
     { keys: "s", description: "Toggle this-workspace or global sidebar" },
+    { keys: "Super+Ctrl+F", description: service.fastMode
+        ? "Toggle Fast responses · Fast is on"
+        : "Toggle Fast responses · Fast is off" },
+    { keys: "Super+Ctrl+E", description: "Cycle reasoning effort · "
+        + (service.selectedEffortForProvider(activeProvider) || "default") },
     { keys: "Ctrl+U / Ctrl+D", description: "Move half a page" },
     { keys: "Ctrl+B / Ctrl+F", description: "Move a full page" },
     { keys: "PgUp / PgDn", description: "Move a full page" },
@@ -141,6 +147,13 @@ Panel {
   function clearNavigationPrefix() {
     navigationCount = ""
     navigationFindDirection = 0
+  }
+
+  function cycleEffort() {
+    var current = service.selectedEffortForProvider(activeProvider)
+    var next = ActionLogic.nextChoiceId(current, modelEffortSelector.effortChoices())
+    service.setEffortForProvider(activeProvider, next)
+    return next || "default"
   }
 
   function visibleRowIndex(first) {
@@ -555,6 +568,7 @@ Panel {
       remoteSetupVisible: remoteSetup.visible,
       helpVisible: helpOverlay.visible,
       listVisible: threadList.visible,
+      fastMode: service.fastMode,
       selectedIndex: selectedIndex,
       selectedRowKey: rowKey(viewRows[selectedIndex]),
       modelRowCount: viewRows.length,
@@ -1054,6 +1068,17 @@ Panel {
         root.service.setThreadFrontend(wanted)
       return root.service.threadFrontend
     }
+    function fast(mode: string): string {
+      var wanted = String(mode || "").toLowerCase()
+      if (wanted === "toggle") root.service.toggleFastMode()
+      else if (wanted === "on" || wanted === "fast") root.service.setFastMode(true)
+      else if (wanted === "off" || wanted === "default") root.service.setFastMode(false)
+      return root.service.fastMode ? "on" : "off"
+    }
+    function effort(mode: string): string {
+      if (String(mode || "").toLowerCase() === "cycle") return root.cycleEffort()
+      return root.service.selectedEffortForProvider(root.activeProvider) || "default"
+    }
     function scope(mode: string): string {
       var wanted = String(mode || "").toLowerCase()
       if (wanted === "toggle") wanted = root.service.sidebarScope === "global"
@@ -1118,6 +1143,7 @@ Panel {
         visibleThreadCount: root.visibleThreadCount,
         visibleProjectCount: root.projectCount,
         helpOpen: root.helpOpen,
+        renameOpen: root.renameOpen,
         sidebarFocused: root.sidebarFocused,
         sidebarOpen: root.service.sidebarOpen,
         sidebarOpenOnWorkspace: root.service.sidebarOpenOnWorkspace(root.activeWorkspaceKey),
@@ -1285,6 +1311,10 @@ Panel {
         root.clearNavigationPrefix()
         if (!root.helpOpen && !providerMenu.opened)
           root.sidebarActions.openSelectedTerminal()
+      }
+      onFastToggleRequested: {
+        root.clearNavigationPrefix()
+        if (root.activeProvider === "codex") root.service.toggleFastMode()
       }
       onCloseRequested: {
         if (root.navigationCount !== "" || root.navigationFindDirection !== 0) {
@@ -1881,11 +1911,12 @@ Panel {
             readonly property string label: root.activeRateLimitText()
             readonly property bool hasSelector: root.service
               .modelsForProvider(root.activeProvider).length > 0
+            readonly property bool hasFastButton: root.activeProvider === "codex"
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             height: visible ? Style.space(22) : 0
-            visible: (label !== "" || hasSelector)
+            visible: (label !== "" || hasSelector || hasFastButton)
               && !root.helpOpen && !root.remoteSetupOpen
 
             Text {
@@ -1903,13 +1934,47 @@ Panel {
               elide: Text.ElideRight
             }
 
-            Ui.ModelEffortSelector {
-              id: modelEffortSelector
+            Item {
+              id: fastModeButton
+              readonly property bool fastEnabled: root.service.fastMode
               anchors.right: parent.right
               anchors.rightMargin: Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
+              width: visible ? Style.space(18) : 0
+              height: Style.space(20)
+              visible: codexLimitFooter.hasFastButton
+
+              Text {
+                anchors.centerIn: parent
+                text: "⚡︎"
+                color: fastModeButton.fastEnabled
+                  ? Color.accent : Util.alpha(root.foreground, 0.48)
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              MouseArea {
+                id: fastModeMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.service.toggleFastMode()
+              }
+
+              ToolTip.visible: fastModeMouse.containsMouse
+              ToolTip.text: fastModeButton.fastEnabled
+                ? "Fast responses: on · click or Super+Ctrl+F to turn off"
+                : "Fast responses: off · click or Super+Ctrl+F to turn on"
+            }
+
+            Ui.ModelEffortSelector {
+              id: modelEffortSelector
+              anchors.right: fastModeButton.left
+              anchors.rightMargin: Style.space(4)
+              anchors.verticalCenter: parent.verticalCenter
               panel: root
               visible: codexLimitFooter.hasSelector
+              width: visible ? implicitWidth : 0
             }
           }
 

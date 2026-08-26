@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$(cd -- "${script_dir}/.." && pwd)"
+ipc_timeout="${AGENT_EFFORT_IPC_TIMEOUT:-0.5s}"
+
+sidebar_status="$(OMARCHY_SHELL_IPC_TIMEOUT="$ipc_timeout" \
+  omarchy-shell adam.codex-threads status 2>/dev/null || true)"
+if jq -e '.sidebarFocused == true and .renameOpen == true' \
+    >/dev/null 2>&1 <<<"$sidebar_status"; then
+  exec omarchy-shell shell toggle omarchy.emojis
+fi
+if jq -e '.sidebarFocused == true' >/dev/null 2>&1 <<<"$sidebar_status"; then
+  OMARCHY_SHELL_IPC_TIMEOUT="$ipc_timeout" \
+    omarchy-shell adam.codex-threads effort cycle >/dev/null
+  exit 0
+fi
+
+active_window="$(hyprctl -j activewindow 2>/dev/null || true)"
+if jq -e '
+    .class == "org.omarchy.agent-chat"
+      or (.class == "org.quickshell" and (.title // "" | startswith("Agent Chat")))
+  ' >/dev/null 2>&1 <<<"$active_window"; then
+  quickshell ipc --path "$plugin_dir/agent-chat.qml" \
+    call agentChat effort cycle >/dev/null
+  exit 0
+fi
+
+exec omarchy-shell shell toggle omarchy.emojis

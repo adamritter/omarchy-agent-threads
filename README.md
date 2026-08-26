@@ -23,7 +23,12 @@ monitoring local and remote coding-agent sessions.
 - Keep large groups compact with a ten-thread preview and an explicit
   **Show all** row. Show-all expansion is intentionally reset on restart.
 - Choose provider-specific model, reasoning effort, and agent values. Selections
-  are remembered per provider.
+  are remembered per provider. Press `Super+Ctrl+E` to cycle reasoning effort
+  in Agent Threads or Agent Chat; during thread rename it keeps opening Omarchy's
+  emoji picker.
+- Toggle Codex Fast responses from the sidebar footer. The persisted setting is
+  forwarded to newly launched local, SSH, and App Server Codex sessions,
+  including Agent Chat. Click the lightning icon or press `Super+Ctrl+F`.
 - Pin, open, create beside, move between local Codex projects, or archive a
   thread from its overflow/right-click menu.
 - Use direct thread, project, and remote pin buttons without opening a menu.

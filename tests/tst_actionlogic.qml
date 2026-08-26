@@ -110,16 +110,37 @@ TestCase {
     compare(ActionLogic.normalizeThreadFrontend("agent-chat"), "agent-chat")
   }
 
+  function test_normalizesCodexServiceTier() {
+    compare(ActionLogic.normalizeCodexServiceTier("fast"), "fast")
+    compare(ActionLogic.normalizeCodexServiceTier("FAST"), "fast")
+    compare(ActionLogic.normalizeCodexServiceTier(""), "default")
+    compare(ActionLogic.normalizeCodexServiceTier("flex"), "default")
+  }
+
+  function test_cyclesChoiceIdsIncludingDefault() {
+    var choices = [
+      { id: "", label: "default" },
+      { id: "low", label: "low" },
+      { id: "high", label: "high" }
+    ]
+    compare(ActionLogic.nextChoiceId("", choices), "low")
+    compare(ActionLogic.nextChoiceId("low", choices), "high")
+    compare(ActionLogic.nextChoiceId("high", choices), "")
+    compare(ActionLogic.nextChoiceId("unknown", choices), "")
+    compare(ActionLogic.nextChoiceId("", []), "")
+  }
+
   function test_buildsAgentChatResumeAndNewThreadCommands() {
     compare(ActionLogic.agentChatCommand(
       "/plugin/bin/omarchy-agent-chat", "thread-1", "/work/app",
-      "gpt-test", "high"), [
+      "gpt-test", "high", "fast"), [
         "/plugin/bin/omarchy-agent-chat", "resume", "thread-1",
-        "-C", "/work/app", "--model", "gpt-test", "--effort", "high"
+        "-C", "/work/app", "--model", "gpt-test", "--effort", "high",
+        "--fast"
       ])
     compare(ActionLogic.agentChatCommand(
-      "/plugin/bin/omarchy-agent-chat", "", "/work/new", "", ""), [
-        "/plugin/bin/omarchy-agent-chat", "-C", "/work/new"
+      "/plugin/bin/omarchy-agent-chat", "", "/work/new", "", "", "default"), [
+        "/plugin/bin/omarchy-agent-chat", "-C", "/work/new", "--no-fast"
       ])
   }
 }

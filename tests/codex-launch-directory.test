@@ -61,4 +61,20 @@ run_helper "$plugin_root/bin/omarchy-codex-project-new" "$project_dir"
 [[ "${launch_args[9]}" == "-C" ]]
 [[ "${launch_args[10]}" == "$project_dir" ]]
 
+run_helper "$plugin_root/bin/omarchy-codex-thread-open" \
+  fixture-thread "$project_dir" "" "" "" "" "" "" fast
+[[ "${launch_args[9]}" == "-c" ]]
+[[ "${launch_args[10]}" == 'service_tier="fast"' ]]
+[[ "${launch_args[11]}" == "-C" ]]
+[[ "${launch_args[12]}" == "$project_dir" ]]
+[[ "${launch_args[13]}" == "resume" ]]
+[[ "${launch_args[14]}" == "fixture-thread" ]]
+
+run_helper "$plugin_root/bin/omarchy-codex-project-new" \
+  "$project_dir" "" "" "" "" "" default
+[[ "${launch_args[9]}" == "-c" ]]
+[[ "${launch_args[10]}" == 'service_tier="default"' ]]
+[[ "${launch_args[11]}" == "-C" ]]
+[[ "${launch_args[12]}" == "$project_dir" ]]
+
 printf '%s\n' 'codex-launch-directory tests passed'

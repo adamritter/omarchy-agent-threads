@@ -9,6 +9,7 @@ thread_id="${4:-}"
 selected_model="${5:-}"
 selected_effort="${6:-}"
 selected_agent="${7:-}"
+selected_service_tier="${8:-}"
 
 [[ -r "$config_file" && -n "$host_id" && -n "$remote_cwd" ]] || {
   echo "Invalid remote agent launch arguments" >&2
@@ -45,6 +46,10 @@ if (( ${#selected_agent} > 256 )) || [[ "$selected_agent" == *$'\n'* \
   echo "Invalid remote agent name" >&2
   exit 2
 fi
+if [[ -n "$selected_service_tier" && ! "$selected_service_tier" =~ ^(default|fast)$ ]]; then
+  echo "Invalid remote Codex service tier" >&2
+  exit 2
+fi
 
 if [[ "$remote_type" != "ssh" ]]; then
   [[ "$provider_type" == "codex" ]] || {
@@ -58,11 +63,11 @@ if [[ "$remote_type" != "ssh" ]]; then
   if [[ -n "$thread_id" ]]; then
     exec "${helper_dir}/omarchy-codex-thread-open" \
       "$thread_id" "$remote_cwd" "$remote_url" "$token_env" "$token_file" "$host_id" \
-      "$selected_model" "$selected_effort"
+      "$selected_model" "$selected_effort" "$selected_service_tier"
   fi
   exec "${helper_dir}/omarchy-codex-project-new" \
     "$remote_cwd" "$remote_url" "$token_env" "$token_file" \
-    "$selected_model" "$selected_effort"
+    "$selected_model" "$selected_effort" "$selected_service_tier"
 fi
 
 ssh_host="$(jq -r '.sshHost // ""' <<<"$remote_json")"
@@ -188,6 +193,8 @@ else
   [[ -z "$selected_model" ]] || remote_args+=(--model "$selected_model")
   [[ -z "$selected_effort" ]] \
     || remote_args+=(-c "model_reasoning_effort=\"${selected_effort}\"")
+  [[ -z "$selected_service_tier" ]] \
+    || remote_args+=(-c "service_tier=\"${selected_service_tier}\"")
   remote_args+=(-C "$remote_cwd")
   [[ -z "$thread_id" ]] || remote_args+=(resume "$thread_id")
   printf -v remote_command '%q ' "${remote_args[@]}"

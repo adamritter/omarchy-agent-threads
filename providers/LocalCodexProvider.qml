@@ -34,7 +34,8 @@ Item {
         || controller.backendHomePath),
       "", "", "",
       controller.selectedModel,
-      controller.selectedEffort
+      controller.selectedEffort,
+      controller.codexServiceTier
     ]
     openProcess.running = true
     controller.threadLaunchRequested(controller.launchingThreadId)
@@ -56,7 +57,8 @@ Item {
     pendingNewThreadAttempts = 20
     newProjectProcess.command = [
       newProjectHelperPath, path, "", "", "",
-      controller.selectedModel, controller.selectedEffort
+      controller.selectedModel, controller.selectedEffort,
+      controller.codexServiceTier
     ]
     newProjectProcess.running = true
   }

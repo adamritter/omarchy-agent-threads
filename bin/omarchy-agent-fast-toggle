@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$(cd -- "${script_dir}/.." && pwd)"
+ipc_timeout="${AGENT_FAST_IPC_TIMEOUT:-0.5s}"
+
+sidebar_status="$(OMARCHY_SHELL_IPC_TIMEOUT="$ipc_timeout" \
+  omarchy-shell adam.codex-threads status 2>/dev/null || true)"
+if jq -e '.sidebarFocused == true and .activeProvider == "codex"' \
+    >/dev/null 2>&1 <<<"$sidebar_status"; then
+  OMARCHY_SHELL_IPC_TIMEOUT="$ipc_timeout" \
+    omarchy-shell adam.codex-threads fast toggle >/dev/null
+  exit 0
+fi
+
+active_window="$(hyprctl -j activewindow 2>/dev/null || true)"
+if jq -e '
+    .class == "org.omarchy.agent-chat"
+      or (.class == "org.quickshell" and (.title // "" | startswith("Agent Chat")))
+  ' >/dev/null 2>&1 <<<"$active_window"; then
+  quickshell ipc --path "$plugin_dir/agent-chat.qml" \
+    call agentChat fast toggle >/dev/null
+  exit 0
+fi
+
+exec omarchy-hyprland-window-tiled-fullscreen-toggle

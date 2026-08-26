@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import "../providers" as Providers
+import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions
 
 FloatingWindow {
@@ -94,6 +95,11 @@ FloatingWindow {
     return 0
   }
 
+  function cycleEffort() {
+    selectedEffort = ActionLogic.nextChoiceId(selectedEffort, effortChoices())
+    return selectedEffort || "default"
+  }
+
   function applyApproval(policy, reviewer) {
     approvalPolicy = policy
     approvalsReviewer = reviewer
@@ -179,6 +185,20 @@ FloatingWindow {
     function open(optionsJson: string): string {
       return root.applyLaunchOptionsJson(optionsJson) ? "ok" : "busy"
     }
+
+    function fast(mode: string): string {
+      var wanted = String(mode || "").toLowerCase()
+      if (wanted === "toggle")
+        root.serviceTier = root.serviceTier === "fast" ? "default" : "fast"
+      else if (wanted === "on" || wanted === "fast") root.serviceTier = "fast"
+      else if (wanted === "off" || wanted === "default") root.serviceTier = "default"
+      return root.serviceTier === "fast" ? "on" : "off"
+    }
+
+    function effort(mode: string): string {
+      if (String(mode || "").toLowerCase() === "cycle") return root.cycleEffort()
+      return root.selectedEffort || "default"
+    }
   }
 
   Providers.CodexConversationClient {
@@ -188,6 +208,16 @@ FloatingWindow {
   }
 
   Component.onCompleted: applyLaunchOptions(initialOptions)
+
+  Shortcut {
+    sequence: "Meta+Ctrl+F"
+    onActivated: root.serviceTier = root.serviceTier === "fast" ? "default" : "fast"
+  }
+
+  Shortcut {
+    sequence: "Meta+Ctrl+E"
+    onActivated: root.cycleEffort()
+  }
 
   Shortcut {
     sequence: "PgUp"
@@ -364,9 +394,9 @@ FloatingWindow {
             currentIndex: root.choiceIndex(model, root.selectedEffort)
             onActivated: function(index) { root.selectedEffort = model[index].id }
             ToolTip.visible: hovered
-            ToolTip.text: root.selectedEffort !== "" ? root.selectedEffort
+            ToolTip.text: (root.selectedEffort !== "" ? root.selectedEffort
               : "Default effort · " + (root.agentModelState(root.selectedModel).defaultEffort
-                || "Codex")
+                || "Codex")) + " · Super+Ctrl+E"
             palette.text: root.foreground
             palette.buttonText: root.foreground
             palette.button: root.raised
@@ -380,14 +410,38 @@ FloatingWindow {
           }
 
           Button {
+            id: fastButton
+            Layout.preferredWidth: 34
+            Layout.preferredHeight: 34
+            text: "⚡︎"
+            font.pixelSize: 16
+            ToolTip.visible: hovered
+            ToolTip.text: "Fast responses: "
+              + (root.serviceTier === "fast" ? "On" : "Off")
+              + " · Super+Ctrl+F"
+            onClicked: root.serviceTier = root.serviceTier === "fast" ? "default" : "fast"
+            background: Rectangle {
+              radius: 10
+              color: root.serviceTier === "fast" ? root.accent
+                : (fastButton.hovered ? root.hover : "transparent")
+            }
+            contentItem: Label {
+              text: fastButton.text
+              color: root.serviceTier === "fast" ? "white" : root.muted
+              horizontalAlignment: Text.AlignHCenter
+              verticalAlignment: Text.AlignVCenter
+              font: fastButton.font
+            }
+          }
+
+          Button {
             id: optionsButton
             Layout.preferredWidth: 34
             Layout.preferredHeight: 34
-            text: root.serviceTier === "fast" ? "⚡" : "⋯"
-            font.pixelSize: root.serviceTier === "fast" ? 16 : 20
+            text: "⋯"
+            font.pixelSize: 20
             ToolTip.visible: hovered
-            ToolTip.text: (root.serviceTier === "fast" ? "Fast · " : "")
-              + root.approvalStatus()
+            ToolTip.text: root.approvalStatus()
             onClicked: optionsMenu.open()
             background: Rectangle {
               radius: 10
@@ -395,7 +449,7 @@ FloatingWindow {
             }
             contentItem: Label {
               text: optionsButton.text
-              color: root.serviceTier === "fast" ? root.accent : root.muted
+              color: root.muted
               horizontalAlignment: Text.AlignHCenter
               verticalAlignment: Text.AlignVCenter
               font: optionsButton.font
@@ -409,13 +463,6 @@ FloatingWindow {
               palette.highlight: root.hover
               palette.highlightedText: root.foreground
 
-              MenuItem {
-                text: "Fast responses"
-                checkable: true
-                checked: root.serviceTier === "fast"
-                onTriggered: root.serviceTier = root.serviceTier === "fast" ? "default" : "fast"
-              }
-              MenuSeparator {}
               MenuItem {
                 text: "Default approvals"
                 checkable: true

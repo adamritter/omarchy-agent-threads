@@ -503,7 +503,8 @@ Item {
       controller.launchingThreadId,
       controller.selectedModelForProvider(providerType),
       controller.selectedEffortForProvider(providerType),
-      controller.selectedAgentForProvider(providerType)
+      controller.selectedAgentForProvider(providerType),
+      providerType === "codex" ? controller.codexServiceTier : ""
     ]
     openProcess.running = true
     controller.threadLaunchRequested(controller.launchingThreadId)
@@ -544,7 +545,8 @@ Item {
       "",
       controller.selectedModelForProvider(providerType),
       controller.selectedEffortForProvider(providerType),
-      controller.selectedAgentForProvider(providerType)
+      controller.selectedAgentForProvider(providerType),
+      providerType === "codex" ? controller.codexServiceTier : ""
     ]
     openProcess.running = true
   }

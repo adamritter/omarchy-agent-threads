@@ -58,6 +58,7 @@ ShellRoot {
     property bool sidebarOpen: false
     property string sidebarScope: "global"
     property string threadFrontend: "terminal"
+    property bool fastMode: false
     property int openedThreadCount: 0
     property int newProjectThreadCount: 0
     property int pinnedThreadCount: 0
@@ -83,6 +84,7 @@ ShellRoot {
     function effectiveModelForProvider(provider) { return "gpt-test" }
     function effectiveEffortForProvider(provider) { return "medium" }
     function effectiveAgentForProvider(provider) { return "" }
+    function setEffortForProvider(provider, effort) {}
     function sidebarOpenOnWorkspace(workspaceId) { return false }
     function migrateSidebarOpenState(workspaceId) {}
     function refreshThreads() {}
@@ -101,6 +103,8 @@ ShellRoot {
       setThreadFrontend(threadFrontend === "agent-chat" ? "terminal" : "agent-chat")
       return threadFrontend
     }
+    function setFastMode(value) { fastMode = value === true }
+    function toggleFastMode() { fastMode = !fastMode; return fastMode }
     function setSidebarOpenOnWorkspace(workspaceId, opened) {}
     function setSidebarScope(scope, workspaceId, opened) { sidebarScope = scope }
     function openThread(thread, path) { openedThreadCount++ }

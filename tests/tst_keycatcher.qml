@@ -19,6 +19,7 @@ TestCase {
   SignalSpy { id: textSpy; target: catcher; signalName: "textKey" }
   SignalSpy { id: activateSpy; target: catcher; signalName: "activateRequested" }
   SignalSpy { id: terminalSpy; target: catcher; signalName: "terminalRequested" }
+  SignalSpy { id: fastSpy; target: catcher; signalName: "fastToggleRequested" }
 
   function init() {
     moveSpy.clear()
@@ -27,8 +28,19 @@ TestCase {
     textSpy.clear()
     activateSpy.clear()
     terminalSpy.clear()
+    fastSpy.clear()
     catcher.forceActiveFocus()
     verify(catcher.activeFocus)
+  }
+
+  function test_superCtrlFTogglesFastWithoutPaging() {
+    keyClick(Qt.Key_F, Qt.ControlModifier | Qt.MetaModifier)
+    compare(fastSpy.count, 1)
+    compare(pageSpy.count, 0)
+
+    keyClick(Qt.Key_F, Qt.ControlModifier)
+    compare(fastSpy.count, 1)
+    compare(pageSpy.count, 1)
   }
 
   function test_shiftEnterRequestsTerminalWithoutActivation() {

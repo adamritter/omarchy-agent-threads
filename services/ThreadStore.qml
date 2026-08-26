@@ -114,6 +114,8 @@ Item {
   readonly property alias selectedModel: persisted.selectedModel
   readonly property alias selectedEffort: persisted.selectedEffort
   readonly property alias threadFrontend: persisted.threadFrontend
+  readonly property alias fastMode: persisted.fastMode
+  readonly property string codexServiceTier: fastMode ? "fast" : "default"
 
   PersistentProperties {
     id: persisted
@@ -124,6 +126,7 @@ Item {
     property string selectedEffort: ""
     // Agent Chat is deliberately opt-in; existing behavior remains the default.
     property string threadFrontend: "terminal"
+    property bool fastMode: false
     onSidebarOpenChanged: {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
@@ -137,6 +140,9 @@ Item {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
     onThreadFrontendChanged: {
+      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
+    }
+    onFastModeChanged: {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
   }
@@ -716,7 +722,8 @@ Item {
     } else launchingProjectPath = path
 
     agentChatProcess.command = ActionLogic.agentChatCommand(
-      agentChatHelperPath, threadId, path, selectedModel, selectedEffort)
+      agentChatHelperPath, threadId, path, selectedModel, selectedEffort,
+      codexServiceTier)
     agentChatProcess.running = true
     return true
   }
@@ -797,6 +804,15 @@ Item {
     return persisted.threadFrontend
   }
 
+  function setFastMode(value) {
+    persisted.fastMode = value === true
+  }
+
+  function toggleFastMode() {
+    setFastMode(!persisted.fastMode)
+    return persisted.fastMode
+  }
+
   function setCollapsedProjects(value) {
     collapsedProjects = Object.assign({}, value || ({}))
   }
@@ -838,6 +854,7 @@ Item {
       persisted.selectedModel = String(parsed.model || "")
       persisted.selectedEffort = String(parsed.effort || "")
       persisted.threadFrontend = ActionLogic.normalizeThreadFrontend(parsed.threadFrontend)
+      persisted.fastMode = parsed.fastMode === true
       var providerSettings = parsed.providerSettings && typeof parsed.providerSettings === "object"
         ? parsed.providerSettings : ({})
       agentProviders.loadSettings(providerSettings)
@@ -857,14 +874,14 @@ Item {
     }
 
     sidebarSettingsLoaded = true
-    if (!parsed || Number(parsed.version || 0) < 12) sidebarSaveTimer.restart()
+    if (!parsed || Number(parsed.version || 0) < 13) sidebarSaveTimer.restart()
     startAppServer()
   }
 
   function flushSidebarSettings() {
     if (!sidebarSettingsLoaded) return
     sidebarSettingsFile.setText(JSON.stringify({
-      version: 12,
+      version: 13,
       open: sidebarOpen,
       scope: sidebarScope,
       globalOpen: globalSidebarOpen,
@@ -873,6 +890,7 @@ Item {
       model: persisted.selectedModel,
       effort: persisted.selectedEffort,
       threadFrontend: persisted.threadFrontend,
+      fastMode: persisted.fastMode,
       collapsedProjects: collapsedProjects,
       collapsedRemotes: collapsedRemotes,
       pinnedSections: pinnedSections,
