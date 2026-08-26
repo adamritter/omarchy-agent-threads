@@ -7,6 +7,8 @@ const [remoteUrl = "", tokenEnv = "", configuredTokenFile = ""] = process.argv.s
 const lineLimit = 16 * 1024 * 1024
 const tokenFileLimit = 64 * 1024
 const pendingMessageLimit = 256
+const inboundMessageLimit = 256
+const inboundByteLimit = 16 * 1024 * 1024
 
 function fail(message) {
   process.stderr.write(`Codex remote transport: ${message}\n`)
@@ -64,15 +66,21 @@ const options = token === "" ? {} : {
 const socket = new WebSocket(endpoint, options)
 const pending = []
 let pendingBytes = 0
+const inbound = []
+let inboundBytes = 0
+let deliveringInbound = false
 let closing = false
 let inputChunks = []
 let inputBytes = 0
 
 function sendOrQueue(line) {
   if (line.trim() === "") return
-  if (socket.readyState === WebSocket.OPEN) socket.send(line)
-  else if (socket.readyState === WebSocket.CONNECTING) {
-    const bytes = Buffer.byteLength(line)
+  const bytes = Buffer.byteLength(line)
+  if (socket.readyState === WebSocket.OPEN) {
+    if (socket.bufferedAmount + bytes > lineLimit)
+      fail("outbound request queue exceeded the 16 MiB limit")
+    socket.send(line)
+  } else if (socket.readyState === WebSocket.CONNECTING) {
     if (pending.length >= pendingMessageLimit || pendingBytes + bytes > lineLimit)
       fail("pre-connect request queue exceeded the 16 MiB limit")
     pending.push({ line, bytes })
@@ -117,19 +125,59 @@ socket.onopen = () => {
   while (pending.length > 0) {
     const next = pending.shift()
     pendingBytes -= next.bytes
+    if (socket.bufferedAmount + next.bytes > lineLimit)
+      fail("outbound request queue exceeded the 16 MiB limit")
     socket.send(next.line)
   }
 }
 
-socket.onmessage = async event => {
-  let message = event.data
+function waitForStdoutDrain() {
+  return new Promise((resolve, reject) => {
+    const drained = () => {
+      process.stdout.off("error", failed)
+      resolve()
+    }
+    const failed = error => {
+      process.stdout.off("drain", drained)
+      reject(error)
+    }
+    process.stdout.once("drain", drained)
+    process.stdout.once("error", failed)
+  })
+}
+
+async function deliverInbound() {
+  if (deliveringInbound) return
+  deliveringInbound = true
+  try {
+    while (inbound.length > 0 && !closing) {
+      const next = inbound[0]
+      let message = next.data
+      next.data = null
+      if (message instanceof Blob) message = await message.text()
+      else if (message instanceof ArrayBuffer) message = Buffer.from(message).toString("utf8")
+      if (!process.stdout.write(String(message) + "\n")) await waitForStdoutDrain()
+      inbound.shift()
+      inboundBytes -= next.bytes
+    }
+  } catch (error) {
+    fail(`could not forward response: ${String(error && error.message || error)}`)
+  } finally {
+    deliveringInbound = false
+  }
+}
+
+socket.onmessage = event => {
+  const message = event.data
   const bytes = typeof message === "string" ? Buffer.byteLength(message)
     : message instanceof Blob ? message.size
       : message instanceof ArrayBuffer ? message.byteLength : lineLimit + 1
   if (bytes > lineLimit) fail("response message exceeded the 16 MiB limit")
-  if (message instanceof Blob) message = await message.text()
-  else if (message instanceof ArrayBuffer) message = Buffer.from(message).toString("utf8")
-  process.stdout.write(String(message) + "\n")
+  if (inbound.length >= inboundMessageLimit || inboundBytes + bytes > inboundByteLimit)
+    fail("inbound response queue exceeded the 16 MiB limit")
+  inbound.push({ data: message, bytes })
+  inboundBytes += bytes
+  void deliverInbound()
 }
 
 socket.onerror = event => {

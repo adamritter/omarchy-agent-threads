@@ -6,6 +6,7 @@ import Quickshell.Io
 import "../providers" as Providers
 import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions
+import "../logic/CodexConversationLogic.js" as ConversationLogic
 
 FloatingWindow {
   id: root
@@ -319,6 +320,7 @@ FloatingWindow {
           placeholderText: conversation.ready ? "Message Codex" : "Connecting to Codex..."
           placeholderTextColor: root.muted
           wrapMode: TextEdit.Wrap
+          maximumLength: ConversationLogic.promptCharacterLimit()
           enabled: conversation.ready && !conversation.loading
           background: Item {}
           font.pixelSize: 14

@@ -5,6 +5,18 @@ var maxToolCharacters = 30000
 var maxRetainedMessages = 400
 var maxRetainedCharacters = 8 * 1024 * 1024
 var maxAggregateFileParts = 32
+var maxPromptCharacters = 200000
+var maxProtocolDepth = 48
+var maxProtocolNodes = 50000
+var maxProtocolArrayEntries = 5000
+var maxProtocolObjectEntries = 5000
+var maxProtocolStringCharacters = 2 * 1024 * 1024
+var maxProtocolTextCharacters = 8 * 1024 * 1024
+var maxThreadTurns = 200
+var maxThreadItems = 1000
+var maxItemParts = 128
+var maxModelEntries = 200
+var finiteRequestTimeoutMilliseconds = 15000
 
 function text(value) {
   return String(value === undefined || value === null ? "" : value)
@@ -17,10 +29,119 @@ function bounded(value, limit) {
   return result.slice(0, cap) + "\n\n[Output truncated]"
 }
 
+function promptCharacterLimit() {
+  return maxPromptCharacters
+}
+
+function promptValidationError(value) {
+  return text(value).length > maxPromptCharacters
+    ? "Prompt exceeds the 200,000 character limit" : ""
+}
+
+function protocolStructureError(value) {
+  var stack = [{ value: value, depth: 0 }]
+  var nodes = 1
+  var textCharacters = 0
+  while (stack.length > 0) {
+    var current = stack.pop()
+    var entry = current.value
+    if (typeof entry === "string") {
+      if (entry.length > maxProtocolStringCharacters)
+        return "message contains an oversized string"
+      textCharacters += entry.length
+      if (textCharacters > maxProtocolTextCharacters)
+        return "message contains too much text"
+    }
+    if (!entry || typeof entry !== "object") continue
+    if (current.depth >= maxProtocolDepth) return "message nesting is too deep"
+    if (Array.isArray(entry)) {
+      if (entry.length > maxProtocolArrayEntries)
+        return "message contains too many array entries"
+      nodes += entry.length
+      if (nodes > maxProtocolNodes) return "message contains too many values"
+      for (var arrayIndex = 0; arrayIndex < entry.length; arrayIndex++) {
+        var arrayValue = entry[arrayIndex]
+        if (typeof arrayValue === "string"
+            && arrayValue.length > maxProtocolStringCharacters)
+          return "message contains an oversized string"
+        if (typeof arrayValue === "string") {
+          textCharacters += arrayValue.length
+          if (textCharacters > maxProtocolTextCharacters)
+            return "message contains too much text"
+        }
+        if (arrayValue && typeof arrayValue === "object")
+          stack.push({ value: arrayValue, depth: current.depth + 1 })
+      }
+      continue
+    }
+    var properties = 0
+    for (var key in entry) {
+      if (!Object.prototype.hasOwnProperty.call(entry, key)) continue
+      if (key.length > maxProtocolStringCharacters)
+        return "message contains an oversized property name"
+      textCharacters += key.length
+      if (textCharacters > maxProtocolTextCharacters)
+        return "message contains too much text"
+      properties++
+      nodes++
+      if (properties > maxProtocolObjectEntries)
+        return "message contains too many object properties"
+      if (nodes > maxProtocolNodes) return "message contains too many values"
+      var objectValue = entry[key]
+      if (typeof objectValue === "string"
+          && objectValue.length > maxProtocolStringCharacters)
+        return "message contains an oversized string"
+      if (typeof objectValue === "string") {
+        textCharacters += objectValue.length
+        if (textCharacters > maxProtocolTextCharacters)
+          return "message contains too much text"
+      }
+      if (objectValue && typeof objectValue === "object")
+        stack.push({ value: objectValue, depth: current.depth + 1 })
+    }
+  }
+  return ""
+}
+
+function requestTimeoutMs() {
+  return finiteRequestTimeoutMilliseconds
+}
+
+function trackRequestDeadline(deadlines, requestId, label, now, timeoutMs) {
+  var result = Object.assign({}, deadlines || ({}))
+  var duration = Math.max(1, Number(timeoutMs) || finiteRequestTimeoutMilliseconds)
+  result[String(requestId)] = {
+    id: Number(requestId),
+    label: text(label),
+    deadline: Number(now) + duration
+  }
+  return result
+}
+
+function clearRequestDeadline(deadlines, requestId) {
+  var result = Object.assign({}, deadlines || ({}))
+  delete result[String(requestId)]
+  return result
+}
+
+function takeExpiredRequestDeadlines(deadlines, now) {
+  var source = deadlines || ({})
+  var remaining = ({})
+  var expired = []
+  var currentTime = Number(now)
+  for (var key in source) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue
+    var entry = source[key] || ({})
+    if (Number(entry.deadline) <= currentTime) expired.push(entry)
+    else remaining[key] = entry
+  }
+  return { remaining: remaining, expired: expired }
+}
+
 function inputText(inputs) {
   var entries = Array.isArray(inputs) ? inputs : []
   var parts = []
-  for (var i = 0; i < entries.length; i++) {
+  for (var i = 0; i < entries.length && i < maxItemParts; i++) {
     var input = entries[i] || ({})
     if (input.type === "text") parts.push(text(input.text))
     else if (input.type === "localImage") parts.push("[Image: " + text(input.path) + "]")
@@ -36,7 +157,8 @@ function inputText(inputs) {
 function commandText(command) {
   if (!Array.isArray(command)) return text(command)
   var parts = []
-  for (var i = 0; i < command.length; i++) parts.push(text(command[i]))
+  for (var i = 0; i < command.length && i < maxItemParts; i++)
+    parts.push(text(command[i]))
   return parts.join("\n")
 }
 
@@ -106,7 +228,8 @@ function fileChangeText(item) {
       ? item.fileChanges : ({}))
   if (Array.isArray(changes)) {
     var rendered = []
-    for (var changeIndex = 0; changeIndex < changes.length; changeIndex++) {
+    for (var changeIndex = 0;
+        changeIndex < changes.length && changeIndex < maxItemParts; changeIndex++) {
       var entry = changes[changeIndex] || ({})
       var kindValue = entry.kind && typeof entry.kind === "object"
         ? entry.kind.type : (entry.kind || entry.type)
@@ -120,7 +243,12 @@ function fileChangeText(item) {
     if (rendered.length > 0) return rendered.join("\n\n")
     return text(item && (item.diff || item.output))
   }
-  var paths = Object.keys(changes)
+  var paths = []
+  for (var changePath in changes) {
+    if (!Object.prototype.hasOwnProperty.call(changes, changePath)) continue
+    paths.push(changePath)
+    if (paths.length >= maxItemParts) break
+  }
   if (paths.length === 0) return text(item && (item.diff || item.output))
   var lines = []
   for (var i = 0; i < paths.length; i++) {
@@ -146,8 +274,10 @@ function itemMessage(item) {
       title: "Codex", status: status }
   }
   if (item.type === "reasoning") {
-    var summary = Array.isArray(item.summary) ? item.summary.join("\n\n") : text(item.summary)
-    var content = summary || (Array.isArray(item.content) ? item.content.join("\n\n") : text(item.content))
+    var summary = Array.isArray(item.summary)
+      ? item.summary.slice(-maxItemParts).join("\n\n") : text(item.summary)
+    var content = summary || (Array.isArray(item.content)
+      ? item.content.slice(-maxItemParts).join("\n\n") : text(item.content))
     if (content.trim() === "") return null
     return { id: id, role: "reasoning", content: bounded(content, maxToolCharacters),
       title: "Reasoning", status: status }
@@ -340,12 +470,35 @@ function appendDelta(messages, itemId, delta, role, title) {
 function normalizeThread(thread) {
   var result = []
   var turns = thread && Array.isArray(thread.turns) ? thread.turns : []
-  for (var i = 0; i < turns.length; i++) {
-    var items = turns[i] && Array.isArray(turns[i].items) ? turns[i].items : []
-    var turnId = text(turns[i] && turns[i].id)
-    for (var j = 0; j < items.length; j++) result = upsertItem(result, items[j], turnId)
+  var batches = []
+  var remainingItems = maxThreadItems
+  var firstTurn = Math.max(0, turns.length - maxThreadTurns)
+  for (var turnIndex = turns.length - 1;
+      turnIndex >= firstTurn && remainingItems > 0; turnIndex--) {
+    var turn = turns[turnIndex] || ({})
+    var items = Array.isArray(turn.items) ? turn.items : []
+    var take = Math.min(items.length, remainingItems)
+    if (take > 0) batches.unshift({
+      turnId: text(turn.id),
+      items: items.slice(items.length - take)
+    })
+    remainingItems -= take
+  }
+  for (var batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    var batch = batches[batchIndex]
+    for (var itemIndex = 0; itemIndex < batch.items.length; itemIndex++)
+      result = upsertItem(result, batch.items[itemIndex], batch.turnId)
   }
   return result
+}
+
+function completedTurnItems(turn) {
+  var items = turn && Array.isArray(turn.items) ? turn.items : []
+  return items.slice(-maxThreadItems)
+}
+
+function boundedModelEntries(entries) {
+  return Array.isArray(entries) ? entries.slice(0, maxModelEntries) : []
 }
 
 function threadActivity(thread) {
@@ -369,7 +522,13 @@ function approvalSummary(method, params) {
     return { title: "Run command?",
       detail: bounded(values.command || values.reason, maxToolCharacters), kind: "command" }
   if (method === "item/fileChange/requestApproval") {
-    var paths = Object.keys(values.fileChanges || values.changes || ({}))
+    var changes = values.fileChanges || values.changes || ({})
+    var paths = []
+    for (var path in changes) {
+      if (!Object.prototype.hasOwnProperty.call(changes, path)) continue
+      paths.push(path)
+      if (paths.length >= maxItemParts) break
+    }
     return { title: "Apply file changes?",
       detail: bounded(paths.join("\n") || values.reason, maxToolCharacters), kind: "file" }
   }

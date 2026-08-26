@@ -51,6 +51,9 @@ fi
 grep -F -- 'token file exceeded the 64 KiB limit' \
   "$test_root/token-error" >/dev/null
 
+node "$plugin_root/tests/fixtures/websocket-flood-test.mjs" \
+  "$plugin_root/bin/omarchy-codex-app-server-websocket"
+
 grep -F -- 'appServer.command = [controller.streamGuardPath, "--", "codex", "app-server"]' \
   "$plugin_root/providers/CodexAppServerClient.qml" >/dev/null
 grep -F -- 'installProcess.command = [controller.streamGuardPath, "--",' \
@@ -65,5 +68,12 @@ if grep -F -- 'readline' \
   printf '%s\n' 'WebSocket transport still uses an unbounded line reader' >&2
   exit 1
 fi
+
+grep -F -- 'ConversationLogic.promptValidationError(value)' \
+  "$plugin_root/providers/CodexConversationClient.qml" >/dev/null
+grep -F -- 'ConversationLogic.protocolStructureError(message)' \
+  "$plugin_root/providers/CodexConversationClient.qml" >/dev/null
+grep -F -- 'ConversationLogic.trackRequestDeadline(' \
+  "$plugin_root/providers/CodexConversationClient.qml" >/dev/null
 
 printf '%s\n' 'app-server transport tests passed'

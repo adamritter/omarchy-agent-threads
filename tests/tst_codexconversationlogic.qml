@@ -59,6 +59,77 @@ TestCase {
     verify(message.content.indexOf("[Output truncated]") >= 0)
   }
 
+  function test_rejectsOversizedPromptsBeforeRetention() {
+    var limit = ConversationLogic.promptCharacterLimit()
+    compare(limit, 200000)
+    compare(ConversationLogic.promptValidationError(new Array(limit + 1).join("x")), "")
+    verify(ConversationLogic.promptValidationError(
+      new Array(limit + 2).join("x")).indexOf("200,000") >= 0)
+  }
+
+  function test_rejectsPathologicalProtocolStructures() {
+    compare(ConversationLogic.protocolStructureError({
+      method: "turn/completed",
+      params: { turn: { items: [{ id: "a1", type: "agentMessage", text: "ok" }] } }
+    }), "")
+    verify(ConversationLogic.protocolStructureError(
+      { values: new Array(5001) }).indexOf("array entries") >= 0)
+
+    var textValues = []
+    for (var textIndex = 0; textIndex < 5; textIndex++)
+      textValues.push(new Array(2 * 1024 * 1024).join("x"))
+    verify(ConversationLogic.protocolStructureError(
+      { values: textValues }).indexOf("too much text") >= 0)
+
+    var nested = ({})
+    var cursor = nested
+    for (var i = 0; i < 50; i++) {
+      cursor.next = ({})
+      cursor = cursor.next
+    }
+    verify(ConversationLogic.protocolStructureError(nested).indexOf("nesting") >= 0)
+  }
+
+  function test_boundsProtocolCollectionsBeforeNormalization() {
+    var turns = []
+    for (var turnIndex = 0; turnIndex < 205; turnIndex++)
+      turns.push({ id: "turn" + turnIndex, items: [{
+        id: "message" + turnIndex, type: "agentMessage", text: "message " + turnIndex
+      }] })
+    var messages = ConversationLogic.normalizeThread({ turns: turns })
+    compare(messages.length, 200)
+    compare(messages[0].id, "message5")
+    compare(messages[199].id, "message204")
+
+    var items = []
+    for (var itemIndex = 0; itemIndex < 1100; itemIndex++) items.push({ id: itemIndex })
+    var completed = ConversationLogic.completedTurnItems({ items: items })
+    compare(completed.length, 1000)
+    compare(completed[0].id, 100)
+
+    var modelEntries = []
+    for (var modelIndex = 0; modelIndex < 250; ++modelIndex)
+      modelEntries.push({ id: "model-" + modelIndex })
+    var models = ConversationLogic.boundedModelEntries(modelEntries)
+    compare(models.length, 200)
+  }
+
+  function test_tracksAndExpiresFiniteRequestDeadlines() {
+    var deadlines = ConversationLogic.trackRequestDeadline(
+      ({}), 7, "thread start", 1000, 500)
+    deadlines = ConversationLogic.trackRequestDeadline(
+      deadlines, 8, "configuration", 1000, 1000)
+    var first = ConversationLogic.takeExpiredRequestDeadlines(deadlines, 1600)
+    compare(first.expired.length, 1)
+    compare(first.expired[0].id, 7)
+    compare(first.expired[0].label, "thread start")
+    verify(first.remaining["8"] !== undefined)
+
+    var cleared = ConversationLogic.clearRequestDeadline(first.remaining, 8)
+    compare(Object.keys(cleared).length, 0)
+    compare(ConversationLogic.requestTimeoutMs(), 15000)
+  }
+
   function test_boundsRetainedConversationHistory() {
     var messages = []
     for (var i = 0; i < 450; i++)

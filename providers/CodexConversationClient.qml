@@ -47,6 +47,8 @@ Item {
   property string requestedThreadId: ""
   property bool reconnectAfterExit: false
   property bool shuttingDown: false
+  property bool protocolViolation: false
+  property var requestDeadlines: ({})
 
   readonly property string websocketHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-app-server-websocket").toString().replace(/^file:\/\//, "")
@@ -57,8 +59,79 @@ Item {
   signal turnCompleted(string threadId)
   signal sessionReady()
 
+  function beginRequest(label) {
+    var requestId = nextRequestId++
+    requestDeadlines = ConversationLogic.trackRequestDeadline(
+      requestDeadlines, requestId, label, Date.now(), ConversationLogic.requestTimeoutMs())
+    return requestId
+  }
+
+  function finishRequest(requestId) {
+    requestDeadlines = ConversationLogic.clearRequestDeadline(requestDeadlines, requestId)
+  }
+
+  function clearRequests() {
+    requestDeadlines = ({})
+  }
+
+  function handleRequestTimeout(requestId, label) {
+    if (requestId === initializeRequestId) {
+      initializeRequestId = 0
+      ready = false
+      errorText = "Codex App Server initialization timed out"
+      if (appServer.running) appServer.running = false
+      return
+    }
+    if (requestId === modelListRequestId) {
+      modelListRequestId = 0
+      return
+    }
+    if (requestId === configReadRequestId) {
+      configReadRequestId = 0
+      return
+    }
+    if (requestId === resumeRequestId) {
+      resumeRequestId = 0
+      loading = false
+      errorText = "Opening the Codex thread timed out"
+      if (appServer.running) appServer.running = false
+      return
+    }
+    if (requestId === threadStartRequestId) {
+      threadStartRequestId = 0
+      pendingPrompt = ""
+      busy = false
+      errorText = "Creating the Codex thread timed out"
+      if (appServer.running) appServer.running = false
+      return
+    }
+    if (requestId === turnStartRequestId) {
+      turnStartRequestId = 0
+      busy = false
+      errorText = "Starting the Codex turn timed out"
+      if (appServer.running) appServer.running = false
+      return
+    }
+    if (requestId === interruptRequestId) {
+      interruptRequestId = 0
+      errorText = "Stopping the Codex turn timed out"
+      if (appServer.running) appServer.running = false
+      return
+    }
+    console.warn("Agent Chat request timed out:", label)
+  }
+
+  function expireRequests() {
+    var result = ConversationLogic.takeExpiredRequestDeadlines(requestDeadlines, Date.now())
+    requestDeadlines = result.remaining
+    for (var i = 0; i < result.expired.length; i++) {
+      var entry = result.expired[i] || ({})
+      handleRequestTimeout(Number(entry.id), String(entry.label || "request"))
+    }
+  }
+
   function start() {
-    if (appServer.running || shuttingDown) return
+    if (appServer.running || shuttingDown || protocolViolation) return
     appServer.command = ChatLaunchOptions.transportCommand(
       remoteAddress, remoteAuthTokenEnv, transportGuardPath,
       websocketHelperPath, configOverrides)
@@ -82,6 +155,8 @@ Item {
     configuredCwd = next.cwd || Quickshell.env("HOME") || "/tmp"
     configOverrides = next.configOverrides
     requestedThreadId = next.threadId
+    protocolViolation = false
+    clearRequests()
     models = []
     codexConfig = ({})
     ready = false
@@ -100,15 +175,18 @@ Item {
   }
 
   function beginInitialize() {
-    initializeRequestId = nextRequestId++
-    send({
+    initializeRequestId = beginRequest("initialization")
+    if (!send({
       method: "initialize",
       id: initializeRequestId,
       params: {
         clientInfo: { name: "omarchy_agent_chat", title: "Omarchy Agent Chat", version: "1.0.0" },
         capabilities: { experimentalApi: true }
       }
-    })
+    })) {
+      finishRequest(initializeRequestId)
+      initializeRequestId = 0
+    }
   }
 
   function runtimeOptions() {
@@ -142,16 +220,22 @@ Item {
 
   function refreshModels() {
     if (!ready || modelListRequestId !== 0) return
-    modelListRequestId = nextRequestId++
+    modelListRequestId = beginRequest("model list")
     if (!send({ method: "model/list", id: modelListRequestId,
-        params: { limit: 100, includeHidden: false } })) modelListRequestId = 0
+        params: { limit: 100, includeHidden: false } })) {
+      finishRequest(modelListRequestId)
+      modelListRequestId = 0
+    }
   }
 
   function refreshConfig() {
     if (!ready || configReadRequestId !== 0) return
-    configReadRequestId = nextRequestId++
+    configReadRequestId = beginRequest("configuration")
     if (!send({ method: "config/read", id: configReadRequestId,
-        params: { includeLayers: false } })) configReadRequestId = 0
+        params: { includeLayers: false } })) {
+      finishRequest(configReadRequestId)
+      configReadRequestId = 0
+    }
   }
 
   function resetConversation() {
@@ -182,17 +266,28 @@ Item {
     messages = []
     activeThreadId = id
     activeTurnId = ""
-    resumeRequestId = nextRequestId++
-    return send({
+    resumeRequestId = beginRequest("thread resume")
+    var sent = send({
       method: "thread/resume",
       id: resumeRequestId,
       params: applyThreadOptions({ threadId: id })
     })
+    if (!sent) {
+      finishRequest(resumeRequestId)
+      resumeRequestId = 0
+      loading = false
+    }
+    return sent
   }
 
   function sendPrompt(prompt, cwd, model, effort) {
     var value = String(prompt || "").trim()
     if (!ready || busy || value === "") return false
+    var promptError = ConversationLogic.promptValidationError(value)
+    if (promptError !== "") {
+      errorText = promptError
+      return false
+    }
     errorText = ""
     messages = ConversationLogic.optimisticUserMessage(messages, value)
     if (activeThreadId === "") {
@@ -201,21 +296,33 @@ Item {
       pendingModel = String(model || pendingModel || "")
       pendingEffort = String(effort || pendingEffort || "")
       busy = true
-      threadStartRequestId = nextRequestId++
+      threadStartRequestId = beginRequest("thread start")
       var startParams = applyThreadOptions({
         cwd: pendingCwd,
         experimentalRawEvents: false
       })
       if (pendingModel !== "") startParams.model = pendingModel
-      return send({ method: "thread/start", id: threadStartRequestId, params: startParams })
+      var sent = send({ method: "thread/start", id: threadStartRequestId, params: startParams })
+      if (!sent) {
+        finishRequest(threadStartRequestId)
+        threadStartRequestId = 0
+        pendingPrompt = ""
+        busy = false
+      }
+      return sent
     }
     return startTurn(value, cwd, model, effort)
   }
 
   function startTurn(prompt, cwd, model, effort) {
     if (activeThreadId === "") return false
+    var promptError = ConversationLogic.promptValidationError(prompt)
+    if (promptError !== "") {
+      errorText = promptError
+      return false
+    }
     busy = true
-    turnStartRequestId = nextRequestId++
+    turnStartRequestId = beginRequest("turn start")
     var params = applyTurnOptions({
       threadId: activeThreadId,
       input: [{ type: "text", text: String(prompt || "") }]
@@ -227,6 +334,8 @@ Item {
     if (turnModel !== "") params.model = turnModel
     if (turnEffort !== "") params.effort = turnEffort
     if (!send({ method: "turn/start", id: turnStartRequestId, params: params })) {
+      finishRequest(turnStartRequestId)
+      turnStartRequestId = 0
       busy = false
       return false
     }
@@ -235,12 +344,17 @@ Item {
 
   function interrupt() {
     if (!busy || activeThreadId === "" || activeTurnId === "") return false
-    interruptRequestId = nextRequestId++
-    return send({
+    interruptRequestId = beginRequest("turn interrupt")
+    var sent = send({
       method: "turn/interrupt",
       id: interruptRequestId,
       params: { threadId: activeThreadId, turnId: activeTurnId }
     })
+    if (!sent) {
+      finishRequest(interruptRequestId)
+      interruptRequestId = 0
+    }
+    return sent
   }
 
   function answerApproval(accepted, remember) {
@@ -265,7 +379,9 @@ Item {
   }
 
   function handleResponse(message) {
+    finishRequest(message.id)
     if (message.id === initializeRequestId) {
+      initializeRequestId = 0
       if (message.error) {
         errorText = String(message.error.message || "Codex App Server initialization failed")
         return
@@ -286,7 +402,8 @@ Item {
     }
     if (message.id === modelListRequestId && modelListRequestId !== 0) {
       modelListRequestId = 0
-      if (!message.error) models = (message.result || {}).data || []
+      if (!message.error)
+        models = ConversationLogic.boundedModelEntries((message.result || {}).data)
       return
     }
     if (message.id === configReadRequestId && configReadRequestId !== 0) {
@@ -397,7 +514,7 @@ Item {
     }
     if (method === "turn/completed") {
       var completed = params.turn || ({})
-      var items = Array.isArray(completed.items) ? completed.items : []
+      var items = ConversationLogic.completedTurnItems(completed)
       for (var i = 0; i < items.length; i++)
         messages = ConversationLogic.upsertItem(messages, items[i], completed.id)
       activeTurnId = ""
@@ -418,6 +535,13 @@ Item {
       console.warn("Agent Chat: invalid Codex App Server message")
       return
     }
+    var structureError = ConversationLogic.protocolStructureError(message)
+    if (structureError !== "") {
+      errorText = "Codex App Server " + structureError
+      protocolViolation = true
+      if (appServer.running) appServer.running = false
+      return
+    }
     if (message.id !== undefined && message.id !== null && message.method) {
       var summary = ConversationLogic.approvalSummary(message.method, message.params)
       approvalRequest = Object.assign({}, message, summary)
@@ -435,16 +559,27 @@ Item {
     running: false
     stdinEnabled: true
     onStarted: root.beginInitialize()
-    onExited: {
+    onExited: function(exitCode) {
+      var reconnect = root.reconnectAfterExit
       root.ready = false
       root.loading = false
       root.busy = false
+      root.clearRequests()
+      root.initializeRequestId = 0
+      root.resumeRequestId = 0
+      root.threadStartRequestId = 0
+      root.turnStartRequestId = 0
+      root.interruptRequestId = 0
       root.modelListRequestId = 0
       root.configReadRequestId = 0
-      if (root.reconnectAfterExit) {
+      if (reconnect) {
         root.reconnectAfterExit = false
         Qt.callLater(root.start)
-      } else if (!root.shuttingDown) {
+      } else if (Number(exitCode) === 2) {
+        root.protocolViolation = true
+        if (root.errorText === "")
+          root.errorText = "Codex App Server transport stopped after rejecting unsafe input"
+      } else if (!root.shuttingDown && !root.protocolViolation) {
         if (root.activeThreadId !== "") root.requestedThreadId = root.activeThreadId
         restartTimer.restart()
       }
@@ -463,6 +598,13 @@ Item {
     interval: 1500
     repeat: false
     onTriggered: root.start()
+  }
+
+  Timer {
+    interval: 250
+    repeat: true
+    running: Object.keys(root.requestDeadlines).length > 0
+    onTriggered: root.expireRequests()
   }
 
   Component.onDestruction: {
