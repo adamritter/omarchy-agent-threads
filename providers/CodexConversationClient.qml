@@ -50,6 +50,8 @@ Item {
 
   readonly property string websocketHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-app-server-websocket").toString().replace(/^file:\/\//, "")
+  readonly property string transportGuardPath: Qt.resolvedUrl(
+    "../bin/omarchy-agent-stream-guard").toString().replace(/^file:\/\//, "")
 
   signal threadChanged(string threadId)
   signal turnCompleted(string threadId)
@@ -58,7 +60,8 @@ Item {
   function start() {
     if (appServer.running || shuttingDown) return
     appServer.command = ChatLaunchOptions.transportCommand(
-      remoteAddress, remoteAuthTokenEnv, websocketHelperPath, configOverrides)
+      remoteAddress, remoteAuthTokenEnv, transportGuardPath,
+      websocketHelperPath, configOverrides)
     appServer.running = true
   }
 

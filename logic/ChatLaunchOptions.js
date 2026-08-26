@@ -53,20 +53,23 @@ function connectionLabel(remote) {
   return value === "" ? "Local" : value
 }
 
-function transportCommand(remote, tokenEnv, websocketHelper, configOverrides) {
+function transportCommand(remote, tokenEnv, transportGuard, websocketHelper,
+    configOverrides) {
   var address = text(remote)
+  var command
   if (address.indexOf("ws://") === 0 || address.indexOf("wss://") === 0)
-    return [text(websocketHelper), address, text(tokenEnv), ""]
-  if (address.indexOf("unix://") === 0) {
+    command = [text(websocketHelper), address, text(tokenEnv), ""]
+  else if (address.indexOf("unix://") === 0) {
     var socketPath = decodeURIComponent(address.slice("unix://".length))
     var proxy = ["codex", "app-server", "proxy"]
-    return socketPath === "" ? proxy : proxy.concat(["--sock", socketPath])
+    command = socketPath === "" ? proxy : proxy.concat(["--sock", socketPath])
+  } else {
+    command = ["codex", "app-server"]
+    var overrides = Array.isArray(configOverrides) ? configOverrides : []
+    for (var i = 0; i < overrides.length; i++)
+      command = command.concat(["-c", text(overrides[i])])
   }
-  var command = ["codex", "app-server"]
-  var overrides = Array.isArray(configOverrides) ? configOverrides : []
-  for (var i = 0; i < overrides.length; i++)
-    command = command.concat(["-c", text(overrides[i])])
-  return command
+  return [text(transportGuard), "--"].concat(command)
 }
 
 function threadParams(base, options) {

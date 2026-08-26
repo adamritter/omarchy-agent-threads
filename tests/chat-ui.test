@@ -25,6 +25,8 @@ grep -F -- 'sequence: "Meta+Ctrl+F"' "$window" >/dev/null
 grep -F -- 'function fast(mode: string): string' "$window" >/dev/null
 grep -F -- 'sequence: "Meta+Ctrl+E"' "$window" >/dev/null
 grep -F -- 'function effort(mode: string): string' "$window" >/dev/null
+grep -F -- 'settings.localStorageEnabled: false' \
+  "$plugin_root/app/WebTranscript.qml" >/dev/null
 grep -F -- 'id: composerToolbar' "$window" >/dev/null
 grep -F -- 'height: Math.max(88, Math.min(204, composer.implicitHeight + 54))' "$window" >/dev/null
 grep -F -- 'id: fastButton' "$window" >/dev/null

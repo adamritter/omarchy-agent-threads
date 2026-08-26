@@ -12,6 +12,9 @@ Item {
   property string installMessage: ""
   property string loginHostId: ""
   property bool loginRunning: false
+  property string installStdoutText: ""
+  property string installStderrText: ""
+  property string loginStderrText: ""
 
   readonly property string installHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-claude-remote-install").toString().replace(/^file:\/\//, "")
@@ -36,8 +39,11 @@ Item {
     installHostId = id
     installRunning = true
     installMessage = "Installing Claude…"
+    installStdoutText = ""
+    installStderrText = ""
     provider.updateHost(id, { loading: false, error: installMessage })
-    installProcess.command = [installHelperPath, provider.configPath, id]
+    installProcess.command = [controller.streamGuardPath, "--",
+      installHelperPath, provider.configPath, id]
     installProcess.running = true
     return true
   }
@@ -53,7 +59,9 @@ Item {
     controller.launchError = ""
     loginHostId = id
     loginRunning = true
-    loginProcess.command = [loginHelperPath, provider.configPath, id]
+    loginStderrText = ""
+    loginProcess.command = [controller.streamGuardPath, "--",
+      loginHelperPath, provider.configPath, id]
     loginProcess.running = true
     return true
   }
@@ -78,7 +86,7 @@ Item {
       var hostId = root.installHostId
       root.installRunning = false
       if (exitCode !== 0) {
-        root.installMessage = installStderr.text.trim() || "Claude installation failed"
+        root.installMessage = root.installStderrText.trim() || "Claude installation failed"
         root.provider.updateHost(hostId, {
           available: false,
           loading: false,
@@ -88,7 +96,7 @@ Item {
         return
       }
 
-      var outputLines = installStdout.text.trim().split(/\r?\n/)
+      var outputLines = root.installStdoutText.trim().split(/\r?\n/)
       var version = outputLines.length > 0 ? outputLines[outputLines.length - 1] : ""
       root.installMessage = "Claude installed, verifying…"
         + (version !== "" ? " · " + version : "")
@@ -99,8 +107,18 @@ Item {
       root.provider.startNextQuery()
     }
 
-    stdout: StdioCollector { id: installStdout; waitForEnd: true }
-    stderr: StdioCollector { id: installStderr; waitForEnd: true }
+    stdout: SplitParser {
+      onRead: function(line) {
+        root.installStdoutText = (root.installStdoutText
+          + String(line || "") + "\n").slice(-30000)
+      }
+    }
+    stderr: SplitParser {
+      onRead: function(line) {
+        root.installStderrText = (root.installStderrText
+          + String(line || "") + "\n").slice(-30000)
+      }
+    }
   }
 
   Process {
@@ -112,14 +130,19 @@ Item {
       root.loginRunning = false
       root.loginHostId = ""
       if (exitCode !== 0) {
-        root.controller.launchError = loginStderr.text.trim()
+        root.controller.launchError = root.loginStderrText.trim()
           || "Could not open the remote Claude sign-in terminal"
         return
       }
       root.provider.refresh(hostId)
     }
 
-    stderr: StdioCollector { id: loginStderr; waitForEnd: true }
+    stderr: SplitParser {
+      onRead: function(line) {
+        root.loginStderrText = (root.loginStderrText
+          + String(line || "") + "\n").slice(-30000)
+      }
+    }
   }
 
   Component.onDestruction: {

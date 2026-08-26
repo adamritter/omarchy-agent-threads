@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+guard="$plugin_root/bin/omarchy-agent-stream-guard"
+test_root="$(mktemp -d -t agent-chat-transport-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+
+small_response="$(printf '%s\n' '{"method":"ready"}' \
+  | "$guard" -- /bin/cat)"
+[[ "$small_response" == '{"method":"ready"}' ]]
+
+if "$guard" -- bash -c \
+    'head -c $((17 * 1024 * 1024)) /dev/zero | tr "\0" a' \
+    >"$test_root/stdout" 2>"$test_root/stdout-error"; then
+  printf '%s\n' 'transport unexpectedly accepted oversized stdout' >&2
+  exit 1
+fi
+test ! -s "$test_root/stdout"
+grep -F -- 'response line exceeded the 16 MiB limit' \
+  "$test_root/stdout-error" >/dev/null
+
+if "$guard" -- bash -c \
+    'head -c $((300 * 1024)) /dev/zero | tr "\0" b >&2' \
+    >"$test_root/stderr-output" 2>"$test_root/stderr-error"; then
+  printf '%s\n' 'transport unexpectedly accepted oversized stderr' >&2
+  exit 1
+fi
+grep -F -- 'stderr line exceeded the 256 KiB limit' \
+  "$test_root/stderr-error" >/dev/null
+
+if head -c $((17 * 1024 * 1024)) /dev/zero 2>/dev/null \
+    | tr '\0' c 2>/dev/null \
+    | "$guard" -- /bin/cat \
+      >"$test_root/stdin-output" 2>"$test_root/stdin-error"; then
+  printf '%s\n' 'transport unexpectedly accepted oversized stdin' >&2
+  exit 1
+fi
+grep -F -- 'request line exceeded the 16 MiB limit' \
+  "$test_root/stdin-error" >/dev/null
+
+token_file="$test_root/oversized-token"
+head -c $((65 * 1024)) /dev/zero | tr '\0' t >"$token_file"
+if "$plugin_root/bin/omarchy-codex-app-server-websocket" \
+    ws://127.0.0.1:1 "" "$token_file" \
+    >"$test_root/token-output" 2>"$test_root/token-error"; then
+  printf '%s\n' 'WebSocket transport unexpectedly accepted an oversized token file' >&2
+  exit 1
+fi
+grep -F -- 'token file exceeded the 64 KiB limit' \
+  "$test_root/token-error" >/dev/null
+
+grep -F -- 'appServer.command = [controller.streamGuardPath, "--", "codex", "app-server"]' \
+  "$plugin_root/providers/CodexAppServerClient.qml" >/dev/null
+grep -F -- 'installProcess.command = [controller.streamGuardPath, "--",' \
+  "$plugin_root/providers/RemoteClaudeManager.qml" >/dev/null
+if grep -F -- 'StdioCollector' \
+    "$plugin_root/providers/RemoteClaudeManager.qml" >/dev/null; then
+  printf '%s\n' 'remote Claude management still retains unbounded process output' >&2
+  exit 1
+fi
+if grep -F -- 'readline' \
+    "$plugin_root/bin/omarchy-codex-app-server-websocket" >/dev/null; then
+  printf '%s\n' 'WebSocket transport still uses an unbounded line reader' >&2
+  exit 1
+fi
+
+printf '%s\n' 'app-server transport tests passed'

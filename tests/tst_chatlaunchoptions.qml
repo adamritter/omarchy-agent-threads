@@ -34,14 +34,19 @@ TestCase {
   }
 
   function test_buildsTransportCommands() {
-    compare(ChatLaunchOptions.transportCommand("", "", "/helper", ["model=x"]),
-      ["codex", "app-server", "-c", "model=x"])
-    compare(ChatLaunchOptions.transportCommand("wss://example.test", "TOKEN", "/helper", []),
-      ["/helper", "wss://example.test", "TOKEN", ""])
-    compare(ChatLaunchOptions.transportCommand("unix://", "", "/helper", []),
-      ["codex", "app-server", "proxy"])
-    compare(ChatLaunchOptions.transportCommand("unix:///run/user/1000/codex.sock", "", "/helper", []),
-      ["codex", "app-server", "proxy", "--sock", "/run/user/1000/codex.sock"])
+    compare(ChatLaunchOptions.transportCommand(
+      "", "", "/guard", "/helper", ["model=x"]),
+      ["/guard", "--", "codex", "app-server", "-c", "model=x"])
+    compare(ChatLaunchOptions.transportCommand(
+      "wss://example.test", "TOKEN", "/guard", "/helper", []),
+      ["/guard", "--", "/helper", "wss://example.test", "TOKEN", ""])
+    compare(ChatLaunchOptions.transportCommand(
+      "unix://", "", "/guard", "/helper", []),
+      ["/guard", "--", "codex", "app-server", "proxy"])
+    compare(ChatLaunchOptions.transportCommand(
+      "unix:///run/user/1000/codex.sock", "", "/guard", "/helper", []),
+      ["/guard", "--", "codex", "app-server", "proxy", "--sock",
+        "/run/user/1000/codex.sock"])
   }
 
   function test_buildsProtocolOverrides() {

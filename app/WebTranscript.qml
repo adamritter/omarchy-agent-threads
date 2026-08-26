@@ -61,7 +61,7 @@ Item {
     settings.javascriptEnabled: true
     settings.javascriptCanOpenWindows: false
     settings.javascriptCanAccessClipboard: false
-    settings.localStorageEnabled: true
+    settings.localStorageEnabled: false
     settings.localContentCanAccessRemoteUrls: false
     settings.localContentCanAccessFileUrls: true
     settings.errorPageEnabled: false

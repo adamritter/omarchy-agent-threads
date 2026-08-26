@@ -54,7 +54,7 @@ Item {
   function start() {
     if (controller.shuttingDown || appServer.running) return
     if (!controller.sidebarSettingsLoaded || !controller.remoteConfigLoaded) return
-    appServer.command = ["codex", "app-server"]
+    appServer.command = [controller.streamGuardPath, "--", "codex", "app-server"]
     appServer.running = true
   }
 

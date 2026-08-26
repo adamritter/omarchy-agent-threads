@@ -1,0 +1,127 @@
+#!/usr/bin/env node
+
+"use strict";
+
+const { spawn } = require("node:child_process");
+const { Transform } = require("node:stream");
+
+const responseLineLimit = 16 * 1024 * 1024;
+const requestLineLimit = 16 * 1024 * 1024;
+const stderrLineLimit = 256 * 1024;
+
+const separator = process.argv.indexOf("--", 2);
+const command = separator >= 0 ? process.argv[separator + 1] : "";
+const args = separator >= 0 ? process.argv.slice(separator + 2) : [];
+
+if (!command) {
+  process.stderr.write("Agent stream guard: missing child command\n");
+  process.exit(2);
+}
+
+class BoundedLines extends Transform {
+  constructor(limit, label) {
+    super();
+    this.limit = limit;
+    this.label = label;
+    this.pending = [];
+    this.pendingBytes = 0;
+  }
+
+  append(segment) {
+    if (this.pendingBytes + segment.length > this.limit)
+      throw new Error(`${this.label} exceeded the ${this.limitLabel()} limit`);
+    if (segment.length === 0) return;
+    this.pending.push(segment);
+    this.pendingBytes += segment.length;
+  }
+
+  limitLabel() {
+    return this.limit === stderrLineLimit ? "256 KiB" : "16 MiB";
+  }
+
+  _transform(chunk, encoding, callback) {
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
+    let start = 0;
+    try {
+      for (let index = 0; index < data.length; index++) {
+        if (data[index] !== 0x0a) continue;
+        this.append(data.subarray(start, index));
+        this.push(this.pendingBytes === 0
+          ? Buffer.from("\n")
+          : Buffer.concat(this.pending.concat([Buffer.from("\n")]),
+            this.pendingBytes + 1));
+        this.pending = [];
+        this.pendingBytes = 0;
+        start = index + 1;
+      }
+      this.append(data.subarray(start));
+      callback();
+    } catch (error) {
+      callback(error);
+    }
+  }
+
+  _flush(callback) {
+    if (this.pendingBytes > 0)
+      this.push(Buffer.concat(this.pending, this.pendingBytes));
+    this.pending = [];
+    this.pendingBytes = 0;
+    callback();
+  }
+}
+
+const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
+let failed = false;
+let terminationTimer = null;
+
+function boundedError(error) {
+  const value = String(error && error.message || error || "transport failed")
+    .replace(/[\r\n]+/g, " ");
+  return value.length > 512 ? value.slice(0, 509) + "..." : value;
+}
+
+function terminate(error) {
+  if (failed) return;
+  failed = true;
+  process.exitCode = 2;
+  process.stdin.unpipe();
+  process.stdin.pause();
+  child.stdin.destroy();
+  child.stdout.destroy();
+  child.stderr.destroy();
+  child.kill("SIGTERM");
+  process.stderr.write(`Agent stream guard: ${boundedError(error)}\n`);
+  terminationTimer = setTimeout(() => child.kill("SIGKILL"), 500);
+  terminationTimer.unref();
+}
+
+function connect(source, target, limit, label, endTarget) {
+  const limiter = new BoundedLines(limit, label);
+  source.on("error", terminate);
+  limiter.on("error", terminate);
+  target.on("error", terminate);
+  source.pipe(limiter).pipe(target, { end: endTarget });
+}
+
+connect(process.stdin, child.stdin, requestLineLimit,
+  "request line", true);
+connect(child.stdout, process.stdout, responseLineLimit,
+  "response line", false);
+connect(child.stderr, process.stderr, stderrLineLimit,
+  "stderr line", false);
+
+child.on("error", terminate);
+child.on("close", code => {
+  if (terminationTimer) clearTimeout(terminationTimer);
+  process.stdin.unpipe();
+  process.stdin.pause();
+  if (!failed) process.exitCode = Number.isInteger(code) ? code : 1;
+});
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => {
+    child.kill(signal);
+    terminationTimer = setTimeout(() => child.kill("SIGKILL"), 500);
+    terminationTimer.unref();
+  });
+}

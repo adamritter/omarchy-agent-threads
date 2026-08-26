@@ -43,6 +43,8 @@ Item {
   property string activeThreadId: ""
   property string agentChatLaunchKind: ""
   property string agentChatPendingThreadId: ""
+  property string agentChatErrorOutput: ""
+  property string terminalErrorOutput: ""
   readonly property alias remoteConfigLoaded: agentProviders.remoteConfigLoaded
   readonly property alias remoteConfig: agentProviders.remoteConfig
   readonly property alias remoteHosts: agentProviders.supplementalHosts
@@ -93,6 +95,8 @@ Item {
     "../bin/omarchy-agent-terminal-open").toString().replace(/^file:\/\//, "")
   readonly property string agentChatHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-agent-chat").toString().replace(/^file:\/\//, "")
+  readonly property string streamGuardPath: Qt.resolvedUrl(
+    "../bin/omarchy-agent-stream-guard").toString().replace(/^file:\/\//, "")
   readonly property string localHome: Quickshell.env("HOME") || "/tmp"
   readonly property string backendHomePath: localHome
   readonly property string pinnedSectionId: "01984de2-8f74-7c91-a3b2-5c5e937cf318"
@@ -343,7 +347,10 @@ Item {
   function openTerminal(mode, endpoint, path) {
     if (terminalOpenProcess.running) return false
     launchError = ""
+    terminalErrorOutput = ""
     terminalOpenProcess.command = [
+      streamGuardPath,
+      "--",
       terminalOpenHelperPath,
       String(mode || ""),
       String(endpoint || ""),
@@ -593,7 +600,7 @@ Item {
   function refreshThreadStatuses() {
     if (threadStatusesProcess.running) return
 
-    var args = [threadStatusesHelperPath]
+    var args = [streamGuardPath, "--", threadStatusesHelperPath]
     for (var i = 0; i < threads.length; i++) {
       var thread = threads[i]
       if (!thread || !thread.id || !thread.path) continue
@@ -714,6 +721,7 @@ Item {
     if (path === "" || (thread && threadId === "")) return false
 
     launchError = ""
+    agentChatErrorOutput = ""
     agentChatLaunchKind = threadId !== "" ? "thread" : "project"
     agentChatPendingThreadId = threadId
     if (threadId !== "") {
@@ -722,8 +730,8 @@ Item {
     } else launchingProjectPath = path
 
     agentChatProcess.command = ActionLogic.agentChatCommand(
-      agentChatHelperPath, threadId, path, selectedModel, selectedEffort,
-      codexServiceTier)
+      streamGuardPath, agentChatHelperPath, threadId, path, selectedModel,
+      selectedEffort, codexServiceTier)
     agentChatProcess.running = true
     return true
   }
@@ -902,11 +910,10 @@ Item {
     id: threadStatusesProcess
     running: false
 
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
+    stdout: SplitParser {
+      onRead: function(line) {
         try {
-          root.applyThreadStatuses(JSON.parse(String(text || "{}")))
+          root.applyThreadStatuses(JSON.parse(String(line || "{}")))
         } catch (error) {
           console.warn("Codex Threads: invalid thread statuses:", error)
         }
@@ -917,12 +924,17 @@ Item {
   Process {
     id: agentChatProcess
     running: false
-    stderr: StdioCollector { id: agentChatStderr; waitForEnd: true }
+    stderr: SplitParser {
+      onRead: function(line) {
+        root.agentChatErrorOutput = (root.agentChatErrorOutput
+          + String(line || "") + "\n").slice(-30000)
+      }
+    }
     onExited: function(exitCode) {
       var kind = root.agentChatLaunchKind
       var threadId = root.agentChatPendingThreadId
       if (exitCode !== 0) {
-        root.launchError = agentChatStderr.text.trim()
+        root.launchError = root.agentChatErrorOutput.trim()
           || (kind === "thread"
             ? "Could not open the thread in Agent Chat"
             : "Could not open Agent Chat in the project")
@@ -939,10 +951,15 @@ Item {
   Process {
     id: terminalOpenProcess
     running: false
-    stderr: StdioCollector { id: terminalOpenStderr; waitForEnd: true }
+    stderr: SplitParser {
+      onRead: function(line) {
+        root.terminalErrorOutput = (root.terminalErrorOutput
+          + String(line || "") + "\n").slice(-30000)
+      }
+    }
     onExited: function(exitCode) {
       if (exitCode !== 0)
-        root.launchError = terminalOpenStderr.text.trim() || "Could not open the terminal"
+        root.launchError = root.terminalErrorOutput.trim() || "Could not open the terminal"
     }
   }
 

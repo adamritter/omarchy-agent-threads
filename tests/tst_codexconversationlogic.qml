@@ -59,6 +59,42 @@ TestCase {
     verify(message.content.indexOf("[Output truncated]") >= 0)
   }
 
+  function test_boundsRetainedConversationHistory() {
+    var messages = []
+    for (var i = 0; i < 450; i++)
+      messages = ConversationLogic.upsertItem(messages, {
+        id: "a" + i, type: "agentMessage", text: "message " + i
+      })
+    compare(messages.length, 400)
+    compare(messages[0].id, "a50")
+    compare(messages[399].id, "a449")
+
+    var large = new Array(200002).join("x")
+    messages = []
+    for (var largeIndex = 0; largeIndex < 60; largeIndex++)
+      messages = ConversationLogic.upsertItem(messages, {
+        id: "large" + largeIndex, type: "agentMessage", text: large
+      })
+    verify(messages.length < 60)
+    compare(messages[messages.length - 1].id, "large59")
+  }
+
+  function test_boundsAggregatedFileParts() {
+    var messages = []
+    for (var i = 0; i < 40; i++) {
+      messages = ConversationLogic.upsertItem(messages, {
+        id: "file" + i,
+        type: "fileChange",
+        status: "completed",
+        changes: [{ path: "file" + i, kind: "update", diff: "+value" }]
+      }, "turn-files")
+    }
+    compare(messages.length, 1)
+    compare(messages[0].fileParts.length, 32)
+    compare(messages[0].sourceIds[0], "file8")
+    compare(messages[0].sourceIds[31], "file39")
+  }
+
   function test_preservesStructuredFileDiffs() {
     var message = ConversationLogic.itemMessage({
       id: "f1",
@@ -189,5 +225,11 @@ TestCase {
     compare(summary.title, "Run command?")
     compare(summary.detail, "rm example")
     compare(summary.kind, "command")
+
+    var large = new Array(31002).join("x")
+    summary = ConversationLogic.approvalSummary(
+      "item/commandExecution/requestApproval", { command: large })
+    verify(summary.detail.length < large.length)
+    verify(summary.detail.indexOf("[Output truncated]") >= 0)
   }
 }

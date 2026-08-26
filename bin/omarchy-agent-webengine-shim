@@ -16,6 +16,10 @@ if ! command -v c++ >/dev/null; then
 fi
 
 qt_version="$(pkg-config --modversion Qt6WebEngineQuick)"
+if [[ ! "$qt_version" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+  printf 'Agent Chat received an invalid Qt WebEngine version string.\n' >&2
+  exit 1
+fi
 cache_home="${XDG_CACHE_HOME:-${HOME:?HOME is not set}/.cache}"
 build_dir="$cache_home/omarchy-agent-chat/webengine-shim/$qt_version"
 output_file="$build_dir/libagent-chat-webengine-init.so"

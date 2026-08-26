@@ -77,4 +77,21 @@ run_helper "$plugin_root/bin/omarchy-codex-project-new" \
 [[ "${launch_args[11]}" == "-C" ]]
 [[ "${launch_args[12]}" == "$project_dir" ]]
 
+token_file="$test_root/oversized-token"
+head -c $((65 * 1024)) /dev/zero | tr '\0' t >"$token_file"
+for helper in omarchy-codex-thread-open omarchy-codex-project-new; do
+  if [[ "$helper" == "omarchy-codex-thread-open" ]]; then
+    arguments=(fixture-thread "$project_dir" ws://127.0.0.1:1 TOKEN "$token_file")
+  else
+    arguments=("$project_dir" ws://127.0.0.1:1 TOKEN "$token_file")
+  fi
+  if "$plugin_root/bin/$helper" "${arguments[@]}" \
+      >"$test_root/token-output" 2>"$test_root/token-error"; then
+    printf '%s unexpectedly accepted an oversized token file\n' "$helper" >&2
+    exit 1
+  fi
+  grep -F -- 'token file exceeded the 64 KiB limit' \
+    "$test_root/token-error" >/dev/null
+done
+
 printf '%s\n' 'codex-launch-directory tests passed'

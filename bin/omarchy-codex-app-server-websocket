@@ -2,9 +2,11 @@
 
 import fs from "node:fs"
 import os from "node:os"
-import readline from "node:readline"
 
 const [remoteUrl = "", tokenEnv = "", configuredTokenFile = ""] = process.argv.slice(2)
+const lineLimit = 16 * 1024 * 1024
+const tokenFileLimit = 64 * 1024
+const pendingMessageLimit = 256
 
 function fail(message) {
   process.stderr.write(`Codex remote transport: ${message}\n`)
@@ -15,6 +17,18 @@ function expandHome(path) {
   return path === "~" ? os.homedir()
     : path.startsWith("~/") ? os.homedir() + path.slice(1)
       : path
+}
+
+function readBoundedFile(path, limit, label) {
+  const descriptor = fs.openSync(path, "r")
+  try {
+    const buffer = Buffer.allocUnsafe(limit + 1)
+    const bytes = fs.readSync(descriptor, buffer, 0, buffer.length, 0)
+    if (bytes > limit) throw new Error(`${label} exceeded the 64 KiB limit`)
+    return buffer.subarray(0, bytes).toString("utf8")
+  } finally {
+    fs.closeSync(descriptor)
+  }
 }
 
 let endpoint
@@ -30,7 +44,8 @@ if (endpoint.protocol !== "ws:" && endpoint.protocol !== "wss:")
 let token = tokenEnv === "" ? "" : String(process.env[tokenEnv] || "").trim()
 if (token === "" && configuredTokenFile !== "") {
   try {
-    token = fs.readFileSync(expandHome(configuredTokenFile), "utf8").trim()
+    token = readBoundedFile(
+      expandHome(configuredTokenFile), tokenFileLimit, "token file").trim()
   } catch (error) {
     fail(`could not read token file: ${error.message}`)
   }
@@ -48,32 +63,70 @@ const options = token === "" ? {} : {
 }
 const socket = new WebSocket(endpoint, options)
 const pending = []
+let pendingBytes = 0
 let closing = false
+let inputChunks = []
+let inputBytes = 0
 
-const input = readline.createInterface({
-  input: process.stdin,
-  crlfDelay: Infinity,
-  terminal: false
-})
-
-input.on("line", line => {
+function sendOrQueue(line) {
   if (line.trim() === "") return
   if (socket.readyState === WebSocket.OPEN) socket.send(line)
-  else if (socket.readyState === WebSocket.CONNECTING) pending.push(line)
+  else if (socket.readyState === WebSocket.CONNECTING) {
+    const bytes = Buffer.byteLength(line)
+    if (pending.length >= pendingMessageLimit || pendingBytes + bytes > lineLimit)
+      fail("pre-connect request queue exceeded the 16 MiB limit")
+    pending.push({ line, bytes })
+    pendingBytes += bytes
+  }
+}
+
+function appendInput(segment) {
+  if (segment.length === 0) return
+  if (inputBytes + segment.length > lineLimit)
+    fail("request line exceeded the 16 MiB limit")
+  inputChunks.push(segment)
+  inputBytes += segment.length
+}
+
+process.stdin.on("data", chunk => {
+  const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+  let start = 0
+  for (let index = 0; index < data.length; index++) {
+    if (data[index] !== 0x0a) continue
+    appendInput(data.subarray(start, index))
+    if (inputBytes > 0)
+      sendOrQueue(Buffer.concat(inputChunks, inputBytes).toString("utf8"))
+    inputChunks = []
+    inputBytes = 0
+    start = index + 1
+  }
+  appendInput(data.subarray(start))
 })
 
-input.on("close", () => {
+process.stdin.on("end", () => {
+  if (inputBytes > 0)
+    sendOrQueue(Buffer.concat(inputChunks, inputBytes).toString("utf8"))
+  inputChunks = []
+  inputBytes = 0
   closing = true
   if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
     socket.close(1000, "stdin closed")
 })
 
 socket.onopen = () => {
-  while (pending.length > 0) socket.send(pending.shift())
+  while (pending.length > 0) {
+    const next = pending.shift()
+    pendingBytes -= next.bytes
+    socket.send(next.line)
+  }
 }
 
 socket.onmessage = async event => {
   let message = event.data
+  const bytes = typeof message === "string" ? Buffer.byteLength(message)
+    : message instanceof Blob ? message.size
+      : message instanceof ArrayBuffer ? message.byteLength : lineLimit + 1
+  if (bytes > lineLimit) fail("response message exceeded the 16 MiB limit")
   if (message instanceof Blob) message = await message.text()
   else if (message instanceof ArrayBuffer) message = Buffer.from(message).toString("utf8")
   process.stdout.write(String(message) + "\n")

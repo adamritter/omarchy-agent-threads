@@ -2,6 +2,9 @@
 
 var maxMessageCharacters = 200000
 var maxToolCharacters = 30000
+var maxRetainedMessages = 400
+var maxRetainedCharacters = 8 * 1024 * 1024
+var maxAggregateFileParts = 32
 
 function text(value) {
   return String(value === undefined || value === null ? "" : value)
@@ -196,12 +199,13 @@ function itemMessage(item) {
 }
 
 function aggregateFileParts(parts, turnId) {
+  var sourceParts = Array.isArray(parts) ? parts.slice(-maxAggregateFileParts) : []
   var content = []
   var output = []
   var sourceIds = []
   var status = "completed"
-  for (var i = 0; i < parts.length; i++) {
-    var part = parts[i] || ({})
+  for (var i = 0; i < sourceParts.length; i++) {
+    var part = sourceParts[i] || ({})
     if (text(part.content).trim() !== "") content.push(text(part.content))
     if (text(part.output).trim() !== "") output.push(text(part.output))
     sourceIds.push(text(part.id))
@@ -217,12 +221,39 @@ function aggregateFileParts(parts, turnId) {
     kind: "file",
     turnId: text(turnId),
     sourceIds: sourceIds,
-    fileParts: parts
+    fileParts: sourceParts
   }
 }
 
+function retainedMessageSize(message) {
+  var value = message || ({})
+  var size = text(value.id).length + text(value.title).length
+    + text(value.content).length + text(value.output).length
+    + text(value.detail).length
+  var parts = Array.isArray(value.fileParts) ? value.fileParts : []
+  for (var i = 0; i < parts.length; i++)
+    size += text(parts[i] && parts[i].content).length
+      + text(parts[i] && parts[i].output).length
+  return size
+}
+
+function retainRecentMessages(messages) {
+  var entries = Array.isArray(messages) ? messages : []
+  var result = []
+  var characters = 0
+  for (var i = entries.length - 1;
+      i >= 0 && result.length < maxRetainedMessages; i--) {
+    var size = retainedMessageSize(entries[i])
+    if (result.length > 0 && characters + size > maxRetainedCharacters) break
+    result.push(entries[i])
+    characters += size
+  }
+  result.reverse()
+  return result
+}
+
 function copyMessages(messages) {
-  return Array.isArray(messages) ? messages.slice() : []
+  return retainRecentMessages(messages)
 }
 
 function upsertItem(messages, item, turnId) {
@@ -249,7 +280,7 @@ function upsertItem(messages, item, turnId) {
       return result
     }
     result.push(aggregateFileParts([next], turn))
-    return result
+    return retainRecentMessages(result)
   }
   for (var i = 0; i < result.length; i++) {
     if (text(result[i] && result[i].id) === next.id) {
@@ -265,7 +296,7 @@ function upsertItem(messages, item, turnId) {
     }
   }
   result.push(next)
-  return result
+  return retainRecentMessages(result)
 }
 
 function appendDelta(messages, itemId, delta, role, title) {
@@ -303,7 +334,7 @@ function appendDelta(messages, itemId, delta, role, title) {
     title: title || (role === "reasoning" ? "Reasoning" : "Codex"),
     status: "inProgress"
   })
-  return result
+  return retainRecentMessages(result)
 }
 
 function normalizeThread(thread) {
@@ -329,18 +360,22 @@ function optimisticUserMessage(messages, content) {
   var result = copyMessages(messages)
   result.push({ id: "local-user-" + Date.now(), role: "user",
     content: bounded(content, maxMessageCharacters), title: "You", status: "completed" })
-  return result
+  return retainRecentMessages(result)
 }
 
 function approvalSummary(method, params) {
   var values = params && typeof params === "object" ? params : ({})
   if (method === "item/commandExecution/requestApproval")
-    return { title: "Run command?", detail: text(values.command || values.reason), kind: "command" }
+    return { title: "Run command?",
+      detail: bounded(values.command || values.reason, maxToolCharacters), kind: "command" }
   if (method === "item/fileChange/requestApproval") {
     var paths = Object.keys(values.fileChanges || values.changes || ({}))
-    return { title: "Apply file changes?", detail: paths.join("\n") || text(values.reason), kind: "file" }
+    return { title: "Apply file changes?",
+      detail: bounded(paths.join("\n") || values.reason, maxToolCharacters), kind: "file" }
   }
   if (method === "item/permissions/requestApproval")
-    return { title: "Grant additional permissions?", detail: text(values.reason), kind: "permissions" }
-  return { title: "Codex needs input", detail: text(values.reason || method), kind: "unknown" }
+    return { title: "Grant additional permissions?",
+      detail: bounded(values.reason, maxToolCharacters), kind: "permissions" }
+  return { title: "Codex needs input",
+    detail: bounded(values.reason || method, maxToolCharacters), kind: "unknown" }
 }

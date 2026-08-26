@@ -132,15 +132,19 @@ TestCase {
 
   function test_buildsAgentChatResumeAndNewThreadCommands() {
     compare(ActionLogic.agentChatCommand(
-      "/plugin/bin/omarchy-agent-chat", "thread-1", "/work/app",
+      "/plugin/bin/stream-guard", "/plugin/bin/omarchy-agent-chat",
+      "thread-1", "/work/app",
       "gpt-test", "high", "fast"), [
-        "/plugin/bin/omarchy-agent-chat", "resume", "thread-1",
+        "/plugin/bin/stream-guard", "--", "/plugin/bin/omarchy-agent-chat",
+        "resume", "thread-1",
         "-C", "/work/app", "--model", "gpt-test", "--effort", "high",
         "--fast"
       ])
     compare(ActionLogic.agentChatCommand(
-      "/plugin/bin/omarchy-agent-chat", "", "/work/new", "", "", "default"), [
-        "/plugin/bin/omarchy-agent-chat", "-C", "/work/new", "--no-fast"
+      "/plugin/bin/stream-guard", "/plugin/bin/omarchy-agent-chat",
+      "", "/work/new", "", "", "default"), [
+        "/plugin/bin/stream-guard", "--", "/plugin/bin/omarchy-agent-chat",
+        "-C", "/work/new", "--no-fast"
       ])
   }
 }

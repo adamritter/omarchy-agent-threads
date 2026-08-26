@@ -51,6 +51,11 @@ prepare_remote_auth() {
     echo "Invalid Codex remote token environment variable" >&2
     exit 2
   }
+  remote_token_bytes="$(wc -c <"$remote_auth_file")"
+  [[ "$remote_token_bytes" =~ ^[0-9]+$ && "$remote_token_bytes" -le 65536 ]] || {
+    echo "Codex remote token file exceeded the 64 KiB limit" >&2
+    exit 2
+  }
   remote_token="$(<"$remote_auth_file")"
   export "${remote_auth_env}=${remote_token}"
 }

@@ -84,8 +84,9 @@ function nextChoiceId(currentValue, entries) {
   return ids[(currentIndex + 1) % ids.length]
 }
 
-function agentChatCommand(helperPath, threadId, cwd, model, effort, serviceTier) {
-  var command = [String(helperPath || "")]
+function agentChatCommand(streamGuardPath, helperPath, threadId, cwd, model,
+    effort, serviceTier) {
+  var command = [String(streamGuardPath || ""), "--", String(helperPath || "")]
   var id = String(threadId || "").trim()
   if (id !== "") command.push("resume", id)
   command.push("-C", String(cwd || ""))

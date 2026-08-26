@@ -31,6 +31,26 @@ grep -F -- 'vendor/mathjax/es5/tex-chtml.js' "$plugin_root/app/web/transcript.ht
 grep -F -- 'vendor/marked/marked.umd.js' "$plugin_root/app/web/transcript.html" >/dev/null
 test -s "$plugin_root/app/web/vendor/mathjax/es5/output/chtml/fonts/woff-v2/MathJax_Main-Regular.woff"
 test -s "$plugin_root/app/web/vendor/marked/LICENSE.md"
+grep -F -- 'Marked | 17.0.5' "$plugin_root/app/web/vendor/README.md" >/dev/null
+grep -F -- 'MathJax | 3.2.2' "$plugin_root/app/web/vendor/README.md" >/dev/null
+test "$(sha256sum "$plugin_root/app/web/vendor/marked/marked.umd.js" | cut -d' ' -f1)" \
+  = "0db7abc826b5ac76f6ed11951ae34074ba50438ce6ea8d52889203779e5cbbad"
+test "$(sha256sum "$plugin_root/app/web/vendor/mathjax/es5/tex-chtml.js" | cut -d' ' -f1)" \
+  = "0a6ded5abbce13331658dd239f34382abd06492c74b71b61e8caa8112ec55fa5"
+
+if command -v chromium >/dev/null; then
+  cp -a "$plugin_root/app/web/." "$test_root/web/"
+  cp "$plugin_root/tests/fixtures/web-security-test.js" \
+    "$test_root/web/security-test.js"
+  sed -i '/<script defer src="transcript.js"><\/script>/i\\  <script defer src="security-test.js"></script>' \
+    "$test_root/web/transcript.html"
+  chromium --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+    --disable-background-networking --no-first-run \
+    --user-data-dir="$test_root/chromium" --virtual-time-budget=3000 \
+    --dump-dom "file://$test_root/web/transcript.html" \
+    >"$test_root/transcript-dom" 2>"$test_root/chromium-error"
+  grep -F -- 'data-security-status="pass"' "$test_root/transcript-dom" >/dev/null
+fi
 
 shim="$(XDG_CACHE_HOME="$test_root/cache" "$plugin_root/bin/omarchy-agent-webengine-shim")"
 test -s "$shim"

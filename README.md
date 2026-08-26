@@ -110,6 +110,11 @@ sanitized before insertion, and MathJax CHTML renders inline `$...$` /
 webfont glyphs instead of images. Scripts, fonts, and the Marked parser are
 vendored under `app/web/vendor/`, so rendering does not require network access.
 The view blocks remote requests, persistent storage, plugins, and popup windows.
+App Server request and response lines are checked as raw bytes before QML sees
+them: stdin and stdout are limited to 16 MiB per line, stderr to 256 KiB, and a
+transport that exceeds a limit is terminated without forwarding the oversized
+line. Agent Chat retains at most 400 recent messages, 8 MiB of message text,
+and 32 file-change parts per aggregate entry.
 
 Qt WebEngine must initialize before QuickShell creates its application object,
 while QuickShell currently creates that object with an empty argument list. The
