@@ -305,6 +305,9 @@ Item {
       activeModel = String(resume.model || "")
       activeEffort = String(resume.reasoningEffort || "")
       messages = ConversationLogic.normalizeThread(thread)
+      var activity = ConversationLogic.threadActivity(thread)
+      busy = activity.busy
+      activeTurnId = activity.turnId
       threadChanged(activeThreadId)
       sessionReady()
       return
@@ -360,7 +363,7 @@ Item {
       return
     }
     if (method === "item/started" || method === "item/completed") {
-      messages = ConversationLogic.upsertItem(messages, params.item)
+      messages = ConversationLogic.upsertItem(messages, params.item, params.turnId)
       return
     }
     if (method === "item/agentMessage/delta") {
@@ -386,14 +389,14 @@ Item {
         type: "fileChange",
         changes: params.changes,
         status: "inProgress"
-      })
+      }, params.turnId)
       return
     }
     if (method === "turn/completed") {
       var completed = params.turn || ({})
       var items = Array.isArray(completed.items) ? completed.items : []
       for (var i = 0; i < items.length; i++)
-        messages = ConversationLogic.upsertItem(messages, items[i])
+        messages = ConversationLogic.upsertItem(messages, items[i], completed.id)
       activeTurnId = ""
       busy = false
       if (completed.error)

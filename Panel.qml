@@ -10,6 +10,7 @@ import "services" as Services
 import "ui" as Ui
 import "logic/ActionLogic.js" as ActionLogic
 import "logic/NavigationLogic.js" as NavigationLogic
+import "logic/PointerFocusLogic.js" as PointerFocusLogic
 
 Panel {
   id: root
@@ -113,6 +114,9 @@ Panel {
     { keys: "y", description: "Archive selected thread" },
     { keys: "R", description: "Add remote host (SSH or App Server)" },
     { keys: "s", description: "Toggle this-workspace or global sidebar" },
+    { keys: "a", description: service.threadFrontend === "agent-chat"
+        ? "Toggle how Codex threads open · Agent Chat is on"
+        : "Toggle how Codex threads open · Agent Chat is off (terminal)" },
     { keys: "Super+Ctrl+F", description: service.fastMode
         ? "Toggle Fast responses · Fast is on"
         : "Toggle Fast responses · Fast is off" },
@@ -742,16 +746,29 @@ Panel {
   }
 
   function summonSidebarFocus() {
+    if (keyboardFocusRequested) {
+      escapeSidebarFocus()
+      return
+    }
     if (focusWorkflowPending) return
     focusWorkflowPending = true
     pointerHoverSuppressed = true
-    pointerWarpGuard.restart()
     cursorReturnX = -1
     cursorReturnY = -1
     requestOpen()
     if (fullscreenSuppressed) {
       focusWorkflowPending = false
       return
+    }
+    cursorPositionProbe.running = true
+  }
+
+  function completeSidebarSummon(cursorText) {
+    if (!focusWorkflowPending) return
+    var returnPoint = PointerFocusLogic.cursorPoint(cursorText)
+    if (returnPoint.valid) {
+      cursorReturnX = returnPoint.x
+      cursorReturnY = returnPoint.y
     }
     var point
     try { point = JSON.parse(sidebarActions.activeThreadCursorPoint()) }
@@ -766,6 +783,7 @@ Panel {
       + Number(point.x || sidebarContentWidth / 2))
     var pointY = Math.round(Number(targetScreen ? targetScreen.y : 0)
       + layerTop + Number(point.y || 1))
+    pointerWarpGuard.restart()
     Hyprland.dispatch("hl.dsp.cursor.move({ x = " + pointX
       + ", y = " + pointY + " })")
     Qt.callLater(function() {
@@ -1010,6 +1028,15 @@ Panel {
     repeat: true
     triggeredOnStart: true
     onTriggered: root.queryFullscreenState()
+  }
+
+  Process {
+    id: cursorPositionProbe
+    command: ["hyprctl", "cursorpos", "-j"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.completeSidebarSummon(text)
+    }
   }
 
   Process {
@@ -1425,6 +1452,10 @@ Panel {
           root.toggleSidebarScope()
           return
         }
+        if (text === "a") {
+          root.service.toggleThreadFrontend()
+          return
+        }
         if (text === "n" || text === "N") root.sidebarActions.newSelectedThread()
       }
 
@@ -1440,7 +1471,7 @@ Panel {
           Text {
             id: headerTitle
             anchors.left: parent.left
-            anchors.right: threadFrontendButton.left
+            anchors.right: sidebarScopeButton.left
             anchors.rightMargin: Style.space(8)
             height: parent.height
             text: root.remoteSetupOpen ? "ADD REMOTE"
@@ -1465,28 +1496,6 @@ Panel {
                 else providerMenu.open()
               }
             }
-          }
-
-          PanelActionButton {
-            id: threadFrontendButton
-            visible: root.activeProvider === "codex"
-              && !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
-            anchors.right: sidebarScopeButton.left
-            anchors.rightMargin: Style.space(4)
-            anchors.top: parent.top
-            anchors.topMargin: -Style.space(6)
-            width: visible ? implicitWidth : 0
-            size: Style.space(24)
-            iconText: root.service.threadFrontend === "agent-chat" ? "󰚩" : ""
-            tooltipText: root.service.threadFrontend === "agent-chat"
-              ? "Thread opener: Agent Chat · click to use terminal"
-              : "Thread opener: terminal · click to use Agent Chat"
-            foreground: root.service.threadFrontend === "agent-chat"
-              ? Color.accent : root.dim
-            hoverColor: Color.accent
-            fontFamily: root.fontFamily
-            fontSize: Style.font.body
-            onClicked: root.service.toggleThreadFrontend()
           }
 
           PanelActionButton {

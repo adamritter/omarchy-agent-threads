@@ -124,12 +124,53 @@ pre code { padding: 0; background: transparent; white-space: pre; }
 
 .diff-view {
   margin: 0;
-  padding: 8px 0 12px;
+  padding: 10px;
   border: 0;
   border-top: 1px solid #343434;
   border-radius: 0;
   color: #c9d1d9;
   background: #0d1117;
+}
+
+.diff-file-card {
+  margin: 0 0 10px;
+  overflow: hidden;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
+}
+
+.diff-file-card:last-child { margin-bottom: 0; }
+
+.diff-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #30363d;
+  background: #161b22;
+}
+
+.diff-card-path {
+  min-width: 0;
+  overflow: hidden;
+  color: #e6edf3;
+  font: 600 .82rem "JetBrains Mono", ui-monospace, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-card-stats { flex: none; font: 650 .78rem ui-monospace, monospace; }
+.diff-stat-add { color: #3fb950; }
+.diff-stat-delete { color: #f85149; }
+
+.diff-lines {
+  margin: 0;
+  padding: 8px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: .84rem;
   line-height: 1.55;
@@ -148,6 +189,19 @@ pre code { padding: 0; background: transparent; white-space: pre; }
 .diff-deletion { color: #ffdcd7; background: #3c1e23; }
 .diff-meta { color: #d2a8ff; }
 .diff-context { color: #b1bac4; }
+
+.patch-output {
+  margin: 0;
+  padding: 10px 14px;
+  border: 0;
+  border-top: 1px solid #343434;
+  border-radius: 0;
+  color: #b1bac4;
+  background: #111820;
+  white-space: pre-wrap;
+}
+
+.patch-output.error { color: #ffb4ab; background: #211416; }
 
 table { width: 100%; margin: 1em 0; border-collapse: collapse; }
 th, td { padding: 8px 10px; border: 1px solid #444; text-align: left; }

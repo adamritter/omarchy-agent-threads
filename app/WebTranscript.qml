@@ -6,6 +6,7 @@ Item {
 
   required property var messages
   property bool busy: false
+  property bool loading: false
   property string conversationTitle: "New conversation"
   property string conversationDetail: ""
   property bool pageReady: false
@@ -20,6 +21,7 @@ Item {
     var state = {
       messages: Array.isArray(messages) ? messages : [],
       busy: busy,
+      loading: loading,
       header: {
         title: conversationTitle,
         detail: conversationDetail
@@ -108,6 +110,7 @@ Item {
 
   onMessagesChanged: scheduleSync()
   onBusyChanged: scheduleSync()
+  onLoadingChanged: scheduleSync()
   onConversationTitleChanged: scheduleSync()
   onConversationDetailChanged: scheduleSync()
   Component.onCompleted: scheduleSync()

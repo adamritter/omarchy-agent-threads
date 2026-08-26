@@ -239,6 +239,11 @@ FloatingWindow {
     onActivated: transcriptView.scrollEdge(1)
   }
 
+  Shortcut {
+    sequence: "Escape"
+    onActivated: composer.forceActiveFocus()
+  }
+
   ColumnLayout {
     anchors.fill: parent
     spacing: 0
@@ -252,6 +257,7 @@ FloatingWindow {
         anchors.fill: parent
         messages: conversation.messages
         busy: conversation.busy
+        loading: conversation.loading || !conversation.ready
         conversationTitle: conversation.activeThreadId === ""
           ? "New conversation" : "Thread " + conversation.activeThreadId.slice(0, 12)
         conversationDetail: root.workingDirectory + "  ·  "
@@ -435,6 +441,32 @@ FloatingWindow {
           }
 
           Button {
+            id: approveForMeButton
+            Layout.preferredWidth: 122
+            Layout.preferredHeight: 34
+            text: "✓  Approve for me"
+            font.pixelSize: 12
+            ToolTip.visible: hovered
+            ToolTip.text: "Approve for me: "
+              + (root.approvalsReviewer === "auto_review" ? "On" : "Off")
+            onClicked: root.approvalsReviewer === "auto_review"
+              ? root.applyApproval("", "user")
+              : root.applyApproval("on-request", "auto_review")
+            background: Rectangle {
+              radius: 10
+              color: root.approvalsReviewer === "auto_review" ? root.accent
+                : (approveForMeButton.hovered ? root.hover : "transparent")
+            }
+            contentItem: Label {
+              text: approveForMeButton.text
+              color: root.approvalsReviewer === "auto_review" ? "white" : root.muted
+              horizontalAlignment: Text.AlignHCenter
+              verticalAlignment: Text.AlignVCenter
+              font: approveForMeButton.font
+            }
+          }
+
+          Button {
             id: optionsButton
             Layout.preferredWidth: 34
             Layout.preferredHeight: 34
@@ -490,12 +522,6 @@ FloatingWindow {
                 checked: root.approvalsReviewer !== "auto_review"
                   && root.approvalPolicy === "never"
                 onTriggered: root.applyApproval("never", "user")
-              }
-              MenuItem {
-                text: "Auto review"
-                checkable: true
-                checked: root.approvalsReviewer === "auto_review"
-                onTriggered: root.applyApproval("on-request", "auto_review")
               }
             }
           }

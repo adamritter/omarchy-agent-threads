@@ -11,11 +11,13 @@ blocked_id="22222222-2222-2222-2222-222222222222"
 done_id="33333333-3333-3333-3333-333333333333"
 working_id="44444444-4444-4444-4444-444444444444"
 auto_review_id="55555555-5555-5555-5555-555555555555"
+stale_id="66666666-6666-6666-6666-666666666666"
 busy_rollout="$test_root/rollout-test-$busy_id.jsonl"
 blocked_rollout="$test_root/rollout-test-$blocked_id.jsonl"
 done_rollout="$test_root/rollout-test-$done_id.jsonl"
 working_rollout="$test_root/rollout-test-$working_id.jsonl"
 auto_review_rollout="$test_root/rollout-test-$auto_review_id.jsonl"
+stale_rollout="$test_root/rollout-test-$stale_id.jsonl"
 
 printf '%s\n' '{"type":"event_msg","payload":{"type":"task_started"}}' > "$busy_rollout"
 printf '%s\n' \
@@ -39,9 +41,13 @@ printf '%s\n' \
   '{"type":"event_msg","payload":{"type":"task_started"}}' \
   '{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"{\"sandbox_permissions\":\"require_escalated\"}"}}' \
   > "$auto_review_rollout"
+printf '%s\n' '{"type":"event_msg","payload":{"type":"task_started"}}' > "$stale_rollout"
 
 actual="$(
   OMARCHY_CODEX_LIVE_ROLLOUTS="$(printf '%s\n%s\n%s\n%s\n%s' \
+    "$busy_rollout" "$blocked_rollout" "$done_rollout" "$working_rollout" \
+    "$auto_review_rollout" "$stale_rollout")" \
+  OMARCHY_CODEX_ACTIVE_ROLLOUTS="$(printf '%s\n%s\n%s\n%s\n%s' \
     "$busy_rollout" "$blocked_rollout" "$done_rollout" "$working_rollout" \
     "$auto_review_rollout")" \
     "$plugin_dir/bin/omarchy-codex-thread-statuses" \
@@ -49,10 +55,11 @@ actual="$(
       "$blocked_id" "$blocked_rollout" \
       "$done_id" "$done_rollout" \
       "$working_id" "$working_rollout" \
-      "$auto_review_id" "$auto_review_rollout"
+      "$auto_review_id" "$auto_review_rollout" \
+      "$stale_id" "$stale_rollout"
 )"
 
-expected="{\"$busy_id\":\"busy\",\"$blocked_id\":\"blocked\",\"$done_id\":\"done\",\"$working_id\":\"busy\",\"$auto_review_id\":\"busy\"}"
+expected="{\"$busy_id\":\"busy\",\"$blocked_id\":\"blocked\",\"$done_id\":\"done\",\"$working_id\":\"busy\",\"$auto_review_id\":\"busy\",\"$stale_id\":\"done\"}"
 if [[ "$actual" != "$expected" ]]; then
   printf 'Expected %s, got %s\n' "$expected" "$actual" >&2
   exit 1

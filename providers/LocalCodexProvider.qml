@@ -33,8 +33,8 @@ Item {
       String(cwdOverride || controller.projectPathForThread(thread)
         || controller.backendHomePath),
       "", "", "",
-      controller.selectedModel,
-      controller.selectedEffort,
+      controller.effectiveModel(),
+      controller.effectiveEffort(),
       controller.codexServiceTier
     ]
     openProcess.running = true
@@ -57,7 +57,7 @@ Item {
     pendingNewThreadAttempts = 20
     newProjectProcess.command = [
       newProjectHelperPath, path, "", "", "",
-      controller.selectedModel, controller.selectedEffort,
+      controller.effectiveModel(), controller.effectiveEffort(),
       controller.codexServiceTier
     ]
     newProjectProcess.running = true

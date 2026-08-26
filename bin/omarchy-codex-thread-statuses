@@ -2,6 +2,7 @@
 set -euo pipefail
 
 declare -A live_rollouts=()
+declare -A active_rollouts=()
 declare -A last_events=()
 declare -A last_approval_events=()
 declare -A last_approval_reviewers=()
@@ -24,6 +25,16 @@ if [[ -n "${OMARCHY_CODEX_LIVE_ROLLOUTS:-}" ]]; then
     [[ -n "$rollout_path" ]] || continue
     live_rollouts["$rollout_path"]=1
   done <<< "$OMARCHY_CODEX_LIVE_ROLLOUTS"
+  if [[ -n "${OMARCHY_CODEX_ACTIVE_ROLLOUTS+x}" ]]; then
+    while IFS= read -r rollout_path; do
+      [[ -n "$rollout_path" ]] || continue
+      active_rollouts["$rollout_path"]=1
+    done <<< "${OMARCHY_CODEX_ACTIVE_ROLLOUTS:-}"
+  else
+    for rollout_path in "${!live_rollouts[@]}"; do
+      active_rollouts["$rollout_path"]=1
+    done
+  fi
 else
   while read -r codex_pid; do
     [[ "$codex_pid" =~ ^[0-9]+$ && -d "/proc/${codex_pid}/fd" ]] || continue
@@ -77,6 +88,14 @@ for fd_dir in "${codex_fd_dirs[@]}"; do
 
   cmdline="$(tr '\0' ' ' < "/proc/${codex_pid}/cmdline" 2>/dev/null || true)"
   [[ "$cmdline" != *" --remote "* ]] || continue
+  while IFS= read -r rollout_path; do
+    [[ "$rollout_path" == */rollout-*.jsonl ]] || continue
+    # App Server keeps resumed rollouts open even when their last turn was
+    # interrupted. Only treat events written after this Codex process started
+    # as current activity.
+    [[ "$rollout_path" -nt "/proc/${codex_pid}" ]] \
+      && active_rollouts["$rollout_path"]=1
+  done < <(find "$fd_dir" -maxdepth 1 -type l -printf '%l\n' 2>/dev/null || true)
   client_address="$(client_address_for_process "$codex_pid" || true)"
   [[ -n "$client_address" ]] || continue
 
@@ -91,7 +110,7 @@ done
 # by Codex. This keeps refresh cost proportional to live sessions instead of
 # repeatedly reading the entire visible history.
 for rollout_path in "${rollout_paths[@]}"; do
-  if [[ "${live_rollouts[$rollout_path]-}" == 1 ]]; then
+  if [[ "${active_rollouts[$rollout_path]-}" == 1 ]]; then
     live_rollouts_to_scan+=("$rollout_path")
   fi
 done
@@ -126,13 +145,13 @@ for (( i = 0; i < ${#thread_ids[@]}; i++ )); do
   status="done"
 
   if [[ "${last_events[$rollout_path]-}" == *'"task_started"'* \
-      && "${live_rollouts[$rollout_path]-}" == 1 ]]; then
+      && "${active_rollouts[$rollout_path]-}" == 1 ]]; then
     status="busy"
   fi
   if [[ "${last_approval_events[$rollout_path]-}" == *'"custom_tool_call"'* \
       && "${last_approval_reviewers[$rollout_path]-}" != *'"auto_review"'* \
       && "${last_approval_reviewers[$rollout_path]-}" != *'"guardian_subagent"'* \
-      && "${live_rollouts[$rollout_path]-}" == 1 ]]; then
+      && "${active_rollouts[$rollout_path]-}" == 1 ]]; then
     status="blocked"
   fi
 

@@ -30,8 +30,68 @@ function inputText(inputs) {
   return parts.join("\n\n")
 }
 
+function commandText(command) {
+  if (!Array.isArray(command)) return text(command)
+  var parts = []
+  for (var i = 0; i < command.length; i++) parts.push(text(command[i]))
+  return parts.join("\n")
+}
+
+function embeddedGitPatches(command) {
+  var source = commandText(command).replace(/'\\''/g, "'")
+  var pattern = /(?:^|\n)[^\n]*\bgit\s+apply\b[^\n]*<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n([\s\S]*?)\n\2['"]*[ \t]*(?=\n|$)/g
+  var patches = []
+  var match
+  while ((match = pattern.exec(source)) !== null) {
+    var patch = text(match[3]).trim()
+    if (/^(?:diff --git |--- )/m.test(patch)) patches.push(patch)
+  }
+  if (patches.length === 0 && /\bgit\s+apply\b/.test(source)) {
+    var lines = source.split("\n")
+    var collected = []
+    for (var i = 0; i < lines.length; i++) {
+      if (collected.length === 0 && /^diff --git /.test(lines[i])) collected.push(lines[i])
+      else if (collected.length > 0 && /^[A-Z_][A-Z0-9_]*['"]*$/.test(lines[i])) break
+      else if (collected.length > 0) collected.push(lines[i])
+    }
+    if (collected.length > 0) patches.push(collected.join("\n").trim())
+  }
+  return patches.join("\n\n")
+}
+
+function outputGitPatch(output) {
+  var value = text(output).replace(/\r/g, "").trim()
+  return /^(?:diff --git |--- )/m.test(value) && /^\+\+\+ /m.test(value) ? value : ""
+}
+
+function opaqueGitPatchSummary(command, output) {
+  var source = commandText(command)
+  if (!/\bgit\s+apply\b/.test(source)) return ""
+  var paths = []
+  var seen = ({})
+  var addPath = function(value) {
+    var path = text(value).trim()
+    if (path === "" || seen[path]) return
+    seen[path] = true
+    paths.push(path)
+  }
+  var labelPattern = /--label\s+[ab]\/([^\s'";]+)/g
+  var labelMatch
+  while ((labelMatch = labelPattern.exec(source)) !== null) addPath(labelMatch[1])
+  var statLines = text(output).replace(/\r/g, "").split("\n")
+  for (var i = 0; i < statLines.length; i++) {
+    var statMatch = statLines[i].match(/^\s*(.+?)\s+\|\s+\d+/)
+    if (statMatch) addPath(statMatch[1])
+  }
+  var summaries = []
+  for (var pathIndex = 0; pathIndex < paths.length; pathIndex++)
+    summaries.push("UPDATE  " + paths[pathIndex]
+      + "\n[Diff unavailable: applied from a temporary patch file]")
+  return summaries.join("\n\n")
+}
+
 function commandTitle(item) {
-  var command = text(item && item.command).trim()
+  var command = commandText(item && item.command).trim()
   if (command === "") return "Command"
   var firstLine = command.split("\n")[0]
   return firstLine.length > 96 ? firstLine.slice(0, 93) + "..." : firstLine
@@ -92,6 +152,18 @@ function itemMessage(item) {
   if (item.type === "commandExecution") {
     var output = item.aggregatedOutput === null || item.aggregatedOutput === undefined
       ? "" : text(item.aggregatedOutput)
+    var patches = embeddedGitPatches(item.command)
+    if (patches === "" && /\bgit\s+apply\b/.test(commandText(item.command))) {
+      patches = outputGitPatch(output)
+      if (patches !== "") output = ""
+      else patches = opaqueGitPatchSummary(item.command, output)
+    }
+    if (patches !== "") {
+      return { id: id, role: "tool", content: bounded(patches, maxToolCharacters),
+        output: bounded(output, maxToolCharacters),
+        title: status === "failed" ? "Patch failed" : "File changes",
+        status: status, kind: "file" }
+    }
     return { id: id, role: "tool", content: bounded(output, maxToolCharacters),
       title: commandTitle(item), status: status, detail: text(item.command), kind: "command" }
   }
@@ -123,15 +195,62 @@ function itemMessage(item) {
   return null
 }
 
+function aggregateFileParts(parts, turnId) {
+  var content = []
+  var output = []
+  var sourceIds = []
+  var status = "completed"
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i] || ({})
+    if (text(part.content).trim() !== "") content.push(text(part.content))
+    if (text(part.output).trim() !== "") output.push(text(part.output))
+    sourceIds.push(text(part.id))
+    if (part.status === "inProgress") status = "inProgress"
+  }
+  return {
+    id: "turn-file-changes-" + text(turnId),
+    role: "tool",
+    content: bounded(content.join("\n\n"), maxToolCharacters),
+    output: bounded(output.join("\n\n"), maxToolCharacters),
+    title: "File changes",
+    status: status,
+    kind: "file",
+    turnId: text(turnId),
+    sourceIds: sourceIds,
+    fileParts: parts
+  }
+}
+
 function copyMessages(messages) {
   return Array.isArray(messages) ? messages.slice() : []
 }
 
-function upsertItem(messages, item) {
+function upsertItem(messages, item, turnId) {
   var result = copyMessages(messages)
   var next = itemMessage(item)
   if (!next) return result
   if (next.id === "") next.id = "item-" + result.length + "-" + Date.now()
+  var turn = text(turnId)
+  if (next.kind === "file" && next.status !== "failed" && turn !== "") {
+    var aggregateId = "turn-file-changes-" + turn
+    for (var aggregateIndex = 0; aggregateIndex < result.length; aggregateIndex++) {
+      if (text(result[aggregateIndex] && result[aggregateIndex].id) !== aggregateId) continue
+      var existingParts = Array.isArray(result[aggregateIndex].fileParts)
+        ? result[aggregateIndex].fileParts.slice() : []
+      var replaced = false
+      for (var partIndex = 0; partIndex < existingParts.length; partIndex++) {
+        if (text(existingParts[partIndex] && existingParts[partIndex].id) !== next.id) continue
+        existingParts[partIndex] = next
+        replaced = true
+        break
+      }
+      if (!replaced) existingParts.push(next)
+      result[aggregateIndex] = aggregateFileParts(existingParts, turn)
+      return result
+    }
+    result.push(aggregateFileParts([next], turn))
+    return result
+  }
   for (var i = 0; i < result.length; i++) {
     if (text(result[i] && result[i].id) === next.id) {
       result[i] = Object.assign({}, result[i], next)
@@ -155,6 +274,20 @@ function appendDelta(messages, itemId, delta, role, title) {
   var addition = text(delta)
   if (addition === "") return result
   for (var i = 0; i < result.length; i++) {
+    var sourceIds = Array.isArray(result[i] && result[i].sourceIds)
+      ? result[i].sourceIds : []
+    if (sourceIds.indexOf(wanted) >= 0) {
+      var parts = Array.isArray(result[i].fileParts) ? result[i].fileParts.slice() : []
+      for (var partIndex = 0; partIndex < parts.length; partIndex++) {
+        if (text(parts[partIndex] && parts[partIndex].id) !== wanted) continue
+        parts[partIndex] = Object.assign({}, parts[partIndex], {
+          output: bounded(text(parts[partIndex].output) + addition, maxToolCharacters),
+          status: "inProgress"
+        })
+        result[i] = aggregateFileParts(parts, result[i].turnId)
+        return result
+      }
+    }
     if (text(result[i] && result[i].id) !== wanted) continue
     result[i] = Object.assign({}, result[i], {
       content: bounded(text(result[i].content) + addition,
@@ -178,9 +311,18 @@ function normalizeThread(thread) {
   var turns = thread && Array.isArray(thread.turns) ? thread.turns : []
   for (var i = 0; i < turns.length; i++) {
     var items = turns[i] && Array.isArray(turns[i].items) ? turns[i].items : []
-    for (var j = 0; j < items.length; j++) result = upsertItem(result, items[j])
+    var turnId = text(turns[i] && turns[i].id)
+    for (var j = 0; j < items.length; j++) result = upsertItem(result, items[j], turnId)
   }
   return result
+}
+
+function threadActivity(thread) {
+  var turns = thread && Array.isArray(thread.turns) ? thread.turns : []
+  if (turns.length === 0) return { busy: false, turnId: "" }
+  var last = turns[turns.length - 1] || ({})
+  var busy = text(last.status) === "inProgress"
+  return { busy: busy, turnId: busy ? text(last.id) : "" }
 }
 
 function optimisticUserMessage(messages, content) {

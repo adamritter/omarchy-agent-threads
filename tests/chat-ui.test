@@ -8,6 +8,7 @@ window="$plugin_root/app/ChatWindow.qml"
 grep -F -- 'import Quickshell.Io' "$window" >/dev/null
 grep -F -- 'target: "agentChat"' "$window" >/dev/null
 grep -F -- 'WebTranscript {' "$window" >/dev/null
+grep -F -- 'loading: conversation.loading || !conversation.ready' "$window" >/dev/null
 grep -F -- 'conversationTitle: conversation.activeThreadId' "$window" >/dev/null
 grep -F -- 'conversationDetail: root.workingDirectory' "$window" >/dev/null
 grep -F -- 'sequence: "PgUp"' "$window" >/dev/null
@@ -18,6 +19,8 @@ grep -F -- 'sequence: "Ctrl+Home"' "$window" >/dev/null
 grep -F -- 'sequence: "Ctrl+End"' "$window" >/dev/null
 grep -F -- 'transcriptView.scrollEdge(-1)' "$window" >/dev/null
 grep -F -- 'transcriptView.scrollEdge(1)' "$window" >/dev/null
+grep -F -- 'sequence: "Escape"' "$window" >/dev/null
+grep -F -- 'onActivated: composer.forceActiveFocus()' "$window" >/dev/null
 grep -F -- 'sequence: "Meta+Ctrl+F"' "$window" >/dev/null
 grep -F -- 'function fast(mode: string): string' "$window" >/dev/null
 grep -F -- 'sequence: "Meta+Ctrl+E"' "$window" >/dev/null
@@ -26,6 +29,8 @@ grep -F -- 'id: composerToolbar' "$window" >/dev/null
 grep -F -- 'height: Math.max(88, Math.min(204, composer.implicitHeight + 54))' "$window" >/dev/null
 grep -F -- 'id: fastButton' "$window" >/dev/null
 grep -F -- 'text: "⚡︎"' "$window" >/dev/null
+grep -F -- 'id: approveForMeButton' "$window" >/dev/null
+grep -F -- 'text: "✓  Approve for me"' "$window" >/dev/null
 grep -F -- 'id: optionsMenu' "$window" >/dev/null
 grep -F -- 'conversation.configure(next)' "$window" >/dev/null
 

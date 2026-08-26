@@ -293,6 +293,18 @@ ShellRoot {
         testRoot.panelInstance.dispatchTestInput("close")
         if (!testRoot.check(!testRoot.panelInstance.helpOpen,
           "close input did not close help")) return
+        testRoot.panelInstance.dispatchTestInput("text", "a")
+        if (!testRoot.check(fakeService.threadFrontend === "agent-chat",
+          "a did not enable the Agent Chat thread opener")) return
+        if (!testRoot.check(testRoot.panelInstance.helpItems[13].description
+            === "Toggle how Codex threads open · Agent Chat is on",
+          "help did not show the enabled Agent Chat state")) return
+        testRoot.panelInstance.dispatchTestInput("text", "a")
+        if (!testRoot.check(fakeService.threadFrontend === "terminal",
+          "a did not restore the terminal thread opener")) return
+        if (!testRoot.check(testRoot.panelInstance.helpItems[13].description
+            === "Toggle how Codex threads open · Agent Chat is off (terminal)",
+          "help did not show the disabled Agent Chat state")) return
         testRoot.panelInstance.dispatchTestInput("text", "/")
         if (!testRoot.check(testRoot.panelInstance.searchOpen,
           "search key did not open search")) return

@@ -10,6 +10,9 @@ node --check "$plugin_root/app/web/transcript.js"
 grep -F -- 'MathJax.tex2chtmlPromise' "$plugin_root/app/web/transcript.js" >/dev/null
 grep -F -- 'MathJax.chtmlStylesheet()' "$plugin_root/app/web/transcript.js" >/dev/null
 grep -F -- 'conversationTitle.textContent' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'const loading = Boolean(state && state.loading)' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'messages.length > 0 || busy || loading' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- 'onLoadingChanged: scheduleSync()' "$plugin_root/app/WebTranscript.qml" >/dev/null
 grep -F -- 'id="conversation-header"' "$plugin_root/app/web/transcript.html" >/dev/null
 grep -F -- '#conversation-header' "$plugin_root/app/web/transcript.css" >/dev/null
 grep -F -- 'function diffLineClass(line)' "$plugin_root/app/web/transcript.js" >/dev/null
@@ -18,6 +21,11 @@ grep -F -- 'function scrollEdge(edge)' "$plugin_root/app/web/transcript.js" >/de
 grep -F -- 'window.AgentChat = { setState, scrollPage, scrollEdge }' "$plugin_root/app/web/transcript.js" >/dev/null
 grep -F -- '.diff-addition' "$plugin_root/app/web/transcript.css" >/dev/null
 grep -F -- '.diff-deletion' "$plugin_root/app/web/transcript.css" >/dev/null
+grep -F -- 'message.output' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- '.patch-output' "$plugin_root/app/web/transcript.css" >/dev/null
+grep -F -- 'diff-file-card' "$plugin_root/app/web/transcript.js" >/dev/null
+grep -F -- '.diff-card-stats' "$plugin_root/app/web/transcript.css" >/dev/null
+grep -F -- 'fileGroupsByPath' "$plugin_root/app/web/transcript.js" >/dev/null
 grep -F -- 'connect-src '\''none' "$plugin_root/app/web/transcript.html" >/dev/null
 grep -F -- 'vendor/mathjax/es5/tex-chtml.js' "$plugin_root/app/web/transcript.html" >/dev/null
 grep -F -- 'vendor/marked/marked.umd.js' "$plugin_root/app/web/transcript.html" >/dev/null
