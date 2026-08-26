@@ -4,6 +4,7 @@ set -euo pipefail
 declare -A live_rollouts=()
 declare -A last_events=()
 declare -A last_approval_events=()
+declare -A last_approval_reviewers=()
 declare -a thread_ids=()
 declare -a rollout_paths=()
 declare -a codex_fd_dirs=()
@@ -97,18 +98,22 @@ done
 
 # One rg process scans the live rollouts. Lifecycle and approval events are
 # tracked separately so a completed tool call does not hide a running turn.
+# Turn contexts identify whether an approval is routed to a person or an
+# automatic reviewer.
 if (( ${#live_rollouts_to_scan[@]} > 0 )); then
   while IFS= read -r match_line; do
     rollout_path="${match_line%%:*}"
     event="${match_line#*:}"
-    if [[ "$event" == *'"custom_tool_call"'* \
+    if [[ "$event" == '"approvals_reviewer":'* ]]; then
+      last_approval_reviewers["$rollout_path"]="$event"
+    elif [[ "$event" == *'"custom_tool_call"'* \
         || "$event" == *'"custom_tool_call_output"'* ]]; then
       last_approval_events["$rollout_path"]="$event"
     else
       last_events["$rollout_path"]="$event"
     fi
   done < <(rg --with-filename -o -P \
-    '"type":"(task_started|task_complete|turn_aborted|custom_tool_call_output)"|"type":"custom_tool_call"(?=.*\\"sandbox_permissions\\":\\"require_escalated\\")' \
+    '"type":"(task_started|task_complete|turn_aborted|custom_tool_call_output)"|"type":"custom_tool_call"(?=.*\\"sandbox_permissions\\":\\"require_escalated\\")|"approvals_reviewer":"(user|auto_review|guardian_subagent)"' \
     "${live_rollouts_to_scan[@]}" 2>/dev/null || true)
 fi
 
@@ -125,6 +130,8 @@ for (( i = 0; i < ${#thread_ids[@]}; i++ )); do
     status="busy"
   fi
   if [[ "${last_approval_events[$rollout_path]-}" == *'"custom_tool_call"'* \
+      && "${last_approval_reviewers[$rollout_path]-}" != *'"auto_review"'* \
+      && "${last_approval_reviewers[$rollout_path]-}" != *'"guardian_subagent"'* \
       && "${live_rollouts[$rollout_path]-}" == 1 ]]; then
     status="blocked"
   fi
