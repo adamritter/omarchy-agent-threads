@@ -103,4 +103,23 @@ TestCase {
     }, null)
     compare(appServer.error, "ssh-required")
   }
+
+  function test_defaultsThreadFrontendToTerminal() {
+    compare(ActionLogic.normalizeThreadFrontend(""), "terminal")
+    compare(ActionLogic.normalizeThreadFrontend("unknown"), "terminal")
+    compare(ActionLogic.normalizeThreadFrontend("agent-chat"), "agent-chat")
+  }
+
+  function test_buildsAgentChatResumeAndNewThreadCommands() {
+    compare(ActionLogic.agentChatCommand(
+      "/plugin/bin/omarchy-agent-chat", "thread-1", "/work/app",
+      "gpt-test", "high"), [
+        "/plugin/bin/omarchy-agent-chat", "resume", "thread-1",
+        "-C", "/work/app", "--model", "gpt-test", "--effort", "high"
+      ])
+    compare(ActionLogic.agentChatCommand(
+      "/plugin/bin/omarchy-agent-chat", "", "/work/new", "", ""), [
+        "/plugin/bin/omarchy-agent-chat", "-C", "/work/new"
+      ])
+  }
 }

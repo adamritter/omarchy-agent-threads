@@ -21,6 +21,8 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'Ui.CodexThreadList' "$panel_source"
   grep -q 'id: searchButton' "$panel_source"
   grep -q 'onClicked: root.startSearch()' "$panel_source"
+  grep -q 'id: threadFrontendButton' "$panel_source"
+  grep -q 'root.service.toggleThreadFrontend()' "$panel_source"
   grep -q 'JSON.parse(sidebarActions.activeThreadCursorPoint())' "$panel_source"
   grep -q 'pointerHoverSuppressed = true' "$panel_source"
   grep -q 'name === "activespecial"' "$panel_source"

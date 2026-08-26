@@ -57,6 +57,7 @@ ShellRoot {
     property bool sidebarSettingsLoaded: false
     property bool sidebarOpen: false
     property string sidebarScope: "global"
+    property string threadFrontend: "terminal"
     property int openedThreadCount: 0
     property int newProjectThreadCount: 0
     property int pinnedThreadCount: 0
@@ -93,6 +94,13 @@ ShellRoot {
     function setCollapsedRemotes(value) { collapsedRemotes = value }
     function setPinnedSections(value) { pinnedSections = value }
     function setSelectedProvider(value) { selectedProvider = value }
+    function setThreadFrontend(value) {
+      threadFrontend = value === "agent-chat" ? "agent-chat" : "terminal"
+    }
+    function toggleThreadFrontend() {
+      setThreadFrontend(threadFrontend === "agent-chat" ? "terminal" : "agent-chat")
+      return threadFrontend
+    }
     function setSidebarOpenOnWorkspace(workspaceId, opened) {}
     function setSidebarScope(scope, workspaceId, opened) { sidebarScope = scope }
     function openThread(thread, path) { openedThreadCount++ }

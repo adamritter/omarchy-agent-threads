@@ -88,6 +88,11 @@ for the complete list. Calling the launcher again focuses the existing window;
 explicit options are handed to that process over QuickShell IPC, so a second
 window is not created.
 
+For local Codex threads, Agent Threads can also use Agent Chat as its default
+thread frontend. Click the terminal/Agent Chat button in the sidebar header to
+switch. The setting is persisted, remains off by default, and does not change
+how remote Codex, Claude, or OpenCode threads are opened.
+
 Local Codex conversations open inline through the Codex App Server, with full
 history loading, streaming assistant and tool output, Stop, approval prompts,
 and runtime model/reasoning-effort/Fast/approval controls. Remote `ws://`,

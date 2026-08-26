@@ -61,3 +61,20 @@ function terminalTarget(activeProvider, homePath, row, providerHost) {
   }
   return { mode: "local", endpoint: "-", path: path, error: "" }
 }
+
+function normalizeThreadFrontend(value) {
+  return String(value || "").toLowerCase() === "agent-chat"
+    ? "agent-chat" : "terminal"
+}
+
+function agentChatCommand(helperPath, threadId, cwd, model, effort) {
+  var command = [String(helperPath || "")]
+  var id = String(threadId || "").trim()
+  if (id !== "") command.push("resume", id)
+  command.push("-C", String(cwd || ""))
+  var selectedModel = String(model || "").trim()
+  var selectedEffort = String(effort || "").trim()
+  if (selectedModel !== "") command.push("--model", selectedModel)
+  if (selectedEffort !== "") command.push("--effort", selectedEffort)
+  return command
+}

@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../providers" as Providers
+import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
@@ -40,6 +41,8 @@ Item {
   property string pendingMovePath: ""
   property string pendingMoveName: ""
   property string activeThreadId: ""
+  property string agentChatLaunchKind: ""
+  property string agentChatPendingThreadId: ""
   readonly property alias remoteConfigLoaded: agentProviders.remoteConfigLoaded
   readonly property alias remoteConfig: agentProviders.remoteConfig
   readonly property alias remoteHosts: agentProviders.supplementalHosts
@@ -88,6 +91,8 @@ Item {
     .toString().replace(/^file:\/\//, "")
   readonly property string terminalOpenHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-agent-terminal-open").toString().replace(/^file:\/\//, "")
+  readonly property string agentChatHelperPath: Qt.resolvedUrl(
+    "../bin/omarchy-agent-chat").toString().replace(/^file:\/\//, "")
   readonly property string localHome: Quickshell.env("HOME") || "/tmp"
   readonly property string backendHomePath: localHome
   readonly property string pinnedSectionId: "01984de2-8f74-7c91-a3b2-5c5e937cf318"
@@ -108,6 +113,7 @@ Item {
   readonly property alias selectedProvider: persisted.selectedProvider
   readonly property alias selectedModel: persisted.selectedModel
   readonly property alias selectedEffort: persisted.selectedEffort
+  readonly property alias threadFrontend: persisted.threadFrontend
 
   PersistentProperties {
     id: persisted
@@ -116,6 +122,8 @@ Item {
     property string selectedProvider: "codex"
     property string selectedModel: ""
     property string selectedEffort: ""
+    // Agent Chat is deliberately opt-in; existing behavior remains the default.
+    property string threadFrontend: "terminal"
     onSidebarOpenChanged: {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
@@ -126,6 +134,9 @@ Item {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
     onSelectedEffortChanged: {
+      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
+    }
+    onThreadFrontendChanged: {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
   }
@@ -677,11 +688,37 @@ Item {
   }
 
   function openThread(thread, cwdOverride) {
+    if (persisted.threadFrontend === "agent-chat") {
+      var path = String(cwdOverride || projectPathForThread(thread) || backendHomePath)
+      return launchAgentChat(thread, path)
+    }
     return agentProviders.openThread("provider-codex", thread, cwdOverride)
   }
 
   function newProjectThread(projectPath) {
+    if (persisted.threadFrontend === "agent-chat")
+      return launchAgentChat(null, projectPath)
     return agentProviders.createThread("provider-codex", projectPath)
+  }
+
+  function launchAgentChat(thread, cwd) {
+    if (agentChatProcess.running) return false
+    var path = String(cwd || "")
+    var threadId = String(thread && thread.id || "")
+    if (path === "" || (thread && threadId === "")) return false
+
+    launchError = ""
+    agentChatLaunchKind = threadId !== "" ? "thread" : "project"
+    agentChatPendingThreadId = threadId
+    if (threadId !== "") {
+      launchingThreadId = threadId
+      threadLaunchRequested(threadId)
+    } else launchingProjectPath = path
+
+    agentChatProcess.command = ActionLogic.agentChatCommand(
+      agentChatHelperPath, threadId, path, selectedModel, selectedEffort)
+    agentChatProcess.running = true
+    return true
   }
 
   function clearPendingNewThread() {
@@ -750,6 +787,16 @@ Item {
     persisted.selectedProvider = provider
   }
 
+  function setThreadFrontend(value) {
+    persisted.threadFrontend = ActionLogic.normalizeThreadFrontend(value)
+  }
+
+  function toggleThreadFrontend() {
+    setThreadFrontend(persisted.threadFrontend === "agent-chat"
+      ? "terminal" : "agent-chat")
+    return persisted.threadFrontend
+  }
+
   function setCollapsedProjects(value) {
     collapsedProjects = Object.assign({}, value || ({}))
   }
@@ -790,6 +837,7 @@ Item {
         persisted.selectedProvider = parsed.provider
       persisted.selectedModel = String(parsed.model || "")
       persisted.selectedEffort = String(parsed.effort || "")
+      persisted.threadFrontend = ActionLogic.normalizeThreadFrontend(parsed.threadFrontend)
       var providerSettings = parsed.providerSettings && typeof parsed.providerSettings === "object"
         ? parsed.providerSettings : ({})
       agentProviders.loadSettings(providerSettings)
@@ -809,14 +857,14 @@ Item {
     }
 
     sidebarSettingsLoaded = true
-    if (!parsed || Number(parsed.version || 0) < 11) sidebarSaveTimer.restart()
+    if (!parsed || Number(parsed.version || 0) < 12) sidebarSaveTimer.restart()
     startAppServer()
   }
 
   function flushSidebarSettings() {
     if (!sidebarSettingsLoaded) return
     sidebarSettingsFile.setText(JSON.stringify({
-      version: 11,
+      version: 12,
       open: sidebarOpen,
       scope: sidebarScope,
       globalOpen: globalSidebarOpen,
@@ -824,6 +872,7 @@ Item {
       provider: persisted.selectedProvider,
       model: persisted.selectedModel,
       effort: persisted.selectedEffort,
+      threadFrontend: persisted.threadFrontend,
       collapsedProjects: collapsedProjects,
       collapsedRemotes: collapsedRemotes,
       pinnedSections: pinnedSections,
@@ -844,6 +893,28 @@ Item {
           console.warn("Codex Threads: invalid thread statuses:", error)
         }
       }
+    }
+  }
+
+  Process {
+    id: agentChatProcess
+    running: false
+    stderr: StdioCollector { id: agentChatStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      var kind = root.agentChatLaunchKind
+      var threadId = root.agentChatPendingThreadId
+      if (exitCode !== 0) {
+        root.launchError = agentChatStderr.text.trim()
+          || (kind === "thread"
+            ? "Could not open the thread in Agent Chat"
+            : "Could not open Agent Chat in the project")
+      } else if (kind === "thread") root.activeThreadId = threadId
+
+      if (kind === "thread") root.launchingThreadId = ""
+      else if (kind === "project") root.launchingProjectPath = ""
+      root.agentChatLaunchKind = ""
+      root.agentChatPendingThreadId = ""
+      root.scheduleEventRefresh()
     }
   }
 

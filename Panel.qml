@@ -1047,6 +1047,13 @@ Panel {
       root.selectProvider(name)
       return root.activeProvider
     }
+    function frontend(name: string): string {
+      var wanted = String(name || "").toLowerCase()
+      if (wanted === "toggle") return root.service.toggleThreadFrontend()
+      if (wanted === "terminal" || wanted === "agent-chat")
+        root.service.setThreadFrontend(wanted)
+      return root.service.threadFrontend
+    }
     function scope(mode: string): string {
       var wanted = String(mode || "").toLowerCase()
       if (wanted === "toggle") wanted = root.service.sidebarScope === "global"
@@ -1091,6 +1098,7 @@ Panel {
       return JSON.stringify({
         instanceToken: root.instanceToken,
         activeProvider: root.activeProvider,
+        threadFrontend: root.service.threadFrontend,
         providerLoading: root.providerLoading(),
         providerSnapshotRestored: root.service.providerSnapshotRestored,
         ready: root.service.ready,
@@ -1402,7 +1410,7 @@ Panel {
           Text {
             id: headerTitle
             anchors.left: parent.left
-            anchors.right: sidebarScopeButton.left
+            anchors.right: threadFrontendButton.left
             anchors.rightMargin: Style.space(8)
             height: parent.height
             text: root.remoteSetupOpen ? "ADD REMOTE"
@@ -1427,6 +1435,28 @@ Panel {
                 else providerMenu.open()
               }
             }
+          }
+
+          PanelActionButton {
+            id: threadFrontendButton
+            visible: root.activeProvider === "codex"
+              && !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
+            anchors.right: sidebarScopeButton.left
+            anchors.rightMargin: Style.space(4)
+            anchors.top: parent.top
+            anchors.topMargin: -Style.space(6)
+            width: visible ? implicitWidth : 0
+            size: Style.space(24)
+            iconText: root.service.threadFrontend === "agent-chat" ? "󰚩" : ""
+            tooltipText: root.service.threadFrontend === "agent-chat"
+              ? "Thread opener: Agent Chat · click to use terminal"
+              : "Thread opener: terminal · click to use Agent Chat"
+            foreground: root.service.threadFrontend === "agent-chat"
+              ? Color.accent : root.dim
+            hoverColor: Color.accent
+            fontFamily: root.fontFamily
+            fontSize: Style.font.body
+            onClicked: root.service.toggleThreadFrontend()
           }
 
           PanelActionButton {
