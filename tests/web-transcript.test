@@ -27,15 +27,15 @@ grep -F -- 'diff-file-card' "$plugin_root/app/web/transcript.js" >/dev/null
 grep -F -- '.diff-card-stats' "$plugin_root/app/web/transcript.css" >/dev/null
 grep -F -- 'fileGroupsByPath' "$plugin_root/app/web/transcript.js" >/dev/null
 grep -F -- 'connect-src '\''none' "$plugin_root/app/web/transcript.html" >/dev/null
-grep -F -- 'vendor/mathjax/es5/tex-chtml.js' "$plugin_root/app/web/transcript.html" >/dev/null
+grep -F -- 'node_modules/mathjax/es5/tex-chtml.js' "$plugin_root/app/web/transcript.html" >/dev/null
 grep -F -- 'vendor/marked/marked.umd.js' "$plugin_root/app/web/transcript.html" >/dev/null
-test -s "$plugin_root/app/web/vendor/mathjax/es5/output/chtml/fonts/woff-v2/MathJax_Main-Regular.woff"
+test -s "$plugin_root/app/web/node_modules/mathjax/es5/output/chtml/fonts/woff-v2/MathJax_Main-Regular.woff"
 test -s "$plugin_root/app/web/vendor/marked/LICENSE.md"
 grep -F -- 'Marked | 17.0.5' "$plugin_root/app/web/vendor/README.md" >/dev/null
 grep -F -- 'MathJax | 3.2.2' "$plugin_root/app/web/vendor/README.md" >/dev/null
 test "$(sha256sum "$plugin_root/app/web/vendor/marked/marked.umd.js" | cut -d' ' -f1)" \
   = "0db7abc826b5ac76f6ed11951ae34074ba50438ce6ea8d52889203779e5cbbad"
-test "$(sha256sum "$plugin_root/app/web/vendor/mathjax/es5/tex-chtml.js" | cut -d' ' -f1)" \
+test "$(sha256sum "$plugin_root/app/web/node_modules/mathjax/es5/tex-chtml.js" | cut -d' ' -f1)" \
   = "0a6ded5abbce13331658dd239f34382abd06492c74b71b61e8caa8112ec55fa5"
 
 if command -v chromium >/dev/null; then

@@ -7,7 +7,10 @@ policy.
 | Package | Version | Vendored artifact | SHA-256 |
 | --- | --- | --- | --- |
 | Marked | 17.0.5 | `marked/marked.umd.js` | `0db7abc826b5ac76f6ed11951ae34074ba50438ce6ea8d52889203779e5cbbad` |
-| MathJax | 3.2.2 | `mathjax/es5/tex-chtml.js` | `0a6ded5abbce13331658dd239f34382abd06492c74b71b61e8caa8112ec55fa5` |
+| MathJax | 3.2.2 | `../node_modules/mathjax/es5/tex-chtml.js` | `0a6ded5abbce13331658dd239f34382abd06492c74b71b61e8caa8112ec55fa5` |
 
 The artifacts come from the packages published by the Marked and MathJax
 projects. Their upstream license files are included beside the artifacts.
+MathJax retains its upstream package layout under `node_modules` because its
+generated browser bundle exceeds the marketplace's per-file source-scan limit;
+the checksum above and the browser integration test pin the reviewed artifact.
