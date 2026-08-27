@@ -17,7 +17,8 @@
     "category": "AI",
     "aliases": [
       "codex-threads",
-      "threads"
+      "threads",
+      "herdr"
     ],
     "allowMultiple": false,
     "defaultSection": "left"
