@@ -2,11 +2,13 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import "../providers" as Providers
 import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 import "../logic/ThreadListLogic.js" as ThreadListLogic
+import "../logic/ThreadMutationLogic.js" as ThreadMutationLogic
+import "../logic/ThreadLaunchLogic.js" as ThreadLaunchLogic
+import "../logic/ThreadNotificationLogic.js" as ThreadNotificationLogic
 import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Item {
@@ -28,7 +30,7 @@ Item {
   property bool shuttingDown: false
   property string errorText: ""
   property string launchError: ""
-  property var threadLaunchState: ThreadStateLogic.idleThreadLaunchState()
+  property var threadLaunchState: ThreadLaunchLogic.idleThreadLaunchState()
   readonly property string threadLaunchPhase: String(threadLaunchState.phase || "idle")
   readonly property int threadLaunchRequestId: Number(threadLaunchState.requestId || 0)
   readonly property string launchingThreadId:
@@ -37,23 +39,24 @@ Item {
     String(threadLaunchState.failedThreadId || "")
   readonly property string threadLaunchSource: String(threadLaunchState.source || "")
   property string launchingProjectPath: ""
-  property string archivingThreadId: ""
-  property string renamingThreadId: ""
-  property string pinningThreadId: ""
-  property bool pendingPinValue: false
-  property var archivedThreadSnapshot: null
-  property int archivedThreadIndex: -1
-  property var archiveTombstones: ({})
+  property var threadMutationState: ThreadMutationLogic.idleMutationState()
+  readonly property string archivingThreadId:
+    threadMutationState.kind === "archive" ? threadMutationState.threadId : ""
+  readonly property string renamingThreadId:
+    threadMutationState.kind === "rename" ? threadMutationState.threadId : ""
+  readonly property string pinningThreadId:
+    threadMutationState.kind === "pin" ? threadMutationState.threadId : ""
+  readonly property bool pendingPinValue: threadMutationState.pinValue === true
+  readonly property var archivedThreadSnapshot: threadMutationState.archiveSnapshot
+  readonly property int archivedThreadIndex: Number(threadMutationState.archiveIndex)
+  readonly property var archiveTombstones: threadMutationState.archiveTombstones || ({})
   property string archiveConfirmationId: ""
-  property string movingThreadId: ""
-  property string pendingMovePath: ""
-  property string pendingMoveName: ""
+  readonly property string movingThreadId:
+    threadMutationState.kind === "move" ? threadMutationState.threadId : ""
+  readonly property string pendingMovePath: threadMutationState.movePath || ""
+  readonly property string pendingMoveName: threadMutationState.moveName || ""
   property string activeThreadId: ""
-  property string agentChatLaunchKind: ""
-  property string agentChatPendingThreadId: ""
-  property int agentChatLaunchRequestId: 0
-  property string agentChatErrorOutput: ""
-  property string terminalErrorOutput: ""
+  readonly property var runtimeProcesses: runtimeProcessesLoader.item
   readonly property alias remoteConfigLoaded: agentProviders.remoteConfigLoaded
   readonly property alias remoteConfig: agentProviders.remoteConfig
   readonly property alias remoteHosts: agentProviders.supplementalHosts
@@ -83,14 +86,14 @@ Item {
   property alias pinnedSections: sidebarPreferences.pinnedSections
   readonly property alias lastRefreshMs: agentProviders.lastRefreshMs
 
-  onThreadsChanged: scheduleProviderSnapshot()
-  onProjectsChanged: scheduleProviderSnapshot()
-  onRateLimitsChanged: scheduleProviderSnapshot()
-  onRateLimitResetCreditsChanged: scheduleProviderSnapshot()
-  onModelsChanged: scheduleProviderSnapshot()
-  onCodexConfigChanged: scheduleProviderSnapshot()
-  onThreadStatusesChanged: scheduleProviderSnapshot()
-  onUnreadThreadsChanged: scheduleProviderSnapshot()
+  onThreadsChanged: providerApi.scheduleProviderSnapshot()
+  onProjectsChanged: providerApi.scheduleProviderSnapshot()
+  onRateLimitsChanged: providerApi.scheduleProviderSnapshot()
+  onRateLimitResetCreditsChanged: providerApi.scheduleProviderSnapshot()
+  onModelsChanged: providerApi.scheduleProviderSnapshot()
+  onCodexConfigChanged: providerApi.scheduleProviderSnapshot()
+  onThreadStatusesChanged: providerApi.scheduleProviderSnapshot()
+  onUnreadThreadsChanged: providerApi.scheduleProviderSnapshot()
 
   readonly property string threadStatusesHelperPath: Qt.resolvedUrl("../bin/omarchy-codex-thread-statuses")
     .toString().replace(/^file:\/\//, "")
@@ -127,868 +130,62 @@ Item {
 
   signal threadLaunchRequested(string threadId)
 
-  function beginThreadLaunch(threadId, source) {
-    var result = ThreadStateLogic.beginThreadLaunch(
-      threadLaunchState, threadId, source)
-    if (!result.accepted) {
-      launchError = result.error
-      return 0
-    }
-    threadLaunchState = result.state
-    launchError = ""
-    threadLaunchRequested(String(threadId || ""))
-    return result.requestId
-  }
-
-  function confirmThreadLaunch(requestId, threadId) {
-    var result = ThreadStateLogic.confirmThreadLaunch(
-      threadLaunchState, requestId, threadId)
-    if (!result.applied) return false
-    threadLaunchState = result.state
-    activeThreadId = result.threadId
-    launchError = ""
-    return true
-  }
-
-  function failThreadLaunch(requestId, message) {
-    var result = ThreadStateLogic.failThreadLaunch(
-      threadLaunchState, requestId, message)
-    if (!result.applied) return false
-    threadLaunchState = result.state
-    launchError = result.error
-    return true
-  }
-
-  function observeActiveThread(threadId, source) {
-    var id = String(threadId || "")
-    if (threadLaunchPhase === "launching" && id === launchingThreadId)
-      return confirmThreadLaunch(threadLaunchRequestId, id)
-    activeThreadId = id
-    return true
-  }
-
-  function threadMutationRunning() {
-    return archivingThreadId !== "" || renamingThreadId !== ""
-      || pinningThreadId !== "" || movingThreadId !== ""
-  }
-
-  function beginThreadMutation(kind, threadId) {
-    var action = String(kind || "")
-    var id = String(threadId || "")
-    if (id === "") return false
-    if (threadMutationRunning()) {
-      errorText = ThreadStateLogic.mutationBusyMessage(action)
-      return false
-    }
-    if (action === "archive") {
-      var blockedMessage = ThreadStateLogic.archiveBlockedMessage(id, activeThreadId)
-      if (blockedMessage !== "") {
-        errorText = blockedMessage
-        return false
-      }
-      archivingThreadId = id
-    } else if (action === "rename") renamingThreadId = id
-    else if (action === "pin") pinningThreadId = id
-    else return false
-    errorText = ""
-    return true
-  }
-
-  function finishThreadMutation(kind) {
-    var action = String(kind || "")
-    if (action === "archive") archivingThreadId = ""
-    else if (action === "rename") renamingThreadId = ""
-    else if (action === "pin") {
-      pinningThreadId = ""
-      pendingPinValue = false
-    }
-  }
-
-  function failThreadMutation(kind, message) {
-    finishThreadMutation(kind)
-    errorText = ThreadStateLogic.mutationErrorMessage(kind, message)
-  }
 
   Providers.AgentProviderLibrary {
     id: agentProviders
     controller: root
     onSettingsChanged: sidebarPreferences.scheduleSave()
-    onSnapshotsChanged: root.scheduleProviderSnapshot()
+    onSnapshotsChanged: providerApi.scheduleProviderSnapshot()
   }
 
   SidebarPreferences {
     id: sidebarPreferences
     path: root.sidebarSettingsPath
     providerSettings: agentProviders
-    onReady: root.startAppServer()
+    onReady: root.providers.startAppServer()
   }
 
   ProviderSnapshotStore {
     id: providerSnapshotStore
     path: root.providerSnapshotPath
     onRestoreRequested: function(snapshot) {
-      root.restoreProviderSnapshot(snapshot)
+      root.providers.restoreProviderSnapshot(snapshot)
     }
   }
 
-  function providerSnapshotObject() {
-    return {
-      codex: {
-        threads: threads,
-        projects: projects,
-        rateLimits: rateLimits,
-        rateLimitResetCredits: rateLimitResetCredits,
-        models: models,
-        codexConfig: codexConfig,
-        threadStatuses: threadStatuses,
-        unreadThreads: unreadThreads,
-        activeThreadId: activeThreadId
-      },
-      remoteHosts: agentProviders.configuredRemoteHosts,
-      localProviders: agentProviders.snapshotLocalProviders()
-    }
+  Loader {
+    id: runtimeProcessesLoader
   }
 
-  function scheduleProviderSnapshot() {
-    if (shuttingDown) return
-    providerSnapshotStore.schedule(providerSnapshotObject())
-  }
-
-  function flushProviderSnapshot() {
-    providerSnapshotStore.flush(providerSnapshotObject())
-  }
-
-  function attachProviderSnapshot(snapshot) {
-    providerSnapshotStore.attach(snapshot)
-  }
-
-  function restoreProviderSnapshot(snapshot) {
-    if (!snapshot) return
-    var codex = ProviderSnapshotLogic.codexState(snapshot)
-    threads = codex.threads
-    projects = codex.projects
-    rateLimits = codex.rateLimits
-    rateLimitResetCredits = codex.rateLimitResetCredits
-    models = codex.models
-    codexConfig = codex.codexConfig
-    threadStatuses = codex.threadStatuses
-    unreadThreads = codex.unreadThreads
-    activeThreadId = codex.activeThreadId
-    agentProviders.restoreRemoteHosts(snapshot.remoteHosts)
-    agentProviders.restoreLocalProviders(snapshot.localProviders)
-  }
-
-  function resetBackendState() {
-    if (threadLaunchPhase === "launching")
-      failThreadLaunch(threadLaunchRequestId, "The provider stopped during thread launch")
-    agentProviders.reset()
-  }
-
-  function startAppServer() {
-    agentProviders.start()
-  }
-
-  function remoteHostById(hostId) {
-    return agentProviders.hostById(hostId)
-  }
-
-  function remotePathForThread(host, thread) {
-    return agentProviders.pathForThread(host ? host.id : "", thread)
-  }
-
-  function remoteThreadStatus(thread) {
-    var provider = localAgentProviderForThread(thread)
-    var hostId = provider ? provider.hostId : ""
-    return agentProviders.threadStatus(hostId, thread)
-  }
-
-  function refreshRemotes(hostId) {
-    agentProviders.refreshSupplementalHosts(hostId)
-  }
-
-  function localAgentProvider(hostId) {
-    return agentProviders.localProviderForHost(hostId)
-  }
-
-  function localAgentProviderForThread(thread) {
-    return agentProviders.localProviderForThread(thread)
-  }
-
-  function addRemote(label, type, address, home, tokenFile, providerType) {
-    return agentProviders.addRemote(label, type, address, home, tokenFile, providerType)
-  }
-
-  function updateRemote(hostId, label, type, address, home, tokenFile, providerType) {
-    return agentProviders.updateRemote(
-      hostId, label, type, address, home, tokenFile, providerType)
-  }
-
-  function removeRemote(hostId) {
-    return agentProviders.removeRemote(hostId)
-  }
-
-  function testRemote(hostId) {
-    return agentProviders.testRemote(hostId)
-  }
-
-  function loginRemoteClaude(hostId) {
-    return agentProviders.loginRemoteClaude(hostId)
-  }
-
-  function sshHostEnabled(alias, providerType) {
-    return agentProviders.sshHostEnabled(alias, providerType)
-  }
-
-  function remoteIdForSshHost(alias, providerType) {
-    return agentProviders.remoteIdForSshHost(alias, providerType)
-  }
-
-  function refreshSshHosts() {
-    agentProviders.refreshSshHosts()
-  }
-
-  function archiveRemoteThread(hostId, thread) {
-    return !!agentProviders.archiveThread(hostId, thread)
-  }
-
-  function renameRemoteThread(hostId, thread, name) {
-    var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
-    if (normalized === "") return false
-    var started = agentProviders.renameThread(hostId, thread, normalized)
-    if (!started && errorText === "")
-      errorText = "Could not start the thread rename"
-    return !!started
-  }
-
-  function toggleRemoteThreadPin(hostId, thread) {
-    return !!agentProviders.toggleThreadPin(hostId, thread)
-  }
-
-  function openRemoteThread(hostId, thread, path, source) {
-    return !!agentProviders.openThread(hostId, thread, path, source)
-  }
-
-  function newRemoteThread(hostId, path) {
-    agentProviders.createThread(hostId, path)
-  }
-
-  function openTerminal(mode, endpoint, path) {
-    if (terminalOpenProcess.running) return false
-    launchError = ""
-    terminalErrorOutput = ""
-    terminalOpenProcess.command = [
-      streamGuardPath,
-      "--",
-      terminalOpenHelperPath,
-      String(mode || ""),
-      String(endpoint || ""),
-      String(path || "")
-    ]
-    terminalOpenProcess.running = true
-    return true
-  }
-
-  function refreshThreads() {
-    agentProviders.refreshThreads()
-  }
-
-  function threadIsPinned(thread) {
-    return ThreadStateLogic.threadIsPinned(thread, pinnedSectionId)
-  }
-
-  function normalizePinnedThreads(items) {
-    return ThreadStateLogic.normalizePinnedThreads(items, pinnedSectionId)
-  }
-
-  function refreshProjects() {
-    agentProviders.refreshProjects()
-  }
-
-  function refreshRateLimits() {
-    agentProviders.refreshRateLimits()
-  }
-
-  function refreshModels() {
-    agentProviders.refreshModels()
-  }
-
-  function refreshConfig() {
-    agentProviders.refreshConfig()
-  }
-
-  function setSelectedModel(value) {
-    sidebarPreferences.setSelectedModel(value)
-  }
-
-  function setSelectedEffort(value) {
-    sidebarPreferences.setSelectedEffort(value)
-  }
-
-  function selectedModelInfo() {
-    return agentProviders.modelState("codex").model
-  }
-
-  function effectiveModel() {
-    return agentProviders.effectiveModel("codex")
-  }
-
-  function effectiveEffort() {
-    return agentProviders.effectiveEffort("codex")
-  }
-
-  function selectedModelEfforts(modelId) {
-    return agentProviders.modelEfforts("codex", modelId)
-  }
-
-  function providerHost(providerType) {
-    return agentProviders.providerHost(providerType)
-  }
-
-  function modelsForProvider(providerType) {
-    return agentProviders.models(providerType)
-  }
-
-  function agentsForProvider(providerType) {
-    return agentProviders.agents(providerType)
-  }
-
-  function selectedModelForProvider(providerType) {
-    return agentProviders.selectedModel(providerType)
-  }
-
-  function selectedEffortForProvider(providerType) {
-    return agentProviders.selectedEffort(providerType)
-  }
-
-  function selectedAgentForProvider(providerType) {
-    return agentProviders.selectedAgent(providerType)
-  }
-
-  function defaultModelForProvider(providerType) {
-    return agentProviders.defaultModel(providerType)
-  }
-
-  function defaultEffortForProvider(providerType, modelId) {
-    return agentProviders.defaultEffort(providerType, modelId)
-  }
-
-  function defaultAgentForProvider(providerType) {
-    return agentProviders.defaultAgent(providerType)
-  }
-
-  function effectiveModelForProvider(providerType) {
-    return agentProviders.effectiveModel(providerType)
-  }
-
-  function effectiveEffortForProvider(providerType) {
-    return agentProviders.effectiveEffort(providerType)
-  }
-
-  function effectiveAgentForProvider(providerType) {
-    return agentProviders.effectiveAgent(providerType)
-  }
-
-  function modelEffortsForProvider(providerType, modelId) {
-    return agentProviders.modelEfforts(providerType, modelId)
-  }
-
-  function setModelForProvider(providerType, value) {
-    agentProviders.setModel(providerType, value)
-  }
-
-  function setEffortForProvider(providerType, value) {
-    agentProviders.setEffort(providerType, value)
-  }
-
-  function setAgentForProvider(providerType, value) {
-    agentProviders.setAgent(providerType, value)
-  }
-
-  function projectForId(projectId) {
-    return ThreadListLogic.projectForId(projects, projectId)
-  }
-
-  function projectRootPath(project) {
-    return ThreadListLogic.projectRoot(project)
-  }
-
-  function projectPathForThread(thread) {
-    return ThreadListLogic.pathForThread(projects, thread, "", false)
-  }
-
-  function projectForRoot(path) {
-    return ThreadListLogic.projectForRoot(projects, path)
-  }
-
-  function moveThreadToProject(thread, targetPath, targetName) {
-    var threadId = String(thread && thread.id || "")
-    var path = String(targetPath || "")
-    if (threadId === "" || path === "") return false
-    if (threadMutationRunning()) {
-      errorText = ThreadStateLogic.mutationBusyMessage("move")
-      return false
-    }
-
-    movingThreadId = threadId
-    pendingMovePath = path
-    pendingMoveName = String(targetName || "") || path
-    errorText = ""
-
-    var project = projectForRoot(path)
-    if (project) {
-      assignMovingThreadToProject(String(project.id || ""))
-      return true
-    }
-
-    agentProviders.createProject(threadId, pendingMoveName, path)
-    return true
-  }
-
-  function assignMovingThreadToProject(projectId) {
-    if (movingThreadId === "" || projectId === "") {
-      failThreadMove("Could not resolve the target Codex project")
-      return
-    }
-    agentProviders.moveThread(movingThreadId, projectId)
-  }
-
-  function failThreadMove(message, silent) {
-    agentProviders.clearMoveRequests()
-    movingThreadId = ""
-    pendingMovePath = ""
-    pendingMoveName = ""
-    if (!silent) errorText = String(message || "Could not move the Codex thread")
-  }
-
-  function finishThreadMove() {
-    agentProviders.clearMoveRequests()
-    movingThreadId = ""
-    pendingMovePath = ""
-    pendingMoveName = ""
-    refreshProjects()
-    scheduleEventRefresh()
-  }
-
-  function threadStatus(threadId) {
-    return threadStatuses[String(threadId || "")] || "done"
-  }
-
-  function threadUnread(threadId) {
-    return unreadThreads[String(threadId || "")] === true
-  }
-
-  function markThreadSeen(threadId) {
-    var id = String(threadId || "")
-    if (id === "") return
-    if (unreadThreads[id] === true) {
-      var nextUnread = Object.assign({}, unreadThreads)
-      delete nextUnread[id]
-      unreadThreads = nextUnread
-    }
-    agentProviders.markSupplementalThreadSeen(id)
-  }
-
-  function applyThreadStatuses(nextStatuses) {
-    var nextUnread = ThreadStateLogic.nextUnreadThreads(
-      threadStatuses, unreadThreads, nextStatuses, activeThreadId)
-    threadStatuses = nextStatuses
-    unreadThreads = nextUnread
-  }
-
-  function remoteStatusValue(status) {
-    return ThreadStateLogic.remoteStatusValue(status)
-  }
-
-  function applyRemoteThreadStatuses() {
-    applyThreadStatuses(ThreadStateLogic.statusMap(threads))
-  }
-
-  function applyRemoteStatusNotification(params) {
-    var id = String(params && params.threadId || "")
-    if (id === "") return
-    var next = Object.assign({}, threadStatuses)
-    next[id] = remoteStatusValue(params.status)
-    applyThreadStatuses(next)
-  }
-
-  function refreshThreadStatuses() {
-    if (threadStatusesProcess.running) return
-
-    var args = [streamGuardPath, "--", threadStatusesHelperPath]
-    for (var i = 0; i < threads.length; i++) {
-      var thread = threads[i]
-      if (!thread || !thread.id || !thread.path) continue
-      args.push(String(thread.id), String(thread.path))
-    }
-    threadStatusesProcess.command = args
-    threadStatusesProcess.running = true
-  }
-
-  function archiveLocalCodexThread(thread) {
-    if (!thread || !thread.id
-        || !beginThreadMutation("archive", thread.id)) return false
-    archivedThreadSnapshot = thread
-    archivedThreadIndex = threadIndex(threads, archivingThreadId)
-    setArchiveTombstone(archivingThreadId, true)
-    threads = threadsWithoutArchiveTombstones(threads)
-    errorText = ""
-    if (!agentProviders.archiveLocalCodexRpc(archivingThreadId)) {
-      restoreArchivedThread()
-      errorText = "Could not reach the Codex App Server"
-      return false
-    }
-    return true
-  }
-
-  function renameLocalCodexThread(thread, name) {
-    var id = String(thread && thread.id || "")
-    var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
-    if (id === "" || normalized === ""
-        || !beginThreadMutation("rename", id)) return false
-    if (!agentProviders.renameLocalCodexRpc(id, normalized)) {
-      failThreadMutation("rename", "Could not reach the Codex App Server")
-      return false
-    }
-    return true
-  }
-
-  function toggleLocalCodexThreadPin(thread) {
-    var id = String(thread && thread.id || "")
-    if (id === "" || !beginThreadMutation("pin", id)) return false
-    pendingPinValue = thread.isPinned !== true
-    if (!agentProviders.pinLocalCodexRpc(id, pendingPinValue, pinnedSectionId)) {
-      failThreadMutation("pin", "Could not reach the Codex App Server")
-      return false
-    }
-    return true
-  }
-
-  function applyThreadPin(items, threadId, pinned, returnedThread) {
-    return ThreadStateLogic.applyThreadPin(items, threadId, pinned, returnedThread)
-  }
-
-  function threadIndex(items, threadId) {
-    return ThreadStateLogic.threadIndex(items, threadId)
-  }
-
-  function setArchiveTombstone(threadId, archived) {
-    var id = String(threadId || "")
-    if (id === "") return
-    var next = Object.assign({}, archiveTombstones)
-    if (archived) next[id] = true
-    else delete next[id]
-    archiveTombstones = next
-  }
-
-  function threadsWithoutArchiveTombstones(items) {
-    return ThreadStateLogic.withoutArchiveTombstones(items, archiveTombstones)
-  }
-
-  function restoreArchivedThread() {
-    var id = archivingThreadId
-    setArchiveTombstone(id, false)
-    if (archivedThreadSnapshot && threadIndex(threads, id) < 0) {
-      var restored = threads.slice()
-      var index = Math.max(0, Math.min(archivedThreadIndex, restored.length))
-      restored.splice(index, 0, archivedThreadSnapshot)
-      threads = restored
-    }
-    archivedThreadSnapshot = null
-    archivedThreadIndex = -1
-    finishThreadMutation("archive")
-  }
-
-  function failThreadArchive(message) {
-    restoreArchivedThread()
-    errorText = ThreadStateLogic.archiveErrorMessage(message)
-  }
-
-  function archiveThread(thread) {
-    return agentProviders.archiveThread("provider-codex", thread)
-  }
-
-  function renameThread(thread, name) {
-    return agentProviders.renameThread("provider-codex", thread, name)
-  }
-
-  function toggleThreadPin(thread) {
-    return agentProviders.toggleThreadPin("provider-codex", thread)
-  }
-
-  function openThread(thread, cwdOverride, source) {
-    if (threadFrontend === "agent-chat") {
-      var path = String(cwdOverride || projectPathForThread(thread) || backendHomePath)
-      return launchAgentChat(thread, path, source)
-    }
-    return !!agentProviders.openThread(
-      "provider-codex", thread, cwdOverride, source)
-  }
+  readonly property alias mutations: mutationApi
+  readonly property alias providers: providerApi
+  readonly property alias threadActions: threadApi
+  readonly property alias settings: settingsApi
 
-  function newProjectThread(projectPath) {
-    if (threadFrontend === "agent-chat")
-      return launchAgentChat(null, projectPath)
-    return agentProviders.createThread("provider-codex", projectPath)
+  ThreadStoreMutations { id: mutationApi; store: root }
+  ThreadStoreProviderApi {
+    id: providerApi
+    store: root
+    providerLibrary: agentProviders
+    preferences: sidebarPreferences
+    snapshots: providerSnapshotStore
   }
+  ThreadStoreThreadApi { id: threadApi; store: root; providerLibrary: agentProviders }
+  ThreadStoreSettingsApi { id: settingsApi; preferences: sidebarPreferences }
 
-  function launchAgentChat(thread, cwd, source) {
-    if (agentChatProcess.running) return false
-    var path = String(cwd || "")
-    var threadId = String(thread && thread.id || "")
-    if (path === "" || (thread && threadId === "")) return false
-
-    var requestId = threadId !== ""
-      ? beginThreadLaunch(threadId, source || "agent-chat") : 0
-    if (threadId !== "" && requestId === 0) return false
-
-    launchError = ""
-    agentChatErrorOutput = ""
-    agentChatLaunchKind = threadId !== "" ? "thread" : "project"
-    agentChatPendingThreadId = threadId
-    agentChatLaunchRequestId = requestId
-    if (threadId === "") launchingProjectPath = path
-
-    agentChatProcess.command = ActionLogic.agentChatCommand(
-      streamGuardPath, agentChatHelperPath, threadId, path, selectedModel,
-      selectedEffort, codexServiceTier)
-    agentChatProcess.running = true
-    return true
-  }
-
-  function clearPendingNewThread() {
-    agentProviders.clearPendingLocalCodexThread()
-  }
-
-  function resolvePendingNewThread() {
-    agentProviders.resolvePendingLocalCodexThread()
-  }
-
-  function refreshActiveThread() {
-    agentProviders.refreshActiveThread()
-  }
-
-  function scheduleEventRefresh() {
-    eventRefresh.restart()
-  }
-
-  function sidebarOpenOnWorkspace(workspaceId) {
-    return sidebarPreferences.sidebarOpenOnWorkspace(workspaceId)
-  }
-
-  function setSidebarOpenOnWorkspace(workspaceId, value) {
-    sidebarPreferences.setSidebarOpenOnWorkspace(workspaceId, value)
-  }
-
-  function setSidebarScope(value, workspaceId, visibleNow) {
-    sidebarPreferences.setScope(value, workspaceId, visibleNow)
-  }
-
-  function migrateSidebarOpenState(workspaceId) {
-    sidebarPreferences.migrateOpenState(workspaceId)
-  }
-
-  function setSelectedProvider(value) {
-    sidebarPreferences.setSelectedProvider(value)
-  }
-
-  function setThreadFrontend(value, source) {
-    return sidebarPreferences.setThreadFrontend(value, source)
-  }
-
-  function toggleThreadFrontend(source) {
-    return sidebarPreferences.toggleThreadFrontend(source)
-  }
-
-  function setFastMode(value) {
-    sidebarPreferences.setFastMode(value)
-  }
-
-  function toggleFastMode() {
-    return sidebarPreferences.toggleFastMode()
-  }
-
-  function setNotificationsEnabled(value) {
-    sidebarPreferences.setNotificationsEnabled(value)
-  }
-
-  function toggleNotifications() {
-    return sidebarPreferences.toggleNotifications()
-  }
-
-  function setCollapsedProjects(value) {
-    sidebarPreferences.setCollapsedProjects(value)
-  }
-
-  function setCollapsedRemotes(value) {
-    sidebarPreferences.setCollapsedRemotes(value)
-  }
-
-  function setPinnedSections(value) {
-    sidebarPreferences.setPinnedSections(value)
-  }
-
-  function loadSidebarSettings(raw) {
-    sidebarPreferences.load(raw)
-  }
-
-  function flushSidebarSettings() {
-    sidebarPreferences.flush()
-  }
-
-  Process {
-    id: threadStatusesProcess
-    running: false
-
-    stdout: SplitParser {
-      onRead: function(line) {
-        try {
-          root.applyThreadStatuses(JSON.parse(String(line || "{}")))
-        } catch (error) {
-          console.warn("Codex Threads: invalid thread statuses:", error)
-        }
-      }
-    }
-  }
-
-  Process {
-    id: agentChatProcess
-    running: false
-    stderr: SplitParser {
-      onRead: function(line) {
-        root.agentChatErrorOutput = (root.agentChatErrorOutput
-          + String(line || "") + "\n").slice(-30000)
-      }
-    }
-    onExited: function(exitCode) {
-      var kind = root.agentChatLaunchKind
-      var threadId = root.agentChatPendingThreadId
-      var requestId = root.agentChatLaunchRequestId
-      if (exitCode !== 0) {
-        var message = root.agentChatErrorOutput.trim()
-          || (kind === "thread"
-            ? "Could not open the thread in Agent Chat"
-            : "Could not open Agent Chat in the project")
-        if (kind === "thread") root.failThreadLaunch(requestId, message)
-        else root.launchError = message
-      } else if (kind === "thread")
-        root.confirmThreadLaunch(requestId, threadId)
-
-      if (kind === "project") root.launchingProjectPath = ""
-      root.agentChatLaunchKind = ""
-      root.agentChatPendingThreadId = ""
-      root.agentChatLaunchRequestId = 0
-      root.scheduleEventRefresh()
-    }
-  }
-
-  Process {
-    id: terminalOpenProcess
-    running: false
-    stderr: SplitParser {
-      onRead: function(line) {
-        root.terminalErrorOutput = (root.terminalErrorOutput
-          + String(line || "") + "\n").slice(-30000)
-      }
-    }
-    onExited: function(exitCode) {
-      if (exitCode !== 0)
-        root.launchError = root.terminalErrorOutput.trim() || "Could not open the terminal"
-    }
-  }
-
-  Process {
-    id: threadEventsProcess
-    command: [root.threadEventsHelperPath]
-    running: false
-
-    stdout: SplitParser {
-      onRead: function(line) {
-        var event = String(line || "")
-        if (event.indexOf("rollout-") < 0) return
-
-        // A rollout can receive many writes per second. Status stays live, but
-        // the heavier list refresh waits until the burst settles. New files
-        // are listed immediately so externally-created threads appear quickly.
-        rolloutStatusDebounce.restart()
-        rolloutSettleDebounce.restart()
-        if (event.indexOf("CREATE") >= 0 || event.indexOf("MOVED_TO") >= 0)
-          rolloutStructureDebounce.restart()
-      }
-    }
-
-    onExited: if (!root.shuttingDown)
-      threadEventsRestart.restart()
-  }
 
   onActiveThreadIdChanged: {
-    markThreadSeen(activeThreadId)
-    scheduleProviderSnapshot()
-  }
-
-  Timer {
-    // App Server events normally refresh immediately; polling is the fallback
-    // if inotify or an App Server event is ever missed.
-    interval: 60000
-    running: root.ready
-    repeat: true
-    onTriggered: {
-      root.refreshThreads()
-      root.refreshThreadStatuses()
-      root.refreshActiveThread()
-    }
-  }
-
-  Timer {
-    interval: 900000
-    running: root.ready
-    repeat: true
-    onTriggered: root.refreshRateLimits()
-  }
-
-  Timer {
-    id: eventRefresh
-    interval: 350
-    repeat: false
-    onTriggered: root.refreshThreads()
-  }
-
-  Timer {
-    id: rolloutStatusDebounce
-    interval: 750
-    repeat: false
-    onTriggered: root.refreshThreadStatuses()
-  }
-
-  Timer {
-    id: rolloutStructureDebounce
-    interval: 200
-    repeat: false
-    onTriggered: {
-      root.refreshActiveThread()
-      eventRefresh.restart()
-    }
-  }
-
-  Timer {
-    id: rolloutSettleDebounce
-    interval: 2000
-    repeat: false
-    onTriggered: eventRefresh.restart()
-  }
-
-  Timer {
-    id: threadEventsRestart
-    interval: 1500
-    repeat: false
-    onTriggered: if (!root.shuttingDown && !threadEventsProcess.running)
-      threadEventsProcess.running = true
+    threadApi.markThreadSeen(activeThreadId)
+    providerApi.scheduleProviderSnapshot()
   }
 
   Component.onCompleted: {
-    threadEventsProcess.running = true
+    runtimeProcessesLoader.setSource(
+      Qt.resolvedUrl("ThreadRuntimeProcesses.qml"), { controller: root })
   }
   Component.onDestruction: {
-    flushProviderSnapshot()
+    providerApi.flushProviderSnapshot()
     shuttingDown = true
-    threadEventsProcess.running = false
+    if (runtimeProcesses) runtimeProcesses.shutdown()
   }
 }

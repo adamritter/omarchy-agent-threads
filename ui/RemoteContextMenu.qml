@@ -25,7 +25,7 @@ Popup {
 
   background: BorderSurface {
     color: Color.background
-    borderSpec: Border.flat(panel.dim, 1)
+    borderSpec: Border.flat(panel.appearance.dim, 1)
     radius: Style.cornerRadius
   }
 
@@ -46,7 +46,7 @@ Popup {
         width: parent.width
         height: Style.space(38)
         radius: Style.cornerRadius
-        color: remoteMenuChoiceMouse.containsMouse ? panel.faint : "transparent"
+        color: remoteMenuChoiceMouse.containsMouse ? panel.appearance.faint : "transparent"
 
         Text {
           anchors.left: parent.left
@@ -54,8 +54,8 @@ Popup {
           anchors.verticalCenter: parent.verticalCenter
           text: remoteMenuChoice.modelData.label
           color: remoteMenuChoice.modelData.action === "disable"
-            ? Color.urgent : panel.foreground
-          font.family: panel.fontFamily
+            ? Color.urgent : panel.appearance.foreground
+          font.family: panel.appearance.fontFamily
           font.pixelSize: Style.font.body
         }
 
@@ -93,9 +93,9 @@ Popup {
       bottomPadding: Style.space(7)
       text: panel.service.remoteTestMessage
       textFormat: Text.PlainText
-      color: remoteMenu.testingThis ? panel.dim
+      color: remoteMenu.testingThis ? panel.appearance.dim
         : (panel.service.remoteTestSucceeded ? Color.accent : Color.urgent)
-      font.family: panel.fontFamily
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.caption
       wrapMode: Text.Wrap
     }

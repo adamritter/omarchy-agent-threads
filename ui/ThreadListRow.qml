@@ -13,7 +13,7 @@ Rectangle {
   readonly property color busyThreadColor: "#e5c07b"
   readonly property color readyThreadColor: "#98c379"
   readonly property bool pointerHovered: mouse.containsMouse
-    && !panel.pointerHoverSuppressed
+    && !panel.session.pointerHoverSuppressed
   readonly property var presentation: panel.sidebarActions.rowPresentation(
     modelData, index, pointerHovered)
   readonly property bool remoteRow: presentation.remoteRow
@@ -45,7 +45,7 @@ Rectangle {
         index: index,
         instantiated: true,
         kind: String(modelData.kind || "thread"),
-        key: panel.rowKey(modelData),
+        key: panel.listActions.rowKey(modelData),
         primaryText: threadRow ? threadTitleText.text
           : (sectionRow ? sectionTitleText.text : moreTitleText.text),
         active: activeThread || activeProject,
@@ -67,11 +67,11 @@ Rectangle {
       : (moreRow ? Style.space(38) : threadContent.implicitHeight + Style.space(8))
     radius: Style.cornerRadius
     color: backgroundRole === "active" || backgroundRole === "focused-selection"
-      ? panel.focusedSelectionFill
+      ? panel.appearance.focusedSelectionFill
       : (backgroundRole === "hover"
-          ? panel.faint
+          ? panel.appearance.faint
           : (backgroundRole === "unfocused-selection"
-              ? panel.unfocusedSelectionFill : "transparent"))
+              ? panel.appearance.unfocusedSelectionFill : "transparent"))
 
     Text {
       visible: row.threadRow && !row.busy && !row.blocked && !row.unread
@@ -79,9 +79,9 @@ Rectangle {
       anchors.leftMargin: Style.space(row.groupedThread ? 22 : 0)
       anchors.verticalCenter: parent.verticalCenter
       width: Style.space(22)
-      text: panel.age(row.threadData ? row.threadData.updatedAt : 0)
-      color: panel.dim
-      font.family: panel.fontFamily
+      text: panel.listActions.age(row.threadData ? row.threadData.updatedAt : 0)
+      color: panel.appearance.dim
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Math.max(8, Style.font.caption - 1)
       horizontalAlignment: row.groupedThread ? Text.AlignLeft : Text.AlignHCenter
     }
@@ -114,7 +114,7 @@ Rectangle {
       cursorShape: Qt.PointingHandCursor
       onPositionChanged: {
         if (!panel.pointerWarpActive)
-          panel.pointerHoverSuppressed = false
+          panel.session.pointerHoverSuppressed = false
       }
       onClicked: panel.sidebarActions.activateRow(row.index, "pointer")
     }
@@ -134,8 +134,8 @@ Rectangle {
       anchors.rightMargin: Style.space(10)
       anchors.verticalCenter: parent.verticalCenter
       text: "…  Show all  ·  " + Number(row.modelData.remaining || 0) + " more"
-      color: row.pointerHovered ? Color.accent : panel.dim
-      font.family: panel.fontFamily
+      color: row.pointerHovered ? Color.accent : panel.appearance.dim
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.caption
       elide: Text.ElideRight
     }
@@ -157,9 +157,9 @@ Rectangle {
         width: parent.width
         text: row.presentation.threadTitle
         textFormat: Text.PlainText
-        color: row.activeThread ? Color.accent : panel.foreground
+        color: row.activeThread ? Color.accent : panel.appearance.foreground
         opacity: row.archiving || row.moving || row.pinning || row.renaming ? 0.58 : 1
-        font.family: panel.fontFamily
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.body
         font.bold: true
         elide: Text.ElideRight
@@ -174,8 +174,8 @@ Rectangle {
       width: Style.space(14)
       text: row.presentation.sectionIndicator
       color: row.activeProject || (row.remoteRow && !row.presentation.collapsed)
-        ? Color.accent : panel.dim
-      font.family: panel.fontFamily
+        ? Color.accent : panel.appearance.dim
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.body
       horizontalAlignment: Text.AlignHCenter
     }
@@ -195,8 +195,8 @@ Rectangle {
         width: parent.width
         text: row.modelData.name + "  ·  " + row.modelData.count
         textFormat: Text.PlainText
-        color: row.activeProject ? Color.accent : panel.foreground
-        font.family: panel.fontFamily
+        color: row.activeProject ? Color.accent : panel.appearance.foreground
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.body
         font.bold: true
         elide: Text.ElideRight
@@ -208,8 +208,8 @@ Rectangle {
         text: row.presentation.sectionSubtitle
         textFormat: Text.PlainText
         color: row.remoteRow && row.modelData.host.error !== ""
-          && !row.needsRemoteClaudeAction ? Color.urgent : panel.dim
-        font.family: panel.fontFamily
+          && !row.needsRemoteClaudeAction ? Color.urgent : panel.appearance.dim
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Math.max(9, Style.font.caption - 1)
         elide: Text.ElideMiddle
       }

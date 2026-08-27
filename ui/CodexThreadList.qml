@@ -20,7 +20,7 @@ ListView {
   }
 
   anchors.fill: parent
-  visible: !panel.helpOpen
+  visible: !panel.session.helpOpen
   model: panel.viewRows
   clip: true
   spacing: 0

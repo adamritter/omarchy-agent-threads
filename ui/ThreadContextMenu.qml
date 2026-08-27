@@ -23,7 +23,7 @@ Popup {
 
   background: BorderSurface {
     color: Color.background
-    borderSpec: Border.flat(panel.dim, 1)
+    borderSpec: Border.flat(panel.appearance.dim, 1)
     radius: Style.cornerRadius
   }
 
@@ -56,7 +56,7 @@ Popup {
         width: parent.width
         height: visible ? Style.space(38) : 0
         radius: Style.cornerRadius
-        color: menuChoiceMouse.containsMouse ? panel.faint : "transparent"
+        color: menuChoiceMouse.containsMouse ? panel.appearance.faint : "transparent"
 
         Text {
           anchors.left: parent.left
@@ -64,8 +64,8 @@ Popup {
           anchors.verticalCenter: parent.verticalCenter
           text: menuChoice.modelData.label
           color: menuChoice.modelData.action === "archive"
-            ? Color.urgent : panel.foreground
-          font.family: panel.fontFamily
+            ? Color.urgent : panel.appearance.foreground
+          font.family: panel.appearance.fontFamily
           font.pixelSize: Style.font.body
         }
 
@@ -74,8 +74,8 @@ Popup {
           anchors.rightMargin: Style.space(10)
           anchors.verticalCenter: parent.verticalCenter
           text: menuChoice.modelData.hint
-          color: panel.dim
-          font.family: panel.fontFamily
+          color: panel.appearance.dim
+          font.family: panel.appearance.fontFamily
           font.pixelSize: Style.font.caption
         }
 
@@ -118,15 +118,15 @@ Popup {
         width: parent.width
         height: Style.space(38)
         radius: Style.cornerRadius
-        color: moveBackMouse.containsMouse ? panel.faint : "transparent"
+        color: moveBackMouse.containsMouse ? panel.appearance.faint : "transparent"
 
         Text {
           anchors.left: parent.left
           anchors.leftMargin: Style.space(10)
           anchors.verticalCenter: parent.verticalCenter
           text: "‹  Move to project"
-          color: panel.foreground
-          font.family: panel.fontFamily
+          color: panel.appearance.foreground
+          font.family: panel.appearance.fontFamily
           font.pixelSize: Style.font.body
           font.bold: true
         }
@@ -143,11 +143,11 @@ Popup {
       Rectangle {
         width: parent.width
         height: 1
-        color: panel.faint
+        color: panel.appearance.faint
       }
 
       Repeater {
-        model: rowItem.modelData.remoteId ? [] : panel.projectMoveTargets(rowItem.threadData)
+        model: rowItem.modelData.remoteId ? [] : panel.providerActions.projectMoveTargets(rowItem.threadData)
 
         delegate: Rectangle {
           id: projectChoice
@@ -155,7 +155,7 @@ Popup {
           width: parent.width
           height: Style.space(48)
           radius: Style.cornerRadius
-          color: projectChoiceMouse.containsMouse ? panel.faint : "transparent"
+          color: projectChoiceMouse.containsMouse ? panel.appearance.faint : "transparent"
 
           Column {
             anchors.left: parent.left
@@ -169,8 +169,8 @@ Popup {
               width: parent.width
               text: projectChoice.modelData.name
               textFormat: Text.PlainText
-              color: panel.foreground
-              font.family: panel.fontFamily
+              color: panel.appearance.foreground
+              font.family: panel.appearance.fontFamily
               font.pixelSize: Style.font.body
               font.bold: true
               elide: Text.ElideRight
@@ -180,8 +180,8 @@ Popup {
               width: parent.width
               text: projectChoice.modelData.path
               textFormat: Text.PlainText
-              color: panel.dim
-              font.family: panel.fontFamily
+              color: panel.appearance.dim
+              font.family: panel.appearance.fontFamily
               font.pixelSize: Math.max(9, Style.font.caption - 1)
               elide: Text.ElideMiddle
             }
@@ -202,12 +202,12 @@ Popup {
       }
 
       Text {
-        visible: panel.projectMoveTargets(rowItem.threadData).length === 0
+        visible: panel.providerActions.projectMoveTargets(rowItem.threadData).length === 0
         width: parent.width
         height: Style.space(42)
         text: "No other projects"
-        color: panel.dim
-        font.family: panel.fontFamily
+        color: panel.appearance.dim
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.body
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter

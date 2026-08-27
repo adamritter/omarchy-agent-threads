@@ -27,7 +27,6 @@ Item {
   })
   property string actionHostId: ""
   property string actionKind: ""
-  property string actionThreadId: ""
   property bool actionPinValue: false
   property bool openIsNew: false
   property string pendingPath: ""
@@ -39,10 +38,10 @@ Item {
   property string lastSnapshotSignature: ""
   property int openRequestId: 0
 
-  readonly property string queryHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-agent-provider-query").toString().replace(/^file:\/\//, "")
-  readonly property string openHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-agent-thread-open").toString().replace(/^file:\/\//, "")
+  readonly property string queryHelperPath:
+    Qt.resolvedUrl("../bin/omarchy-agent-provider-query").toString().replace(/^file:\/\//, "")
+  readonly property string openHelperPath:
+    Qt.resolvedUrl("../bin/omarchy-agent-thread-open").toString().replace(/^file:\/\//, "")
 
   ThreadLaunchCoordinator { id: launchCoordinator }
 
@@ -51,9 +50,7 @@ Item {
   }
 
   function threadStatus(thread) {
-    var status = thread ? thread.status : null
-    var type = typeof status === "string" ? status : String(status && status.type || "")
-    return type === "active" ? "busy" : "done"
+    return ThreadStateLogic.remoteStatusValue(thread ? thread.status : null)
   }
 
   function restoreSnapshot(snapshot) {
@@ -94,9 +91,8 @@ Item {
   }
 
   function refresh() {
-    if (!enabled || controller.shuttingDown || queryProcess.running) return
-    queryProcess.command = [queryHelperPath, providerType, "snapshot"]
-    queryProcess.running = true
+    if (!enabled || controller.shuttingDown || processHost.queryRunning) return
+    processHost.runQuery([queryHelperPath, providerType, "snapshot"])
   }
 
   function activate() {
@@ -110,7 +106,7 @@ Item {
   function deactivate() {
     initialRefreshTimer.stop()
     serverRestartTimer.stop()
-    queryProcess.running = false
+    processHost.stopQuery()
     if (providerType === "opencode") serverProcess.running = false
     if (host.loading === true)
       host = Object.assign({}, host, { loading: false })
@@ -163,77 +159,39 @@ Item {
     resolvePendingNew()
   }
 
-  function archiveThread(thread) {
-    var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running
-        || !controller.beginThreadMutation("archive", id)) return false
-    actionKind = "archive"
-    actionThreadId = id
-    actionHostId = hostId
-    actionProcess.command = [queryHelperPath, providerType, "archive", id, pathForThread(thread)]
-    actionProcess.running = true
-    return true
+  LocalAgentProcessHost {
+    id: processHost
+    provider: root
+    launches: launchCoordinator
   }
 
-  function renameThread(thread, name) {
-    var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running
-        || !controller.beginThreadMutation("rename", id)) return false
-    actionKind = "rename"
-    actionThreadId = id
-    actionHostId = hostId
-    actionProcess.command = [
-      queryHelperPath, providerType, "rename", id, pathForThread(thread), name
-    ]
-    actionProcess.running = true
-    return true
-  }
-
-  function toggleThreadPin(thread) {
-    var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running
-        || !controller.beginThreadMutation("pin", id)) return false
-    actionKind = "pin"
-    actionThreadId = id
-    actionPinValue = !(thread && thread.isPinned === true)
-    actionHostId = hostId
-    controller.pendingPinValue = actionPinValue
-    actionProcess.command = [
-      queryHelperPath,
-      providerType,
-      "pin",
-      id,
-      pathForThread(thread),
-      actionPinValue ? "true" : "false"
-    ]
-    actionProcess.running = true
-    return true
-  }
-
+  function archiveThread(thread) { return processHost.archiveThread(thread) }
+  function renameThread(thread, name) { return processHost.renameThread(thread, name) }
+  function toggleThreadPin(thread) { return processHost.toggleThreadPin(thread) }
+  function restartNewResolveTimer() { newResolveTimer.restart() }
   function openThread(thread, directory, source) {
-    if (!thread || !thread.id || openProcess.running) return false
+    if (!thread || !thread.id || processHost.openRunning) return false
     var threadId = String(thread.id)
-    var requestId = controller.beginThreadLaunch(
+    var requestId = controller.mutations.beginThreadLaunch(
       threadId, source || (providerType + "-local"))
     if (requestId === 0) return false
     openIsNew = false
     openRequestId = requestId
-    openProcess.command = [
+    processHost.runOpen([
       openHelperPath,
       providerType,
       String(directory || pathForThread(thread)),
       threadId,
       serverUrl,
-      controller.selectedModelForProvider(providerType),
-      controller.selectedEffortForProvider(providerType),
-      controller.selectedAgentForProvider(providerType)
-    ]
-    openProcess.running = true
+      controller.providers.selectedModelForProvider(providerType),
+      controller.providers.selectedEffortForProvider(providerType),
+      controller.providers.selectedAgentForProvider(providerType)
+    ])
     return true
   }
 
   function newThread(directory) {
-    if (openProcess.running) return
+    if (processHost.openRunning) return
     var target = String(directory || host.home || controller.localHome)
     pendingPath = target
     pendingWindowAddress = ""
@@ -247,17 +205,16 @@ Item {
     openIsNew = true
     controller.launchingProjectPath = target
     controller.launchError = ""
-    openProcess.command = [
+    processHost.runOpen([
       openHelperPath,
       providerType,
       target,
       "",
       serverUrl,
-      controller.selectedModelForProvider(providerType),
-      controller.selectedEffortForProvider(providerType),
-      controller.selectedAgentForProvider(providerType)
-    ]
-    openProcess.running = true
+      controller.providers.selectedModelForProvider(providerType),
+      controller.providers.selectedEffortForProvider(providerType),
+      controller.providers.selectedAgentForProvider(providerType)
+    ])
   }
 
   function clearPendingNew() {
@@ -280,92 +237,12 @@ Item {
       if (id === "" || pendingKnownIds[id] === true) continue
       if (pathForThread(thread) !== pendingPath) continue
       launchCoordinator.map(id, pendingWindowAddress, hostId, pendingServerUrl)
-      controller.observeActiveThread(id, "new-local-provider-thread")
+      controller.mutations.observeActiveThread(id, "new-local-provider-thread")
       clearPendingNew()
       return
     }
   }
 
-  Process {
-    id: queryProcess
-    running: false
-
-    onExited: function(exitCode) {
-      if (exitCode !== 0) {
-        root.host = Object.assign({}, root.host, {
-          loading: false,
-          error: queryStderr.text.trim() || "Could not load " + root.label + " sessions"
-        })
-        return
-      }
-      try {
-        root.applySnapshot(JSON.parse(String(queryStdout.text || "{}").trim()))
-      } catch (error) {
-        root.host = Object.assign({}, root.host, { loading: false, error: "Invalid provider response" })
-      }
-    }
-
-    stdout: StdioCollector { id: queryStdout; waitForEnd: true }
-    stderr: StdioCollector { id: queryStderr; waitForEnd: true }
-  }
-
-  Process {
-    id: actionProcess
-    running: false
-
-    onExited: function(exitCode) {
-      var kind = root.actionKind
-      if (exitCode !== 0) root.controller.failThreadMutation(
-        kind, actionStderr.text.trim() || root.label + " action failed")
-      else root.controller.finishThreadMutation(kind)
-      root.actionKind = ""
-      root.actionThreadId = ""
-      root.actionHostId = ""
-      root.refresh()
-    }
-
-    stderr: StdioCollector { id: actionStderr; waitForEnd: true }
-  }
-
-  Process {
-    id: openProcess
-    running: false
-
-    onExited: function(exitCode) {
-      if (exitCode !== 0) {
-        if (!root.openIsNew) root.controller.failThreadLaunch(
-          root.openRequestId,
-          openStderr.text.trim() || "Could not open " + root.label)
-        root.openRequestId = 0
-        if (root.openIsNew) root.clearPendingNew()
-        return
-      }
-      var result = launchCoordinator.parseOutput(openStdout.text)
-      var address = result.address
-      var runtimeServer = result.serverUrl
-      var runtimeSessionId = result.sessionId
-      if (root.openIsNew) {
-        if (runtimeSessionId !== "" && address !== "") {
-          launchCoordinator.map(runtimeSessionId, address, root.hostId, runtimeServer)
-          root.controller.observeActiveThread(
-            runtimeSessionId, "new-local-provider-thread")
-          root.clearPendingNew()
-        } else {
-          root.pendingWindowAddress = address
-          root.pendingServerUrl = runtimeServer
-          newResolveTimer.restart()
-        }
-      } else {
-        root.controller.confirmThreadLaunch(root.openRequestId, "")
-        root.openRequestId = 0
-      }
-      root.controller.refreshActiveThread()
-      root.refresh()
-    }
-
-    stdout: StdioCollector { id: openStdout; waitForEnd: true }
-    stderr: StdioCollector { id: openStderr; waitForEnd: true }
-  }
 
   Connections {
     target: root.controller
@@ -376,7 +253,6 @@ Item {
 
   Process {
     id: serverProcess
-    running: false
     command: [
       "env", "-u", "OPENCODE_SERVER_PASSWORD", "-u", "OPENCODE_SERVER_USERNAME",
       "opencode", "serve", "--hostname", "127.0.0.1", "--port", "43962"
@@ -426,8 +302,6 @@ Item {
       root.resolvePendingNew()
       if (root.pendingPath === "") stop()
       else if (root.pendingAttempts <= 0) {
-        // Current launchers return a session id immediately. Keep this fallback
-        // silent for compatibility with older helpers that create it lazily.
         root.clearPendingNew()
       }
     }
@@ -438,9 +312,9 @@ Item {
   Component.onCompleted: if (enabled) activate()
 
   Component.onDestruction: {
-    queryProcess.running = false
+    processHost.queryRunning = false
     actionProcess.running = false
-    openProcess.running = false
+    processHost.openRunning = false
     serverProcess.running = false
   }
 }

@@ -1,8 +1,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "../logic/AgentProviderLogic.js" as AgentProviderLogic
-import "../logic/CodexConversationLogic.js" as ConversationLogic
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions
 
 Item {
@@ -160,7 +158,7 @@ Item {
     models = []
     codexConfig = ({})
     ready = false
-    resetConversation()
+    operationApi.resetConversation()
     if (appServer.running) {
       reconnectAfterExit = true
       appServer.running = false
@@ -201,161 +199,31 @@ Item {
     }
   }
 
+  property alias transportRunning: appServer.running
+
+  CodexConversationOperations { id: operationApi; client: root }
+  CodexConversationResponseHandler {
+    id: responseApi
+    client: root
+    operations: operationApi
+  }
+
   function modelState(modelId, modelSelection, effortSelection) {
-    var selectedModelValue = modelSelection !== undefined
-      ? String(modelSelection || "") : configuredModel
-    var selectedEffortValue = effortSelection !== undefined
-      ? String(effortSelection || "") : configuredEffort
-    return AgentProviderLogic.modelState(
-      models, codexConfig, selectedModelValue, selectedEffortValue, modelId)
+    return operationApi.modelState(modelId, modelSelection, effortSelection)
   }
-
-  function applyThreadOptions(params) {
-    return ChatLaunchOptions.threadParams(params, runtimeOptions())
-  }
-
-  function applyTurnOptions(params) {
-    return ChatLaunchOptions.turnParams(params, runtimeOptions())
-  }
-
-  function refreshModels() {
-    if (!ready || modelListRequestId !== 0) return
-    modelListRequestId = beginRequest("model list")
-    if (!send({ method: "model/list", id: modelListRequestId,
-        params: { limit: 100, includeHidden: false } })) {
-      finishRequest(modelListRequestId)
-      modelListRequestId = 0
-    }
-  }
-
-  function refreshConfig() {
-    if (!ready || configReadRequestId !== 0) return
-    configReadRequestId = beginRequest("configuration")
-    if (!send({ method: "config/read", id: configReadRequestId,
-        params: { includeLayers: false } })) {
-      finishRequest(configReadRequestId)
-      configReadRequestId = 0
-    }
-  }
-
-  function resetConversation() {
-    loading = false
-    busy = false
-    activeThreadId = ""
-    activeTurnId = ""
-    activeCwd = ""
-    messages = []
-    errorText = ""
-    approvalRequest = null
-  }
-
-  function newChat(cwd, model, effort) {
-    if (busy) return false
-    resetConversation()
-    pendingCwd = String(cwd || configuredCwd || Quickshell.env("HOME") || "/tmp")
-    pendingModel = String(model || configuredModel || "")
-    pendingEffort = String(effort || configuredEffort || "")
-    return true
-  }
-
-  function openThread(threadId) {
-    var id = String(threadId || "")
-    if (!ready || busy || id === "") return false
-    loading = true
-    errorText = ""
-    messages = []
-    activeThreadId = id
-    activeTurnId = ""
-    resumeRequestId = beginRequest("thread resume")
-    var sent = send({
-      method: "thread/resume",
-      id: resumeRequestId,
-      params: applyThreadOptions({ threadId: id })
-    })
-    if (!sent) {
-      finishRequest(resumeRequestId)
-      resumeRequestId = 0
-      loading = false
-    }
-    return sent
-  }
-
+  function refreshModels() { return operationApi.refreshModels() }
+  function refreshConfig() { return operationApi.refreshConfig() }
+  function resetConversation() { return operationApi.resetConversation() }
+  function newChat(cwd, model, effort) { return operationApi.newChat(cwd, model, effort) }
+  function openThread(threadId) { return operationApi.openThread(threadId) }
   function sendPrompt(prompt, cwd, model, effort) {
-    var value = String(prompt || "").trim()
-    if (!ready || busy || value === "") return false
-    var promptError = ConversationLogic.promptValidationError(value)
-    if (promptError !== "") {
-      errorText = promptError
-      return false
-    }
-    errorText = ""
-    messages = ConversationLogic.optimisticUserMessage(messages, value)
-    if (activeThreadId === "") {
-      pendingPrompt = value
-      pendingCwd = String(cwd || pendingCwd || Quickshell.env("HOME") || "/tmp")
-      pendingModel = String(model || pendingModel || "")
-      pendingEffort = String(effort || pendingEffort || "")
-      busy = true
-      threadStartRequestId = beginRequest("thread start")
-      var startParams = applyThreadOptions({
-        cwd: pendingCwd,
-        experimentalRawEvents: false
-      })
-      if (pendingModel !== "") startParams.model = pendingModel
-      var sent = send({ method: "thread/start", id: threadStartRequestId, params: startParams })
-      if (!sent) {
-        finishRequest(threadStartRequestId)
-        threadStartRequestId = 0
-        pendingPrompt = ""
-        busy = false
-      }
-      return sent
-    }
-    return startTurn(value, cwd, model, effort)
+    return operationApi.sendPrompt(prompt, cwd, model, effort)
   }
-
   function startTurn(prompt, cwd, model, effort) {
-    if (activeThreadId === "") return false
-    var promptError = ConversationLogic.promptValidationError(prompt)
-    if (promptError !== "") {
-      errorText = promptError
-      return false
-    }
-    busy = true
-    turnStartRequestId = beginRequest("turn start")
-    var params = applyTurnOptions({
-      threadId: activeThreadId,
-      input: [{ type: "text", text: String(prompt || "") }]
-    })
-    var turnCwd = String(cwd || "")
-    var turnModel = String(model || configuredModel || "")
-    var turnEffort = String(effort || configuredEffort || "")
-    if (turnCwd !== "") params.cwd = turnCwd
-    if (turnModel !== "") params.model = turnModel
-    if (turnEffort !== "") params.effort = turnEffort
-    if (!send({ method: "turn/start", id: turnStartRequestId, params: params })) {
-      finishRequest(turnStartRequestId)
-      turnStartRequestId = 0
-      busy = false
-      return false
-    }
-    return true
+    return operationApi.startTurn(prompt, cwd, model, effort)
   }
-
-  function interrupt() {
-    if (!busy || activeThreadId === "" || activeTurnId === "") return false
-    interruptRequestId = beginRequest("turn interrupt")
-    var sent = send({
-      method: "turn/interrupt",
-      id: interruptRequestId,
-      params: { threadId: activeThreadId, turnId: activeTurnId }
-    })
-    if (!sent) {
-      finishRequest(interruptRequestId)
-      interruptRequestId = 0
-    }
-    return sent
-  }
+  function interrupt() { return operationApi.interrupt() }
+  function handleLine(line) { return responseApi.handleLine(line) }
 
   function answerApproval(accepted, remember) {
     if (!approvalRequest) return
@@ -376,182 +244,6 @@ Item {
       return
     }
     send({ id: request.id, result: result })
-  }
-
-  function handleResponse(message) {
-    finishRequest(message.id)
-    if (message.id === initializeRequestId) {
-      initializeRequestId = 0
-      if (message.error) {
-        errorText = String(message.error.message || "Codex App Server initialization failed")
-        return
-      }
-      send({ method: "initialized" })
-      ready = true
-      refreshModels()
-      refreshConfig()
-      if (requestedThreadId !== "") {
-        var nextThreadId = requestedThreadId
-        requestedThreadId = ""
-        openThread(nextThreadId)
-      } else {
-        newChat(configuredCwd, configuredModel, configuredEffort)
-        sessionReady()
-      }
-      return
-    }
-    if (message.id === modelListRequestId && modelListRequestId !== 0) {
-      modelListRequestId = 0
-      if (!message.error)
-        models = ConversationLogic.boundedModelEntries((message.result || {}).data)
-      return
-    }
-    if (message.id === configReadRequestId && configReadRequestId !== 0) {
-      configReadRequestId = 0
-      if (!message.error) codexConfig = (message.result || {}).config || ({})
-      return
-    }
-    if (message.id === resumeRequestId && resumeRequestId !== 0) {
-      resumeRequestId = 0
-      loading = false
-      if (message.error) {
-        errorText = String(message.error.message || "Could not open the Codex thread")
-        return
-      }
-      var resume = message.result || ({})
-      var thread = resume.thread || ({})
-      activeThreadId = String(thread.id || activeThreadId)
-      activeCwd = String(resume.cwd || thread.cwd || "")
-      activeModel = String(resume.model || "")
-      activeEffort = String(resume.reasoningEffort || "")
-      messages = ConversationLogic.normalizeThread(thread)
-      var activity = ConversationLogic.threadActivity(thread)
-      busy = activity.busy
-      activeTurnId = activity.turnId
-      threadChanged(activeThreadId)
-      sessionReady()
-      return
-    }
-    if (message.id === threadStartRequestId && threadStartRequestId !== 0) {
-      threadStartRequestId = 0
-      if (message.error) {
-        busy = false
-        pendingPrompt = ""
-        errorText = String(message.error.message || "Could not create the Codex thread")
-        return
-      }
-      var started = message.result || ({})
-      var newThread = started.thread || ({})
-      activeThreadId = String(newThread.id || "")
-      activeCwd = String(started.cwd || newThread.cwd || pendingCwd)
-      activeModel = String(started.model || pendingModel)
-      activeEffort = String(started.reasoningEffort || pendingEffort)
-      busy = false
-      threadChanged(activeThreadId)
-      var prompt = pendingPrompt
-      pendingPrompt = ""
-      if (prompt !== "") startTurn(prompt, activeCwd, activeModel, activeEffort)
-      return
-    }
-    if (message.id === turnStartRequestId && turnStartRequestId !== 0) {
-      turnStartRequestId = 0
-      if (message.error) {
-        busy = false
-        errorText = String(message.error.message || "Could not start the Codex turn")
-        return
-      }
-      var turn = (message.result || {}).turn || ({})
-      activeTurnId = String(turn.id || activeTurnId)
-      return
-    }
-    if (message.id === interruptRequestId && interruptRequestId !== 0) {
-      interruptRequestId = 0
-      if (message.error) errorText = String(message.error.message || "Could not stop the Codex turn")
-    }
-  }
-
-  function sameThread(params) {
-    var threadId = String((params || {}).threadId || "")
-    return activeThreadId === "" || threadId === "" || threadId === activeThreadId
-  }
-
-  function handleNotification(method, params) {
-    if (!sameThread(params)) return
-    if (method === "turn/started") {
-      activeTurnId = String((params.turn || {}).id || activeTurnId)
-      busy = true
-      return
-    }
-    if (method === "item/started" || method === "item/completed") {
-      messages = ConversationLogic.upsertItem(messages, params.item, params.turnId)
-      return
-    }
-    if (method === "item/agentMessage/delta") {
-      messages = ConversationLogic.appendDelta(
-        messages, params.itemId, params.delta, "assistant", "Codex")
-      return
-    }
-    if (method === "item/reasoning/summaryTextDelta"
-        || method === "item/reasoning/textDelta") {
-      messages = ConversationLogic.appendDelta(
-        messages, params.itemId, params.delta, "reasoning", "Reasoning")
-      return
-    }
-    if (method === "item/commandExecution/outputDelta"
-        || method === "item/fileChange/outputDelta") {
-      messages = ConversationLogic.appendDelta(
-        messages, params.itemId, params.delta, "tool", "Tool output")
-      return
-    }
-    if (method === "item/fileChange/patchUpdated") {
-      messages = ConversationLogic.upsertItem(messages, {
-        id: params.itemId,
-        type: "fileChange",
-        changes: params.changes,
-        status: "inProgress"
-      }, params.turnId)
-      return
-    }
-    if (method === "turn/completed") {
-      var completed = params.turn || ({})
-      var items = ConversationLogic.completedTurnItems(completed)
-      for (var i = 0; i < items.length; i++)
-        messages = ConversationLogic.upsertItem(messages, items[i], completed.id)
-      activeTurnId = ""
-      busy = false
-      if (completed.error)
-        errorText = String(completed.error.message || "The Codex turn failed")
-      turnCompleted(activeThreadId)
-    }
-  }
-
-  function handleLine(line) {
-    var value = String(line || "").trim()
-    if (value === "") return
-    var message
-    try {
-      message = JSON.parse(value)
-    } catch (error) {
-      console.warn("Agent Chat: invalid Codex App Server message")
-      return
-    }
-    var structureError = ConversationLogic.protocolStructureError(message)
-    if (structureError !== "") {
-      errorText = "Codex App Server " + structureError
-      protocolViolation = true
-      if (appServer.running) appServer.running = false
-      return
-    }
-    if (message.id !== undefined && message.id !== null && message.method) {
-      var summary = ConversationLogic.approvalSummary(message.method, message.params)
-      approvalRequest = Object.assign({}, message, summary)
-      return
-    }
-    if (message.id !== undefined && message.id !== null) {
-      handleResponse(message)
-      return
-    }
-    handleNotification(String(message.method || ""), message.params || ({}))
   }
 
   Process {

@@ -1,9 +1,4 @@
 import QtQuick
-import Quickshell
-import Quickshell.Io
-import "../logic/ActionLogic.js" as ActionLogic
-import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
-import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Item {
   id: root
@@ -64,645 +59,81 @@ Item {
   ThreadLaunchCoordinator { id: launchCoordinator }
   readonly property alias configPath: configStore.path
 
-  function providerTypeForEntry(entry) {
-    return providerRegistry.typeForEntry(entry)
+  RemoteAgentSnapshots {
+    id: snapshots
+    provider: root
+    processes: processHost
+    configStore: configStore
+    registry: providerRegistry
   }
 
-  function providerLabel(host) {
-    return providerRegistry.adapterForEntry(host).label
+  function providerTypeForEntry(entry) { return snapshots.providerTypeForEntry(entry) }
+  function providerLabel(host) { return snapshots.providerLabel(host) }
+  function hostById(hostId) { return snapshots.hostById(hostId) }
+  function updateHost(hostId, patch) { return snapshots.updateHost(hostId, patch) }
+  function restoreSnapshots(values) { return snapshots.restoreSnapshots(values) }
+  function projectForId(host, projectId) { return snapshots.projectForId(host, projectId) }
+  function projectRoot(project) { return snapshots.projectRoot(project) }
+  function pathForThread(host, thread) { return snapshots.pathForThread(host, thread) }
+  function threadStatus(thread) { return snapshots.threadStatus(thread) }
+  function mergeUnread(host, nextThreads) { return snapshots.mergeUnread(host, nextThreads) }
+  function markThreadSeen(threadId) { return snapshots.markThreadSeen(threadId) }
+  function refresh(hostId) { return snapshots.refresh(hostId) }
+  function refreshVisibleProvider() { return snapshots.refreshVisibleProvider() }
+  function startNextQuery() { return snapshots.startNextQuery() }
+  function applySnapshot(snapshot) { return snapshots.applySnapshot(snapshot) }
+
+  RemoteAgentManagement {
+    id: management
+    provider: root
+    processes: processHost
+    configStore: configStore
+    registry: providerRegistry
+    manager: claudeManager
   }
 
-  function hostById(hostId) {
-    var wanted = String(hostId || "")
-    for (var i = 0; i < remoteHosts.length; i++) {
-      if (String(remoteHosts[i].id || "") === wanted) return remoteHosts[i]
-    }
-    return null
-  }
+  function threadIndex(items, threadId) { return management.threadIndex(items, threadId) }
+  function threadsWithoutId(items, threadId) { return management.threadsWithoutId(items, threadId) }
+  function configuredRemoteById(hostId) { return management.configuredRemoteById(hostId) }
+  function writeRemoteConfig(remotes) { return management.writeRemoteConfig(remotes) }
+  function add(label, type, address, home, tokenFile, providerType) { return management.add(label, type, address, home, tokenFile, providerType) }
+  function updateRemote(hostId, label, type, address, home, tokenFile, providerType) { return management.updateRemote(hostId, label, type, address, home, tokenFile, providerType) }
+  function removeRemote(hostId) { return management.removeRemote(hostId) }
+  function testRemote(hostId) { return management.testRemote(hostId) }
+  function loginClaude(hostId) { return management.loginClaude(hostId) }
+  function sshHostEnabled(alias, providerType) { return management.sshHostEnabled(alias, providerType) }
+  function remoteIdForSshHost(alias, providerType) { return management.remoteIdForSshHost(alias, providerType) }
+  function refreshSshHosts() { return management.refreshSshHosts() }
+  function archiveThread(hostId, thread) { return management.archiveThread(hostId, thread) }
+  function renameThread(hostId, thread, name) { return management.renameThread(hostId, thread, name) }
+  function toggleThreadPin(hostId, thread) { return management.toggleThreadPin(hostId, thread) }
+  function applyThreadPin(hostId, threadId, pinned, returnedThread) { return management.applyThreadPin(hostId, threadId, pinned, returnedThread) }
+  function restoreArchivedThread(hostId) { return management.restoreArchivedThread(hostId) }
 
-  function updateHost(hostId, patch) {
-    var wanted = String(hostId || "")
-    var next = []
-    for (var i = 0; i < remoteHosts.length; i++) {
-      var host = remoteHosts[i]
-      next.push(String(host.id || "") === wanted ? Object.assign({}, host, patch) : host)
-    }
-    remoteHosts = next
-  }
-
-  function restoreSnapshots(snapshots) {
-    remoteHosts = ProviderSnapshotLogic.hydratedHosts(snapshots)
-    // If the config read won the startup race, reapply it over the cached data.
-    // This keeps current connection settings authoritative and removes stale hosts.
-    if (configLoaded) configStore.load(JSON.stringify(configStore.config))
-  }
-
-  function projectForId(host, projectId) {
-    var wanted = String(projectId || "")
-    var items = host && Array.isArray(host.projects) ? host.projects : []
-    for (var i = 0; i < items.length; i++) {
-      if (String(items[i].id || "") === wanted) return items[i]
-    }
-    return null
-  }
-
-  function projectRoot(project) {
-    if (!project || !project.roots || project.roots.length === 0) return ""
-    return String(project.roots[0].path || "")
-  }
-
-  function pathForThread(host, thread) {
-    var project = projectForId(host, thread ? thread.projectId : "")
-    var rootPath = projectRoot(project)
-    return rootPath !== "" ? rootPath : String(thread && thread.cwd || host && host.home || "")
-  }
-
-  function threadStatus(thread) {
-    var status = thread ? thread.status : null
-    var flags = status && Array.isArray(status.activeFlags)
-      ? status.activeFlags : []
-    if (flags.indexOf("waitingOnApproval") >= 0
-        || flags.indexOf("waitingOnUserInput") >= 0)
-      return "blocked"
-    var type = typeof status === "string" ? status : String(status && status.type || "")
-    return type === "active" ? "busy" : "done"
-  }
-
-  function mergeUnread(host, nextThreads) {
-    return ThreadStateLogic.mergeProviderUnread(
-      host && host.threads, nextThreads, controller.activeThreadId)
-  }
-
-  function markThreadSeen(threadId) {
-    var wanted = String(threadId || "")
-    if (wanted === "") return
-    for (var hostIndex = 0; hostIndex < remoteHosts.length; hostIndex++) {
-      var host = remoteHosts[hostIndex]
-      var threads = host.threads || []
-      var changed = false
-      var next = []
-      for (var threadIndex = 0; threadIndex < threads.length; threadIndex++) {
-        var thread = threads[threadIndex]
-        if (String(thread && thread.id || "") === wanted && thread.unread === true) {
-          next.push(Object.assign({}, thread, { unread: false }))
-          changed = true
-        } else next.push(thread)
-      }
-      if (changed) updateHost(host.id, { threads: next })
-    }
-  }
-
-  function refresh(hostId) {
-    if (!configLoaded) return
-    var wanted = String(hostId || "")
-    var queue = queryQueue.slice()
-    function append(id) {
-      if (id === queryHostId || queue.indexOf(id) >= 0) return
-      queue.push(id)
-      var host = hostById(id)
-      updateHost(id, { loading: !(host && host.loaded === true) })
-    }
-    if (wanted !== "") append(wanted)
-    else for (var i = 0; i < remoteHosts.length; i++) append(String(remoteHosts[i].id || ""))
-    queryQueue = queue
-    startNextQuery()
-  }
-
-  function refreshVisibleProvider() {
-    if (!controller.sidebarOpen) {
-      refresh()
-      return
-    }
-    var selected = String(controller.selectedProvider || "codex").toLowerCase()
-    for (var i = 0; i < remoteHosts.length; i++) {
-      var hostProvider = providerTypeForEntry(remoteHosts[i]) || "codex"
-      if (hostProvider === selected) refresh(remoteHosts[i].id)
-    }
-  }
-
-  function startNextQuery() {
-    if (controller.shuttingDown || queryProcess.running || queryQueue.length === 0) return
-    var queue = queryQueue.slice()
-    queryHostId = String(queue.shift() || "")
-    queryQueue = queue
-    if (queryHostId === "" || !hostById(queryHostId)) {
-      queryHostId = ""
-      Qt.callLater(root.startNextQuery)
-      return
-    }
-    queryProcess.command = [queryHelperPath, configPath, queryHostId, "snapshot"]
-    queryProcess.running = true
-  }
-
-  function applySnapshot(snapshot) {
-    var hostId = String(snapshot && snapshot.hostId || "")
-    if (hostId === "") return
-    var existing = hostById(hostId)
-    if (!existing) return
-    var snapshotThreads = Array.isArray(snapshot.threads) ? snapshot.threads : []
-    var hiddenArchiveId = hostId === actionHostId ? archivedThreadId
-      : (hostId === archiveConfirmationHostId ? archiveConfirmationThreadId : "")
-    var visibleThreads = threadsWithoutId(snapshotThreads, hiddenArchiveId)
-    updateHost(hostId, {
-      home: String(snapshot.home || existing.home || ""),
-      providerType: providerTypeForEntry(snapshot),
-      threads: mergeUnread(existing, visibleThreads),
-      projects: Array.isArray(snapshot.projects) ? snapshot.projects : [],
-      projectDefaults: snapshot.projectDefaults && typeof snapshot.projectDefaults === "object"
-        ? snapshot.projectDefaults : ({}),
-      projectAgents: snapshot.projectAgents && typeof snapshot.projectAgents === "object"
-        ? snapshot.projectAgents : ({}),
-      models: Array.isArray(snapshot.models) ? snapshot.models : [],
-      agents: Array.isArray(snapshot.agents) ? snapshot.agents : [],
-      defaultModel: String(snapshot.defaultModel || ""),
-      defaultEffort: String(snapshot.defaultEffort || ""),
-      defaultAgent: String(snapshot.defaultAgent || ""),
-      available: snapshot.available !== false,
-      authenticated: snapshot.authenticated !== false,
-      version: String(snapshot.version || ""),
-      subscriptionType: String(snapshot.subscriptionType || ""),
-      rateLimits: snapshot.rateLimits && typeof snapshot.rateLimits === "object"
-        ? snapshot.rateLimits : ({}),
-      loaded: true,
-      loading: false,
-      error: String(snapshot.error || "")
-    })
-    if (hostId === archiveConfirmationHostId) {
-      archiveConfirmationHostId = ""
-      archiveConfirmationThreadId = ""
-    }
-    resolvePendingNew(hostId)
-  }
-
-  function threadIndex(items, threadId) {
-    var wanted = String(threadId || "")
-    for (var i = 0; i < items.length; i++) {
-      if (String(items[i] && items[i].id || "") === wanted) return i
-    }
-    return -1
-  }
-
-  function threadsWithoutId(items, threadId) {
-    var wanted = String(threadId || "")
-    if (wanted === "") return items.slice()
-    var visible = []
-    for (var i = 0; i < items.length; i++) {
-      if (String(items[i] && items[i].id || "") !== wanted) visible.push(items[i])
-    }
-    return visible
-  }
-
-  function configuredRemoteById(hostId) {
-    return configStore.configuredById(hostId)
-  }
-
-  function writeRemoteConfig(remotes) {
-    configStore.write(remotes)
-  }
-
-  function add(label, type, address, home, tokenFile, providerType) {
-    return configStore.add(label, type, address, home, tokenFile, providerType)
-  }
-
-  function updateRemote(hostId, label, type, address, home, tokenFile, providerType) {
-    return configStore.update(
-      hostId, label, type, address, home, tokenFile, providerType)
-  }
-
-  function removeRemote(hostId) {
-    addError = ""
-    var id = String(hostId || "")
-    if (!configuredRemoteById(id)) {
-      addError = "The remote no longer exists"
-      return false
-    }
-    if ((actionProcess.running && actionHostId === id)
-        || (openProcess.running && openHostId === id) || pendingHostId === id) {
-      addError = "Wait for the remote operation to finish"
-      return false
-    }
-    if (loginRunning && loginHostId === id) {
-      addError = "Wait for the Claude sign-in terminal to open"
-      return false
-    }
-    if (managementTestRunning && managementTestHostId === id) {
-      addError = "Wait for the connection test to finish"
-      return false
-    }
-
-    var configured = remoteConfig.remotes || []
-    var next = []
-    for (var i = 0; i < configured.length; i++) {
-      if (String(configured[i] && configured[i].id || "") !== id)
-        next.push(configured[i])
-    }
-    queryQueue = queryQueue.filter(function(value) { return String(value || "") !== id })
-    writeRemoteConfig(next)
-    return true
-  }
-
-  function testRemote(hostId) {
-    addError = ""
-    var id = String(hostId || "")
-    if (!configuredRemoteById(id)) {
-      addError = "The remote no longer exists"
-      return false
-    }
-    if (controller.shuttingDown || managementTestProcess.running) return false
-    managementTestHostId = id
-    managementTestRunning = true
-    managementTestSucceeded = false
-    managementTestMessage = "Connecting…"
-    managementTestProcess.command = [queryHelperPath, configPath, id, "snapshot"]
-    managementTestProcess.running = true
-    return true
-  }
-
-  function loginClaude(hostId) {
-    return claudeManager.login(hostId)
-  }
-
-  function sshHostEnabled(alias, providerType) {
-    var wanted = String(alias || "")
-    var normalizedProvider = providerRegistry.normalize(providerType)
-    var wantedProvider = normalizedProvider === "codex" ? "" : normalizedProvider
-    var configured = remoteConfig.remotes || []
-    for (var i = 0; i < configured.length; i++) {
-      var remote = configured[i] || ({})
-      if (remote.type === "ssh" && String(remote.sshHost || "") === wanted
-          && providerTypeForEntry(remote) === wantedProvider) return true
-    }
-    return false
-  }
-
-  function remoteIdForSshHost(alias, providerType) {
-    var wanted = String(alias || "")
-    var normalizedProvider = providerRegistry.normalize(providerType)
-    var wantedProvider = normalizedProvider === "codex" ? "" : normalizedProvider
-    var configured = remoteConfig.remotes || []
-    for (var i = 0; i < configured.length; i++) {
-      var remote = configured[i] || ({})
-      if (remote.type === "ssh" && String(remote.sshHost || "") === wanted
-          && providerTypeForEntry(remote) === wantedProvider)
-        return String(remote.id || "")
-    }
-    return ""
-  }
-
-  function refreshSshHosts() {
-    if (controller.shuttingDown || sshHostsProcess.running) return
-    sshHostsLoading = true
-    sshHostsError = ""
-    sshHostsProcess.command = [sshHostsHelperPath]
-    sshHostsProcess.running = true
-  }
-
-  function archiveThread(hostId, thread) {
-    var id = String(thread && thread.id || "")
-    actionHostId = String(hostId || "")
-    var host = hostById(actionHostId)
-    if (id === "" || !host || actionProcess.running
-        || !controller.beginThreadMutation("archive", id)) {
-      actionHostId = ""
-      return false
-    }
-    actionKind = "archive"
-    actionThreadId = id
-    archivedThreadId = id
-    archivedThreadSnapshot = thread
-    archivedThreadIndex = host ? threadIndex(host.threads, id) : -1
-    if (host) updateHost(actionHostId, { threads: threadsWithoutId(host.threads, id) })
-    actionProcess.command = [
-      queryHelperPath, configPath, actionHostId, "archive", id,
-      pathForThread(host, thread)
-    ]
-    actionProcess.running = true
-    return true
-  }
-
-  function renameThread(hostId, thread, name) {
-    var id = String(thread && thread.id || "")
-    actionHostId = String(hostId || "")
-    var host = hostById(actionHostId)
-    if (id === "" || !host || actionProcess.running
-        || !controller.beginThreadMutation("rename", id)) {
-      actionHostId = ""
-      return false
-    }
-    actionKind = "rename"
-    actionThreadId = id
-    actionProcess.command = [
-      queryHelperPath, configPath, actionHostId, "rename", id,
-      pathForThread(host, thread), name
-    ]
-    actionProcess.running = true
-    return true
-  }
-
-  function toggleThreadPin(hostId, thread) {
-    var id = String(thread && thread.id || "")
-    actionHostId = String(hostId || "")
-    if (id === "" || !hostById(actionHostId) || actionProcess.running
-        || !controller.beginThreadMutation("pin", id)) {
-      actionHostId = ""
-      return false
-    }
-    actionKind = "pin"
-    actionThreadId = id
-    actionPinValue = thread.isPinned !== true
-    controller.pendingPinValue = actionPinValue
-    actionProcess.command = [
-      queryHelperPath,
-      configPath,
-      actionHostId,
-      "pin",
-      id,
-      actionPinValue ? "true" : "false"
-    ]
-    actionProcess.running = true
-    return true
-  }
-
-  function applyThreadPin(hostId, threadId, pinned, returnedThread) {
-    var host = hostById(hostId)
-    if (!host) return
-    var next = []
-    for (var i = 0; i < host.threads.length; i++) {
-      var thread = host.threads[i]
-      next.push(String(thread && thread.id || "") === String(threadId || "")
-        ? Object.assign({}, thread, returnedThread || ({}), { isPinned: !!pinned })
-        : thread)
-    }
-    updateHost(hostId, { threads: next })
-  }
-
-  function restoreArchivedThread(hostId) {
-    var host = hostById(hostId)
-    if (host && archivedThreadSnapshot && threadIndex(host.threads, archivedThreadId) < 0) {
-      var restored = host.threads.slice()
-      var index = Math.max(0, Math.min(archivedThreadIndex, restored.length))
-      restored.splice(index, 0, archivedThreadSnapshot)
-      updateHost(hostId, { threads: restored })
-    }
-    archivedThreadId = ""
-    archivedThreadSnapshot = null
-    archivedThreadIndex = -1
+  RemoteAgentLaunch {
+    id: remoteLaunch
+    provider: root
+    processes: processHost
+    launches: launchCoordinator
   }
 
   function openThread(hostId, thread, path, source) {
-    if (!thread || !thread.id || openProcess.running) return false
-    var host = hostById(hostId)
-    if (!host) return false
-    if (providerTypeForEntry(host) !== "" && host.available === false) {
-      controller.launchError = host.error || providerLabel(host) + " is unavailable on this remote"
-      return false
-    }
-    var providerType = providerTypeForEntry(host) || "codex"
-    var threadId = String(thread.id)
-    var requestId = controller.beginThreadLaunch(
-      threadId, source || (providerType + "-remote"))
-    if (requestId === 0) return false
-    openIsNew = false
-    openHostId = String(hostId || "")
-    openRequestId = requestId
-    openProcess.command = ActionLogic.remoteAgentOpenCommand(
-      openHelperPath,
-      configPath,
-      String(hostId || ""),
-      String(path || thread.cwd || ""),
-      threadId,
-      controller.selectedModelForProvider(providerType),
-      controller.selectedEffortForProvider(providerType),
-      controller.selectedAgentForProvider(providerType),
-      providerType === "codex" ? controller.codexServiceTier : "")
-    openProcess.running = true
-    return true
+    return remoteLaunch.openThread(hostId, thread, path, source)
+  }
+  function newThread(hostId, path) { return remoteLaunch.newThread(hostId, path) }
+  function clearPendingNew() { return remoteLaunch.clearPendingNew() }
+  function resolvePendingNew(hostId) { return remoteLaunch.resolvePendingNew(hostId) }
+  function stopNewResolveTimer() { newResolveTimer.stop() }
+
+
+  RemoteAgentProcessHost {
+    id: processHost
+    provider: root
+    launches: launchCoordinator
   }
 
-  function newThread(hostId, path) {
-    if (openProcess.running) return
-    var host = hostById(hostId)
-    if (!host) return
-    if (providerTypeForEntry(host) !== "" && host.available === false) {
-      controller.launchError = host.error || providerLabel(host) + " is unavailable on this remote"
-      return
-    }
-    var providerType = providerTypeForEntry(host) || "codex"
-    var remotePath = String(path || host.home || "")
-    if (remotePath === "") {
-      controller.launchError = "The remote home is unknown; set it in the remote settings"
-      return
-    }
-    openIsNew = true
-    openHostId = String(hostId || "")
-    controller.launchingProjectPath = remotePath
-    pendingHostId = String(hostId || "")
-    pendingPath = remotePath
-    pendingWindowAddress = ""
-    pendingAttempts = 24
-    pendingKnownIds = ({})
-    for (var i = 0; i < host.threads.length; i++) {
-      if (host.threads[i] && host.threads[i].id)
-        pendingKnownIds[String(host.threads[i].id)] = true
-    }
-    controller.launchError = ""
-    openProcess.command = ActionLogic.remoteAgentOpenCommand(
-      openHelperPath,
-      configPath,
-      pendingHostId,
-      pendingPath,
-      "", // new session
-      controller.selectedModelForProvider(providerType),
-      controller.selectedEffortForProvider(providerType),
-      controller.selectedAgentForProvider(providerType),
-      providerType === "codex" ? controller.codexServiceTier : "")
-    openProcess.running = true
-  }
+  function restartNewResolveTimer() { newResolveTimer.restart() }
 
-  function clearPendingNew() {
-    openIsNew = false
-    openHostId = ""
-    pendingHostId = ""
-    pendingPath = ""
-    pendingKnownIds = ({})
-    pendingWindowAddress = ""
-    pendingAttempts = 0
-    controller.launchingProjectPath = ""
-    newResolveTimer.stop()
-  }
-
-  function resolvePendingNew(hostId) {
-    if (pendingHostId === "" || pendingHostId !== String(hostId || "")
-        || pendingWindowAddress === "") return
-    var host = hostById(pendingHostId)
-    if (!host) return
-    for (var i = 0; i < host.threads.length; i++) {
-      var thread = host.threads[i]
-      var id = String(thread && thread.id || "")
-      if (id === "" || pendingKnownIds[id] === true) continue
-      if (pathForThread(host, thread) !== pendingPath
-          && String(thread.cwd || "") !== pendingPath) continue
-      launchCoordinator.map(id, pendingWindowAddress, pendingHostId, "")
-      controller.observeActiveThread(id, "new-remote-thread")
-      clearPendingNew()
-      return
-    }
-  }
-
-  Process {
-    id: queryProcess
-    running: false
-
-    onExited: function(exitCode) {
-      var hostId = root.queryHostId
-      if (exitCode !== 0) {
-        var failedHost = root.hostById(hostId)
-        root.updateHost(hostId, {
-          loading: false,
-          error: queryStderr.text.trim()
-            || "Could not load remote " + root.providerLabel(failedHost) + " threads"
-        })
-      } else {
-        try {
-          root.applySnapshot(JSON.parse(String(queryStdout.text || "{}").trim()))
-        } catch (error) {
-          root.updateHost(hostId, { loading: false, error: "Invalid remote response" })
-        }
-      }
-      root.queryHostId = ""
-      Qt.callLater(root.startNextQuery)
-    }
-
-    stdout: StdioCollector { id: queryStdout; waitForEnd: true }
-    stderr: StdioCollector { id: queryStderr; waitForEnd: true }
-  }
-
-  Process {
-    id: actionProcess
-    running: false
-
-    onExited: function(exitCode) {
-      var hostId = root.actionHostId
-      var kind = root.actionKind
-      if (exitCode !== 0) {
-        var failedHost = root.hostById(hostId)
-        var message = actionStderr.text.trim()
-          || "Remote " + root.providerLabel(failedHost) + " action failed"
-        if (kind === "archive") root.restoreArchivedThread(hostId)
-        root.controller.failThreadMutation(kind, message)
-      } else if (kind === "archive") {
-        root.archiveConfirmationHostId = hostId
-        root.archiveConfirmationThreadId = root.archivedThreadId
-        root.archivedThreadId = ""
-        root.archivedThreadSnapshot = null
-        root.archivedThreadIndex = -1
-      } else if (kind === "pin") {
-        var response = null
-        try {
-          response = JSON.parse(String(actionStdout.text || "{}").trim())
-        } catch (error) {
-          response = null
-        }
-        root.applyThreadPin(hostId, root.actionThreadId, root.actionPinValue,
-          response ? response.thread : null)
-      }
-      if (exitCode === 0) root.controller.finishThreadMutation(kind)
-      root.actionHostId = ""
-      root.actionKind = ""
-      root.actionThreadId = ""
-      root.actionPinValue = false
-      if (exitCode === 0) root.refresh(hostId)
-    }
-
-    stdout: StdioCollector { id: actionStdout; waitForEnd: true }
-    stderr: StdioCollector { id: actionStderr; waitForEnd: true }
-  }
-
-  Process {
-    id: managementTestProcess
-    running: false
-
-    onExited: function(exitCode) {
-      root.managementTestRunning = false
-      if (exitCode !== 0) {
-        root.managementTestSucceeded = false
-        root.managementTestMessage = managementTestStderr.text.trim()
-          || "Connection failed"
-        root.updateHost(root.managementTestHostId, {
-          error: root.managementTestMessage,
-          loading: false
-        })
-        return
-      }
-      try {
-        var snapshot = JSON.parse(String(managementTestStdout.text || "{}").trim())
-        root.applySnapshot(snapshot)
-        var readinessError = String(snapshot.error || "").trim()
-        if (snapshot.available === false || snapshot.authenticated === false
-            || readinessError !== "") {
-          root.managementTestSucceeded = false
-          root.managementTestMessage = "Connected · "
-            + (readinessError !== "" ? readinessError
-              : (snapshot.authenticated === false
-                ? "The provider is not authenticated" : "The provider is unavailable"))
-          return
-        }
-        var count = Array.isArray(snapshot.threads) ? snapshot.threads.length : 0
-        var version = String(snapshot.version || "")
-        root.managementTestSucceeded = true
-        root.managementTestMessage = "Connection healthy · " + count + " threads"
-          + (version !== "" ? " · " + version : "")
-      } catch (error) {
-        root.managementTestSucceeded = false
-        root.managementTestMessage = "Invalid remote response"
-      }
-    }
-
-    stdout: StdioCollector { id: managementTestStdout; waitForEnd: true }
-    stderr: StdioCollector { id: managementTestStderr; waitForEnd: true }
-  }
-
-  Process {
-    id: openProcess
-    running: false
-
-    onExited: function(exitCode) {
-      if (exitCode !== 0) {
-        var failedHost = root.hostById(root.openHostId)
-        var message = openStderr.text.trim()
-          || "Could not open remote " + root.providerLabel(failedHost)
-        if (!root.openIsNew)
-          root.controller.failThreadLaunch(root.openRequestId, message)
-        else root.controller.launchError = message
-        root.openRequestId = 0
-        if (root.openIsNew) root.clearPendingNew()
-        else root.openHostId = ""
-        return
-      }
-      var result = launchCoordinator.parseOutput(openStdout.text)
-      var address = result.address
-      var runtimeSessionId = result.sessionId
-      if (root.openIsNew) {
-        if (runtimeSessionId !== "" && address !== "") {
-          launchCoordinator.map(runtimeSessionId, address, root.pendingHostId, "")
-          root.controller.observeActiveThread(runtimeSessionId, "new-remote-thread")
-          root.clearPendingNew()
-        } else {
-          root.pendingWindowAddress = address
-          root.refresh(root.pendingHostId)
-          newResolveTimer.restart()
-        }
-      } else {
-        root.controller.confirmThreadLaunch(root.openRequestId, "")
-        root.openRequestId = 0
-        root.openHostId = ""
-      }
-      root.controller.refreshActiveThread()
-    }
-
-    stdout: StdioCollector { id: openStdout; waitForEnd: true }
-    stderr: StdioCollector { id: openStderr; waitForEnd: true }
-  }
 
   Connections {
     target: root.controller
@@ -711,30 +142,6 @@ Item {
     }
   }
 
-  Process {
-    id: sshHostsProcess
-    running: false
-
-    onExited: function(exitCode) {
-      root.sshHostsLoading = false
-      if (exitCode !== 0) {
-        root.sshHosts = []
-        root.sshHostsError = sshHostsStderr.text.trim() || "Could not read SSH hosts"
-        return
-      }
-      try {
-        var parsed = JSON.parse(String(sshHostsStdout.text || "[]").trim())
-        root.sshHosts = Array.isArray(parsed) ? parsed : []
-        root.sshHostsError = ""
-      } catch (error) {
-        root.sshHosts = []
-        root.sshHostsError = "Invalid SSH config response"
-      }
-    }
-
-    stdout: StdioCollector { id: sshHostsStdout; waitForEnd: true }
-    stderr: StdioCollector { id: sshHostsStderr; waitForEnd: true }
-  }
 
   Timer {
     id: newResolveTimer
@@ -761,11 +168,5 @@ Item {
     onTriggered: root.refreshVisibleProvider()
   }
 
-  Component.onDestruction: {
-    queryProcess.running = false
-    actionProcess.running = false
-    managementTestProcess.running = false
-    openProcess.running = false
-    sshHostsProcess.running = false
-  }
+  Component.onDestruction: processHost.stopAll()
 }

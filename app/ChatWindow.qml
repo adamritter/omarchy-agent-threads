@@ -6,7 +6,6 @@ import Quickshell.Io
 import "../providers" as Providers
 import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions
-import "../logic/CodexConversationLogic.js" as ConversationLogic
 
 FloatingWindow {
   id: root
@@ -222,22 +221,22 @@ FloatingWindow {
 
   Shortcut {
     sequence: "PgUp"
-    onActivated: transcriptView.scrollPage(-1)
+    onActivated: transcriptPane.scrollPage(-1)
   }
 
   Shortcut {
     sequence: "PgDown"
-    onActivated: transcriptView.scrollPage(1)
+    onActivated: transcriptPane.scrollPage(1)
   }
 
   Shortcut {
     sequence: "Ctrl+Home"
-    onActivated: transcriptView.scrollEdge(-1)
+    onActivated: transcriptPane.scrollEdge(-1)
   }
 
   Shortcut {
     sequence: "Ctrl+End"
-    onActivated: transcriptView.scrollEdge(1)
+    onActivated: transcriptPane.scrollEdge(1)
   }
 
   Shortcut {
@@ -249,27 +248,12 @@ FloatingWindow {
     anchors.fill: parent
     spacing: 0
 
-    Item {
+    ChatTranscriptPane {
+      id: transcriptPane
       Layout.fillWidth: true
       Layout.fillHeight: true
-
-      WebTranscript {
-        id: transcriptView
-        anchors.fill: parent
-        messages: conversation.messages
-        busy: conversation.busy
-        loading: conversation.loading || !conversation.ready
-        conversationTitle: conversation.activeThreadId === ""
-          ? "New conversation" : "Thread " + conversation.activeThreadId.slice(0, 12)
-        conversationDetail: root.workingDirectory + "  ·  "
-          + ChatLaunchOptions.connectionLabel(root.remoteAddress)
-      }
-
-      BusyIndicator {
-        anchors.centerIn: parent
-        running: conversation.loading || !conversation.ready
-        visible: running && conversation.messages.length === 0
-      }
+      window: root
+      client: conversation
     }
 
     Rectangle {
@@ -289,356 +273,18 @@ FloatingWindow {
       }
     }
 
-    Item {
+    ChatComposer {
+      id: composer
       Layout.fillWidth: true
-      Layout.preferredHeight: composerFrame.height + 28
-
-      Rectangle {
-        id: composerFrame
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.leftMargin: Math.max(22, (parent.width - 840) / 2)
-        anchors.rightMargin: Math.max(22, (parent.width - 840) / 2)
-        anchors.bottomMargin: 14
-        height: Math.max(88, Math.min(204, composer.implicitHeight + 54))
-        radius: 20
-        color: root.raised
-        border.color: composer.activeFocus ? "#555555" : root.border
-
-        TextArea {
-          id: composer
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.top: parent.top
-          anchors.bottom: composerToolbar.top
-          anchors.leftMargin: 14
-          anchors.rightMargin: 14
-          anchors.topMargin: 10
-          anchors.bottomMargin: 4
-          color: root.foreground
-          placeholderText: conversation.ready ? "Message Codex" : "Connecting to Codex..."
-          placeholderTextColor: root.muted
-          wrapMode: TextEdit.Wrap
-          onTextChanged: {
-            var bounded = ConversationLogic.boundedPromptInput(text)
-            if (bounded === text) return
-            var position = cursorPosition
-            text = bounded
-            cursorPosition = Math.min(position, text.length)
-          }
-          enabled: conversation.ready && !conversation.loading
-          background: Item {}
-          font.pixelSize: 14
-          Keys.onReturnPressed: function(event) {
-            if (event.modifiers & Qt.ShiftModifier) {
-              event.accepted = false
-              return
-            }
-            root.sendComposer()
-            event.accepted = true
-          }
-        }
-
-        RowLayout {
-          id: composerToolbar
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          anchors.leftMargin: 8
-          anchors.rightMargin: 8
-          anchors.bottomMargin: 8
-          height: 36
-          spacing: 5
-
-          Button {
-            id: newChatButton
-            Layout.preferredWidth: 34
-            Layout.preferredHeight: 34
-            text: "+"
-            font.pixelSize: 20
-            ToolTip.visible: hovered
-            ToolTip.text: "New conversation"
-            onClicked: root.newConversation()
-            background: Rectangle {
-              radius: 10
-              color: newChatButton.hovered ? root.hover : "transparent"
-            }
-            contentItem: Label {
-              text: newChatButton.text
-              color: root.muted
-              horizontalAlignment: Text.AlignHCenter
-              verticalAlignment: Text.AlignVCenter
-              font: newChatButton.font
-            }
-          }
-
-          ComboBox {
-            id: modelSelector
-            Layout.fillWidth: true
-            Layout.minimumWidth: 72
-            Layout.preferredWidth: 150
-            Layout.maximumWidth: 190
-            Layout.preferredHeight: 34
-            model: root.modelChoices()
-            textRole: "label"
-            currentIndex: root.choiceIndex(model, root.selectedModel)
-            onActivated: function(index) { root.selectedModel = model[index].id }
-            ToolTip.visible: hovered
-            ToolTip.text: root.selectedModel !== "" ? root.selectedModel
-              : "Default model · " + (root.agentModelState().defaultModel || "Codex")
-            palette.text: root.foreground
-            palette.buttonText: root.foreground
-            palette.button: root.raised
-            palette.window: root.raised
-            palette.highlight: root.hover
-            palette.highlightedText: root.foreground
-            background: Rectangle {
-              radius: 10
-              color: modelSelector.hovered ? root.hover : "transparent"
-            }
-          }
-
-          ComboBox {
-            id: effortSelector
-            Layout.preferredWidth: 78
-            Layout.preferredHeight: 34
-            model: root.effortChoices()
-            textRole: "label"
-            currentIndex: root.choiceIndex(model, root.selectedEffort)
-            onActivated: function(index) { root.selectedEffort = model[index].id }
-            ToolTip.visible: hovered
-            ToolTip.text: (root.selectedEffort !== "" ? root.selectedEffort
-              : "Default effort · " + (root.agentModelState(root.selectedModel).defaultEffort
-                || "Codex")) + " · Super+Ctrl+E"
-            palette.text: root.foreground
-            palette.buttonText: root.foreground
-            palette.button: root.raised
-            palette.window: root.raised
-            palette.highlight: root.hover
-            palette.highlightedText: root.foreground
-            background: Rectangle {
-              radius: 10
-              color: effortSelector.hovered ? root.hover : "transparent"
-            }
-          }
-
-          Button {
-            id: fastButton
-            Layout.preferredWidth: 34
-            Layout.preferredHeight: 34
-            text: "⚡︎"
-            font.pixelSize: 16
-            ToolTip.visible: hovered
-            ToolTip.text: "Fast responses: "
-              + (root.serviceTier === "fast" ? "On" : "Off")
-              + " · Super+Ctrl+F"
-            onClicked: root.serviceTier = root.serviceTier === "fast" ? "default" : "fast"
-            background: Rectangle {
-              radius: 10
-              color: root.serviceTier === "fast" ? root.accent
-                : (fastButton.hovered ? root.hover : "transparent")
-            }
-            contentItem: Label {
-              text: fastButton.text
-              color: root.serviceTier === "fast" ? "white" : root.muted
-              horizontalAlignment: Text.AlignHCenter
-              verticalAlignment: Text.AlignVCenter
-              font: fastButton.font
-            }
-          }
-
-          Button {
-            id: approveForMeButton
-            Layout.preferredWidth: 122
-            Layout.preferredHeight: 34
-            text: "✓  Approve for me"
-            font.pixelSize: 12
-            ToolTip.visible: hovered
-            ToolTip.text: "Approve for me: "
-              + (root.approvalsReviewer === "auto_review" ? "On" : "Off")
-            onClicked: root.approvalsReviewer === "auto_review"
-              ? root.applyApproval("", "user")
-              : root.applyApproval("on-request", "auto_review")
-            background: Rectangle {
-              radius: 10
-              color: root.approvalsReviewer === "auto_review" ? root.accent
-                : (approveForMeButton.hovered ? root.hover : "transparent")
-            }
-            contentItem: Label {
-              text: approveForMeButton.text
-              color: root.approvalsReviewer === "auto_review" ? "white" : root.muted
-              horizontalAlignment: Text.AlignHCenter
-              verticalAlignment: Text.AlignVCenter
-              font: approveForMeButton.font
-            }
-          }
-
-          Button {
-            id: optionsButton
-            Layout.preferredWidth: 34
-            Layout.preferredHeight: 34
-            text: "⋯"
-            font.pixelSize: 20
-            ToolTip.visible: hovered
-            ToolTip.text: root.approvalStatus()
-            onClicked: optionsMenu.open()
-            background: Rectangle {
-              radius: 10
-              color: optionsButton.hovered || optionsMenu.visible ? root.hover : "transparent"
-            }
-            contentItem: Label {
-              text: optionsButton.text
-              color: root.muted
-              horizontalAlignment: Text.AlignHCenter
-              verticalAlignment: Text.AlignVCenter
-              font: optionsButton.font
-            }
-
-            Menu {
-              id: optionsMenu
-              y: -height - 6
-              palette.window: root.raised
-              palette.text: root.foreground
-              palette.highlight: root.hover
-              palette.highlightedText: root.foreground
-
-              MenuItem {
-                text: "Default approvals"
-                checkable: true
-                checked: root.approvalsReviewer !== "auto_review"
-                  && root.approvalPolicy === ""
-                onTriggered: root.applyApproval("", "user")
-              }
-              MenuItem {
-                text: "Ask as needed"
-                checkable: true
-                checked: root.approvalsReviewer !== "auto_review"
-                  && root.approvalPolicy === "on-request"
-                onTriggered: root.applyApproval("on-request", "user")
-              }
-              MenuItem {
-                text: "Untrusted only"
-                checkable: true
-                checked: root.approvalsReviewer !== "auto_review"
-                  && root.approvalPolicy === "untrusted"
-                onTriggered: root.applyApproval("untrusted", "user")
-              }
-              MenuItem {
-                text: "Never ask"
-                checkable: true
-                checked: root.approvalsReviewer !== "auto_review"
-                  && root.approvalPolicy === "never"
-                onTriggered: root.applyApproval("never", "user")
-              }
-            }
-          }
-
-          Item { Layout.fillWidth: true }
-
-          Button {
-            id: sendButton
-            Layout.preferredWidth: 36
-            Layout.preferredHeight: 36
-            text: conversation.busy ? "■" : "↑"
-            enabled: conversation.busy ? conversation.activeTurnId !== ""
-              : (conversation.ready && composer.text.trim() !== "")
-            onClicked: conversation.busy ? conversation.interrupt() : root.sendComposer()
-            ToolTip.visible: hovered
-            ToolTip.text: conversation.busy ? "Stop" : "Send"
-            background: Rectangle {
-              radius: 18
-              color: sendButton.enabled ? root.accent : "#3a3a3a"
-            }
-            contentItem: Label {
-              text: sendButton.text
-              color: sendButton.enabled ? "white" : root.muted
-              font.pixelSize: 19
-              horizontalAlignment: Text.AlignHCenter
-              verticalAlignment: Text.AlignVCenter
-            }
-          }
-        }
-      }
+      Layout.preferredHeight: implicitHeight
+      window: root
+      client: conversation
     }
   }
 
-  Rectangle {
+  ChatApprovalOverlay {
     anchors.fill: parent
-    visible: conversation.approvalRequest !== null
-    color: "#99000000"
-    z: 20
-
-    MouseArea { anchors.fill: parent }
-
-    Rectangle {
-      anchors.centerIn: parent
-      width: Math.min(560, parent.width - 60)
-      height: approvalColumn.implicitHeight + 40
-      radius: 16
-      color: root.raised
-      border.color: root.border
-
-      ColumnLayout {
-        id: approvalColumn
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.margins: 20
-        spacing: 14
-
-        Label {
-          Layout.fillWidth: true
-          text: conversation.approvalRequest
-            ? String(conversation.approvalRequest.title || "Approval") : ""
-          color: root.foreground
-          font.pixelSize: 18
-          font.weight: Font.DemiBold
-        }
-
-        ScrollView {
-          Layout.fillWidth: true
-          Layout.preferredHeight: Math.min(220, approvalDetail.implicitHeight + 20)
-          Label {
-            id: approvalDetail
-            width: parent.width
-            text: conversation.approvalRequest
-              ? String(conversation.approvalRequest.detail || "") : ""
-            color: root.muted
-            font.family: "monospace"
-            font.pixelSize: 12
-            wrapMode: Text.WrapAnywhere
-          }
-        }
-
-        CheckBox {
-          visible: conversation.approvalRequest
-            && conversation.approvalRequest.kind !== "unknown"
-          text: "Remember for this session"
-          checked: root.rememberApproval
-          onToggled: root.rememberApproval = checked
-          palette.text: root.foreground
-        }
-
-        RowLayout {
-          Layout.alignment: Qt.AlignRight
-          Button {
-            text: "Decline"
-            onClicked: {
-              conversation.answerApproval(false, false)
-              root.rememberApproval = false
-            }
-          }
-          Button {
-            text: "Approve"
-            highlighted: true
-            onClicked: {
-              conversation.answerApproval(true, root.rememberApproval)
-              root.rememberApproval = false
-            }
-          }
-        }
-      }
-    }
+    window: root
+    client: conversation
   }
 }

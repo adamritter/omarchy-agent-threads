@@ -9,6 +9,8 @@ Item {
   id: root
 
   required property var panel
+  implicitWidth: Style.space(148)
+  implicitHeight: Style.space(22)
   readonly property var service: panel.service
   readonly property string providerType: panel.activeProvider
   readonly property var contextHost: {
@@ -24,168 +26,23 @@ Item {
     return String(row && row.path || "")
   }
 
-  function contextDefaults() {
-    var values = contextHost && contextHost.projectDefaults
-    return values && typeof values === "object" && values[contextPath]
-      ? values[contextPath] : (contextHost || ({}))
-  }
-  implicitWidth: Style.space(148)
-  implicitHeight: Style.space(22)
-
-  function compactModelLabel(value) {
-    var label = String(value || "default")
-    if (label === "") return "default"
-    var parts = label.replace(/^(gpt|claude)-/i, "").replace(/-/g, " ").split(" ")
-    for (var i = 0; i < parts.length; i++) {
-      if (/^[a-z]/.test(parts[i]))
-        parts[i] = parts[i].charAt(0).toUpperCase() + parts[i].slice(1)
-    }
-    return parts.join(" ")
-  }
-
-  function effectiveModelLabel() {
-    if (providerType === "codex")
-      return compactModelLabel(service.effectiveModel() || "gpt-5.6-sol")
-    var selected = selectedModel()
-    var defaults = contextDefaults()
-    var effective = selected !== "" ? selected
-      : String(defaults.defaultModel || defaults.model || "")
-    return compactModelLabel(effective || "default")
-  }
-
-  function effectiveEffortLabel() {
-    var effort = providerType === "codex"
-      ? String(service.effectiveEffort() || "medium")
-      : String(selectedEffort() || contextDefaultEffort())
-    if (effort === "") return ""
-    return effort.charAt(0).toUpperCase() + effort.slice(1)
-  }
-
-  function selectorText() {
-    var parts = [effectiveModelLabel()]
-    var effort = effectiveEffortLabel()
-    if (effort !== "") parts.push(effort)
-    var agent = effectiveAgent()
-    if (agent !== "") parts.push("@" + agent)
-    return parts.join(" ") + " ▾"
-  }
-
-  function modelChoices() {
-    var defaults = contextDefaults()
-    var defaultModel = providerType === "codex" ? service.defaultModelForProvider(providerType)
-      : String(defaults.defaultModel || defaults.model || "")
-    var result = [{
-      id: "",
-      label: "default" + (defaultModel !== ""
-        ? " · " + compactModelLabel(defaultModel) : "")
-    }]
-    var entries = providerType !== "codex" && contextHost
-        && Array.isArray(contextHost.models)
-      ? contextHost.models : service.modelsForProvider(providerType)
-    for (var i = 0; i < entries.length; i++) {
-      var entry = entries[i] || ({})
-      var id = String(entry.model || entry.id || "")
-      if (id === "") continue
-      result.push({
-        id: id,
-        label: String(entry.displayName || entry.name || id),
-        isDefault: entry.isDefault === true
-      })
-    }
-    return result
-  }
-
-  function effortChoices() {
-    var defaultEffort = contextDefaultEffort()
-    var result = [{
-      id: "",
-      label: "default" + (defaultEffort !== "" ? " · " + defaultEffort : "")
-    }]
-    var efforts = contextModelEfforts(service.selectedModelForProvider(providerType))
-    for (var i = 0; i < efforts.length; i++)
-      result.push({ id: efforts[i], label: efforts[i] })
-    return result
-  }
-
-  function agentChoices() {
-    var defaultAgent = contextDefaultAgent()
-    var result = [{
-      id: "",
-      label: "default" + (defaultAgent !== "" ? " · @" + defaultAgent : "")
-    }]
-    var agents = contextAgentEntries()
-    for (var i = 0; i < agents.length; i++) {
-      var id = String(agents[i] && agents[i].id || "")
-      if (id !== "") result.push({ id: id, label: String(agents[i].name || id) })
-    }
-    return result
-  }
-
-  function selectedModel() { return service.selectedModelForProvider(providerType) }
-  function selectedEffort() { return service.selectedEffortForProvider(providerType) }
-  function selectedAgent() { return service.selectedAgentForProvider(providerType) }
-
-  function contextAgentEntries() {
-    if (providerType !== "codex" && contextHost) {
-      var scoped = contextHost.projectAgents
-      if (scoped && typeof scoped === "object" && Array.isArray(scoped[contextPath]))
-        return scoped[contextPath]
-    }
-    return contextHost && Array.isArray(contextHost.agents)
-      ? contextHost.agents : service.agentsForProvider(providerType)
-  }
-
-  function contextDefaultAgent() {
-    if (providerType === "codex") return ""
-    var defaults = contextDefaults()
-    return String(defaults.defaultAgent || defaults.agent || "")
-  }
-
-  function effectiveAgent() {
-    return selectedAgent() || contextDefaultAgent()
-  }
-
-  function hasAgentChoices() {
-    return (providerType === "claude" || providerType === "opencode")
-      && (contextAgentEntries().length > 0 || contextDefaultAgent() !== "")
-  }
-
-  function contextModelEfforts(modelId) {
-    if (providerType === "codex" || !contextHost)
-      return service.modelEffortsForProvider(providerType, modelId)
-    var wanted = String(modelId || "")
-    if (wanted === "") return service.modelEffortsForProvider(providerType, "")
-    var entries = Array.isArray(contextHost.models) ? contextHost.models : []
-    for (var i = 0; i < entries.length; i++) {
-      if (String(entries[i] && entries[i].id || "") === wanted)
-        return Array.isArray(entries[i].efforts) ? entries[i].efforts : []
-    }
-    return []
-  }
-
-  function contextDefaultEffort() {
-    if (providerType === "codex")
-      return service.defaultEffortForProvider(providerType, selectedModel())
-    var selected = selectedModel()
-    if (selected !== "" && contextHost) {
-      var entries = Array.isArray(contextHost.models) ? contextHost.models : []
-      for (var i = 0; i < entries.length; i++) {
-        if (String(entries[i] && entries[i].id || "") === selected)
-          return String(entries[i].defaultEffort || "")
-      }
-    }
-    var defaults = contextDefaults()
-    return String(defaults.defaultEffort || defaults.effort || "")
+  ModelEffortOptions {
+    id: options
+    panel: root.panel
+    service: root.service
+    providerType: root.providerType
+    contextHost: root.contextHost
+    contextPath: root.contextPath
   }
 
   Text {
     id: selectorLabel
     anchors.fill: parent
-    text: root.selectorText()
+    text: options.selectorText()
     textFormat: Text.PlainText
     color: selectorMouse.containsMouse || picker.opened
-      ? panel.foreground : Util.alpha(panel.foreground, 0.48)
-    font.family: panel.fontFamily
+      ? panel.appearance.foreground : Util.alpha(panel.appearance.foreground, 0.48)
+    font.family: panel.appearance.fontFamily
     font.pixelSize: Math.max(8, Style.font.caption - 1)
     horizontalAlignment: Text.AlignRight
     verticalAlignment: Text.AlignVCenter
@@ -219,7 +76,7 @@ Item {
 
     background: BorderSurface {
       color: Color.background
-      borderSpec: Border.flat(panel.dim, 1)
+      borderSpec: Border.flat(panel.appearance.dim, 1)
       radius: Style.cornerRadius
     }
 
@@ -231,15 +88,15 @@ Item {
         height: Style.space(26)
         leftPadding: Style.space(9)
         text: "MODEL"
-        color: panel.dim
-        font.family: panel.fontFamily
+        color: panel.appearance.dim
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Math.max(8, Style.font.caption - 1)
         font.bold: true
         verticalAlignment: Text.AlignVCenter
       }
 
       Repeater {
-        model: root.modelChoices()
+        model: options.modelChoices()
 
         delegate: Rectangle {
           id: modelChoice
@@ -247,7 +104,7 @@ Item {
           width: parent.width
           height: Style.space(30)
           radius: Style.cornerRadius
-          color: modelMouse.containsMouse ? panel.faint : "transparent"
+          color: modelMouse.containsMouse ? panel.appearance.faint : "transparent"
 
           Text {
             anchors.left: parent.left
@@ -258,9 +115,9 @@ Item {
             text: modelChoice.modelData.label
               + (modelChoice.modelData.isDefault ? "  · recommended" : "")
             textFormat: Text.PlainText
-            color: root.selectedModel() === modelChoice.modelData.id
-              ? Color.accent : panel.foreground
-            font.family: panel.fontFamily
+            color: options.selectedModel() === modelChoice.modelData.id
+              ? Color.accent : panel.appearance.foreground
+            font.family: panel.appearance.fontFamily
             font.pixelSize: Style.font.caption
             elide: Text.ElideRight
           }
@@ -270,9 +127,9 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: Style.space(9)
             anchors.verticalCenter: parent.verticalCenter
-            text: root.selectedModel() === modelChoice.modelData.id ? "✓" : ""
+            text: options.selectedModel() === modelChoice.modelData.id ? "✓" : ""
             color: Color.accent
-            font.family: panel.fontFamily
+            font.family: panel.appearance.fontFamily
             font.pixelSize: Style.font.caption
           }
 
@@ -281,7 +138,7 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.service.setModelForProvider(
+            onClicked: root.service.providers.setModelForProvider(
               root.providerType, modelChoice.modelData.id)
           }
         }
@@ -290,7 +147,7 @@ Item {
       Rectangle {
         width: parent.width
         height: 1
-        color: panel.faint
+        color: panel.appearance.faint
       }
 
       Text {
@@ -298,15 +155,15 @@ Item {
         height: Style.space(26)
         leftPadding: Style.space(9)
         text: "EFFORT"
-        color: panel.dim
-        font.family: panel.fontFamily
+        color: panel.appearance.dim
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Math.max(8, Style.font.caption - 1)
         font.bold: true
         verticalAlignment: Text.AlignVCenter
       }
 
       Repeater {
-        model: root.effortChoices()
+        model: options.effortChoices()
 
         delegate: Rectangle {
           id: effortChoice
@@ -314,7 +171,7 @@ Item {
           width: parent.width
           height: Style.space(30)
           radius: Style.cornerRadius
-          color: effortMouse.containsMouse ? panel.faint : "transparent"
+          color: effortMouse.containsMouse ? panel.appearance.faint : "transparent"
 
           Text {
             anchors.left: parent.left
@@ -322,9 +179,9 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: effortChoice.modelData.label
             textFormat: Text.PlainText
-            color: root.selectedEffort() === effortChoice.modelData.id
-              ? Color.accent : panel.foreground
-            font.family: panel.fontFamily
+            color: options.selectedEffort() === effortChoice.modelData.id
+              ? Color.accent : panel.appearance.foreground
+            font.family: panel.appearance.fontFamily
             font.pixelSize: Style.font.caption
           }
 
@@ -332,9 +189,9 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: Style.space(9)
             anchors.verticalCenter: parent.verticalCenter
-            text: root.selectedEffort() === effortChoice.modelData.id ? "✓" : ""
+            text: options.selectedEffort() === effortChoice.modelData.id ? "✓" : ""
             color: Color.accent
-            font.family: panel.fontFamily
+            font.family: panel.appearance.fontFamily
             font.pixelSize: Style.font.caption
           }
 
@@ -344,7 +201,7 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-              root.service.setEffortForProvider(
+              root.service.providers.setEffortForProvider(
                 root.providerType, effortChoice.modelData.id)
               picker.close()
             }
@@ -354,26 +211,26 @@ Item {
 
       Rectangle {
         width: parent.width
-        height: root.hasAgentChoices() ? 1 : 0
-        visible: root.hasAgentChoices()
-        color: panel.faint
+        height: options.hasAgentChoices() ? 1 : 0
+        visible: options.hasAgentChoices()
+        color: panel.appearance.faint
       }
 
       Text {
         width: parent.width
         height: visible ? Style.space(26) : 0
-        visible: root.hasAgentChoices()
+        visible: options.hasAgentChoices()
         leftPadding: Style.space(9)
         text: "AGENT"
-        color: panel.dim
-        font.family: panel.fontFamily
+        color: panel.appearance.dim
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Math.max(8, Style.font.caption - 1)
         font.bold: true
         verticalAlignment: Text.AlignVCenter
       }
 
       Repeater {
-        model: root.hasAgentChoices() ? root.agentChoices() : []
+        model: options.hasAgentChoices() ? options.agentChoices() : []
 
         delegate: Rectangle {
           id: agentChoice
@@ -381,7 +238,7 @@ Item {
           width: parent.width
           height: Style.space(30)
           radius: Style.cornerRadius
-          color: agentMouse.containsMouse ? panel.faint : "transparent"
+          color: agentMouse.containsMouse ? panel.appearance.faint : "transparent"
 
           Text {
             anchors.left: parent.left
@@ -389,9 +246,9 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: agentChoice.modelData.label
             textFormat: Text.PlainText
-            color: root.selectedAgent() === agentChoice.modelData.id
-              ? Color.accent : panel.foreground
-            font.family: panel.fontFamily
+            color: options.selectedAgent() === agentChoice.modelData.id
+              ? Color.accent : panel.appearance.foreground
+            font.family: panel.appearance.fontFamily
             font.pixelSize: Style.font.caption
           }
 
@@ -399,9 +256,9 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: Style.space(9)
             anchors.verticalCenter: parent.verticalCenter
-            text: root.selectedAgent() === agentChoice.modelData.id ? "✓" : ""
+            text: options.selectedAgent() === agentChoice.modelData.id ? "✓" : ""
             color: Color.accent
-            font.family: panel.fontFamily
+            font.family: panel.appearance.fontFamily
             font.pixelSize: Style.font.caption
           }
 
@@ -411,7 +268,7 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-              root.service.setAgentForProvider(
+              root.service.providers.setAgentForProvider(
                 root.providerType, agentChoice.modelData.id)
               picker.close()
             }

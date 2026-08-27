@@ -41,13 +41,9 @@ Item {
     controller.codexConfig = ({})
     controller.threadStatuses = ({})
     controller.unreadThreads = ({})
-    controller.observeActiveThread("", "app-server-reset")
+    controller.mutations.observeActiveThread("", "app-server-reset")
     controller.errorText = ""
-    controller.movingThreadId = ""
-    controller.finishThreadMutation("rename")
-    controller.finishThreadMutation("pin")
-    controller.pendingMovePath = ""
-    controller.pendingMoveName = ""
+    controller.mutations.resetThreadMutations()
   }
 
   function start() {
@@ -108,16 +104,16 @@ Item {
   }
 
   function finishRefresh() {
-    controller.threads = controller.threadsWithoutArchiveTombstones(
-      controller.normalizePinnedThreads(pageBuffer))
+    controller.threads = controller.threadActions.threadsWithoutArchiveTombstones(
+      controller.providers.normalizePinnedThreads(pageBuffer))
     loading = false
     lastRefreshMs = Date.now()
     if (controller.archiveConfirmationId !== "") {
-      controller.setArchiveTombstone(controller.archiveConfirmationId, false)
+      controller.threadActions.setArchiveTombstone(controller.archiveConfirmationId, false)
       controller.archiveConfirmationId = ""
     }
-    controller.refreshThreadStatuses()
-    controller.resolvePendingNewThread()
+    controller.threadActions.refreshThreadStatuses()
+    controller.threadActions.resolvePendingNewThread()
     if (refreshQueued) Qt.callLater(root.refreshThreads)
   }
 
@@ -174,7 +170,7 @@ Item {
       }
     })) {
       projectCreateRequestId = 0
-      controller.failThreadMove("Could not reach the Codex App Server")
+      controller.threadActions.failThreadMove("Could not reach the Codex App Server")
     }
   }
 
@@ -184,7 +180,7 @@ Item {
       method: "thread/metadata/update",
       id: moveThreadRequestId,
       params: { threadId: threadId, projectId: projectId }
-    })) controller.failThreadMove("Could not reach the Codex App Server")
+    })) controller.threadActions.failThreadMove("Could not reach the Codex App Server")
   }
 
   function clearMoveRequests() {
@@ -225,126 +221,12 @@ Item {
     return false
   }
 
-  function handleResponse(message) {
-    if (message.id === initializeRequestId) {
-      if (message.error) {
-        controller.errorText = String(message.error.message
-          || "Codex App Server initialization failed")
-        return
-      }
-      send({ method: "initialized" })
-      ready = true
-      refreshProjects()
-      refreshThreads()
-      refreshRateLimits()
-      refreshModels()
-      refreshConfig()
-      return
-    }
-
-    if (message.id === rateLimitsRequestId && rateLimitsRequestId !== 0) {
-      rateLimitsRequestId = 0
-      if (!message.error) {
-        var limitResult = message.result || {}
-        controller.rateLimits = limitResult.rateLimits || ({})
-        controller.rateLimitResetCredits = limitResult.rateLimitResetCredits || ({})
-      }
-      return
-    }
-    if (message.id === modelListRequestId && modelListRequestId !== 0) {
-      modelListRequestId = 0
-      if (!message.error) controller.models = (message.result || {}).data || []
-      return
-    }
-    if (message.id === configReadRequestId && configReadRequestId !== 0) {
-      configReadRequestId = 0
-      if (!message.error) controller.codexConfig = (message.result || {}).config || ({})
-      return
-    }
-    if (message.id === projectListRequestId && projectListRequestId !== 0) {
-      if (message.error) {
-        projectListRequestId = 0
-        controller.errorText = String(message.error.message || "Could not list Codex projects")
-        return
-      }
-      var projectResult = message.result || {}
-      projectPageBuffer = projectPageBuffer.concat(projectResult.data || [])
-      projectPageCount++
-      if (projectResult.nextCursor && projectPageCount < 20)
-        requestProjectPage(projectResult.nextCursor)
-      else {
-        projectListRequestId = 0
-        controller.projects = projectPageBuffer
-      }
-      return
-    }
-    if (message.id === projectCreateRequestId && projectCreateRequestId !== 0) {
-      projectCreateRequestId = 0
-      if (message.error) {
-        controller.failThreadMove(message.error.message || "Could not create the Codex project")
-        return
-      }
-      var createdProject = message.result ? message.result.project : null
-      if (createdProject) controller.projects = controller.projects.concat([createdProject])
-      controller.assignMovingThreadToProject(String(createdProject && createdProject.id || ""))
-      return
-    }
-    if (message.id === moveThreadRequestId && moveThreadRequestId !== 0) {
-      if (message.error) {
-        controller.failThreadMove(message.error.message || "Could not move the Codex thread")
-        return
-      }
-      controller.finishThreadMove()
-      return
-    }
-    if (message.id === archiveRequestId && archiveRequestId !== 0) {
-      archiveRequestId = 0
-      if (message.error) {
-        controller.failThreadArchive(message.error.message)
-      } else {
-        controller.archiveConfirmationId = controller.archivingThreadId
-        controller.archivedThreadSnapshot = null
-        controller.archivedThreadIndex = -1
-        controller.finishThreadMutation("archive")
-        controller.scheduleEventRefresh()
-      }
-      return
-    }
-    if (message.id === renameRequestId && renameRequestId !== 0) {
-      renameRequestId = 0
-      if (message.error)
-        controller.failThreadMutation("rename", message.error.message)
-      else controller.finishThreadMutation("rename")
-      if (!message.error) controller.scheduleEventRefresh()
-      return
-    }
-    if (message.id === pinRequestId && pinRequestId !== 0) {
-      var pinnedThreadId = controller.pinningThreadId
-      var pinnedValue = controller.pendingPinValue
-      pinRequestId = 0
-      if (message.error) {
-        controller.failThreadMutation("pin", message.error.message)
-      } else {
-        controller.finishThreadMutation("pin")
-        var returnedThread = message.result ? message.result.thread : null
-        controller.threads = controller.applyThreadPin(
-          controller.threads, pinnedThreadId, pinnedValue, returnedThread)
-        controller.scheduleEventRefresh()
-      }
-      return
-    }
-    if (message.id !== listRequestId) return
-    if (message.error) {
-      loading = false
-      controller.errorText = String(message.error.message || "Could not list Codex threads")
-      return
-    }
-    var result = message.result || {}
-    pageBuffer = pageBuffer.concat(result.data || [])
-    pageCount++
-    if (result.nextCursor && pageCount < 20) requestThreadPage(result.nextCursor)
-    else finishRefresh()
+  CodexAppServerResponseHandler {
+    id: responseHandler
+    client: root
   }
+
+  function handleResponse(message) { responseHandler.handleResponse(message) }
 
   function handleLine(line) {
     var text = String(line || "").trim()
@@ -362,11 +244,11 @@ Item {
     }
     var method = String(message.method || "")
     if (method === "thread/status/changed")
-      controller.applyRemoteStatusNotification(message.params || {})
+      controller.threadActions.applyRemoteStatusNotification(message.params || {})
     if (method.indexOf("project/") === 0) refreshProjects()
     if (method === "turn/completed") refreshRateLimits()
     if (method.indexOf("thread/") === 0 || method === "turn/completed")
-      controller.scheduleEventRefresh()
+      controller.threadActions.scheduleEventRefresh()
   }
 
   Process {
@@ -378,19 +260,19 @@ Item {
     onExited: {
       root.ready = false
       root.loading = false
-      if (root.archiveRequestId !== 0) root.controller.restoreArchivedThread()
+      if (root.archiveRequestId !== 0) root.controller.threadActions.restoreArchivedThread()
       root.archiveRequestId = 0
       if (root.renameRequestId !== 0)
-        root.controller.failThreadMutation("rename", "The Codex App Server stopped")
+        root.controller.mutations.failThreadMutation("rename", "The Codex App Server stopped")
       root.renameRequestId = 0
       if (root.pinRequestId !== 0)
-        root.controller.failThreadMutation("pin", "The Codex App Server stopped")
+        root.controller.mutations.failThreadMutation("pin", "The Codex App Server stopped")
       root.pinRequestId = 0
       root.projectListRequestId = 0
       root.rateLimitsRequestId = 0
       root.modelListRequestId = 0
       root.configReadRequestId = 0
-      root.controller.failThreadMove("", true)
+      root.controller.threadActions.failThreadMove("", true)
       if (!root.controller.shuttingDown) restartTimer.restart()
     }
     stdout: SplitParser { onRead: function(line) { root.handleLine(line) } }

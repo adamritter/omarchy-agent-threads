@@ -19,7 +19,7 @@ Popup {
 
   background: BorderSurface {
     color: Color.background
-    borderSpec: Border.flat(panel.dim, 1)
+    borderSpec: Border.flat(panel.appearance.dim, 1)
     radius: Style.cornerRadius
   }
 
@@ -40,15 +40,15 @@ Popup {
         width: parent.width
         height: Style.space(38)
         radius: Style.cornerRadius
-        color: projectMenuMouse.containsMouse ? panel.faint : "transparent"
+        color: projectMenuMouse.containsMouse ? panel.appearance.faint : "transparent"
 
         Text {
           anchors.left: parent.left
           anchors.leftMargin: Style.space(10)
           anchors.verticalCenter: parent.verticalCenter
           text: projectMenuChoice.modelData.label
-          color: panel.foreground
-          font.family: panel.fontFamily
+          color: panel.appearance.foreground
+          font.family: panel.appearance.fontFamily
           font.pixelSize: Style.font.body
         }
 
@@ -57,8 +57,8 @@ Popup {
           anchors.rightMargin: Style.space(10)
           anchors.verticalCenter: parent.verticalCenter
           text: projectMenuChoice.modelData.hint
-          color: panel.dim
-          font.family: panel.fontFamily
+          color: panel.appearance.dim
+          font.family: panel.appearance.fontFamily
           font.pixelSize: Style.font.caption
         }
 

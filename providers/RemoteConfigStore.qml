@@ -82,7 +82,7 @@ Item {
     config = { version: 2, remotes: configured }
     provider.remoteHosts = nextHosts
     loaded = true
-    controller.startAppServer()
+    controller.providers.startAppServer()
     provider.refresh()
   }
 

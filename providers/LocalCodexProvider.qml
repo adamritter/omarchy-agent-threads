@@ -28,17 +28,17 @@ Item {
   function openThread(thread, cwdOverride, source) {
     if (!thread || !thread.id || openProcess.running) return false
     var threadId = String(thread.id)
-    var requestId = controller.beginThreadLaunch(
+    var requestId = controller.mutations.beginThreadLaunch(
       threadId, source || "local-terminal")
     if (requestId === 0) return false
     openRequestId = requestId
     openProcess.command = ActionLogic.localCodexTerminalCommand(
       terminalHelperPath,
       threadId,
-      String(cwdOverride || controller.projectPathForThread(thread)
+      String(cwdOverride || controller.threadActions.projectPathForThread(thread)
         || controller.backendHomePath),
-      controller.effectiveModel(),
-      controller.effectiveEffort(),
+      controller.providers.effectiveModel(),
+      controller.providers.effectiveEffort(),
       controller.codexServiceTier)
     openProcess.running = true
     return true
@@ -60,7 +60,7 @@ Item {
     pendingNewThreadAttempts = 20
     newProjectProcess.command = ActionLogic.localCodexTerminalCommand(
       terminalHelperPath, "", path,
-      controller.effectiveModel(), controller.effectiveEffort(),
+      controller.providers.effectiveModel(), controller.providers.effectiveEffort(),
       controller.codexServiceTier)
     newProjectProcess.running = true
   }
@@ -84,7 +84,7 @@ Item {
         if (id !== "" && newThreadKnownIds[id] !== true
             && String(thread.cwd || "") === pendingNewThreadPath) {
           pendingNewThreadId = id
-          controller.observeActiveThread(id, "new-local-codex-thread")
+          controller.mutations.observeActiveThread(id, "new-local-codex-thread")
           break
         }
       }
@@ -109,9 +109,9 @@ Item {
     onExited: function(exitCode) {
       var requestId = root.openRequestId
       root.openRequestId = 0
-      if (exitCode !== 0) controller.failThreadLaunch(
+      if (exitCode !== 0) controller.mutations.failThreadLaunch(
         requestId, openStderr.text.trim() || "Could not open the Codex thread")
-      else controller.confirmThreadLaunch(requestId, "")
+      else controller.mutations.confirmThreadLaunch(requestId, "")
       root.refreshActiveThread()
     }
     stderr: StdioCollector { id: openStderr; waitForEnd: true }
@@ -123,7 +123,7 @@ Item {
     running: false
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: controller.observeActiveThread(
+      onStreamFinished: controller.mutations.observeActiveThread(
         String(text || "").trim(), "focused-terminal")
     }
     onExited: if (root.activeThreadRefreshQueued)
@@ -141,7 +141,7 @@ Item {
         return
       }
       root.pendingNewWindowAddress = String(newProjectStdout.text || "").trim()
-      controller.scheduleEventRefresh()
+      controller.threadActions.scheduleEventRefresh()
       newThreadResolveTimer.restart()
       root.resolvePendingNew()
     }
@@ -160,7 +160,7 @@ Item {
     repeat: true
     onTriggered: {
       root.pendingNewThreadAttempts--
-      controller.refreshThreads()
+      controller.providers.refreshThreads()
       root.resolvePendingNew()
       if (root.pendingNewThreadPath === "") stop()
       else if (root.pendingNewThreadAttempts <= 0) root.clearPendingNew()

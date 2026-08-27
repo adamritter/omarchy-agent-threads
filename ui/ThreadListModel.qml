@@ -6,8 +6,9 @@ Item {
 
   required property var controller
   readonly property var service: controller.service
+  readonly property var session: controller.session || controller
   readonly property string activeProvider: controller.activeProvider
-  readonly property string searchText: controller.searchText
+  readonly property string searchText: session.searchText
   readonly property int groupPreviewLimit: controller.groupPreviewLimit
 
   property var viewRows: []
@@ -26,7 +27,7 @@ Item {
       localThreads: service.threads,
       localProjects: service.projects,
       remoteHosts: service.remoteHosts,
-      expandedGroups: controller.expandedGroups,
+      expandedGroups: session.expandedGroups,
       collapsedProjects: service.collapsedProjects,
       collapsedRemotes: service.collapsedRemotes,
       pinnedSections: service.pinnedSections,

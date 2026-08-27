@@ -70,9 +70,9 @@ if grep -F -- 'readline' \
 fi
 
 grep -F -- 'ConversationLogic.promptValidationError(value)' \
-  "$plugin_root/providers/CodexConversationClient.qml" >/dev/null
+  "$plugin_root/providers/CodexConversationOperations.qml" >/dev/null
 grep -F -- 'ConversationLogic.protocolStructureError(message)' \
-  "$plugin_root/providers/CodexConversationClient.qml" >/dev/null
+  "$plugin_root/providers/CodexConversationResponseHandler.qml" >/dev/null
 grep -F -- 'ConversationLogic.trackRequestDeadline(' \
   "$plugin_root/providers/CodexConversationClient.qml" >/dev/null
 

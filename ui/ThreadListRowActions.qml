@@ -30,13 +30,13 @@ Item {
     height: width
     radius: Style.cornerRadius
     color: threadMenuMouse.containsMouse || threadMenu.opened
-      ? Util.alpha(panel.foreground, 0.14) : "transparent"
+      ? Util.alpha(panel.appearance.foreground, 0.14) : "transparent"
 
     Text {
       anchors.centerIn: parent
       text: "⋯"
-      color: panel.foreground
-      font.family: panel.fontFamily
+      color: panel.appearance.foreground
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.title
       verticalAlignment: Text.AlignVCenter
     }
@@ -63,14 +63,14 @@ Item {
     height: width
     radius: Style.cornerRadius
     color: threadPinMouse.containsMouse
-      ? Util.alpha(panel.foreground, 0.14) : "transparent"
+      ? Util.alpha(panel.appearance.foreground, 0.14) : "transparent"
 
     Text {
       anchors.centerIn: parent
       text: "󰐃"
-      color: rowItem.pinned ? Color.accent : panel.dim
+      color: rowItem.pinned ? Color.accent : panel.appearance.dim
       opacity: rowItem.pinning ? 0.45 : 1
-      font.family: panel.fontFamily
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.body
     }
 
@@ -107,7 +107,7 @@ Item {
       anchors.centerIn: parent
       text: rowItem.loggingInRemoteClaude ? "OPENING…" : "LOGIN"
       color: Color.accent
-      font.family: panel.fontFamily
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Math.max(8, Style.font.caption - 1)
       font.bold: true
     }
@@ -139,14 +139,14 @@ Item {
       anchors.fill: parent
       radius: Style.cornerRadius
       color: remoteManageMouse.containsMouse
-        ? Util.alpha(panel.foreground, 0.14) : "transparent"
+        ? Util.alpha(panel.appearance.foreground, 0.14) : "transparent"
     }
 
     Text {
       anchors.centerIn: parent
       text: "⋯"
-      color: panel.dim
-      font.family: panel.fontFamily
+      color: panel.appearance.dim
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.title
     }
 
@@ -175,14 +175,14 @@ Item {
       anchors.fill: parent
       radius: Style.cornerRadius
       color: sectionPinMouse.containsMouse
-        ? Util.alpha(panel.foreground, 0.14) : "transparent"
+        ? Util.alpha(panel.appearance.foreground, 0.14) : "transparent"
     }
 
     Text {
       anchors.centerIn: parent
       text: "󰐃"
-      color: rowItem.pinnedSection ? Color.accent : panel.dim
-      font.family: panel.fontFamily
+      color: rowItem.pinnedSection ? Color.accent : panel.appearance.dim
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.body
     }
 
@@ -212,8 +212,8 @@ Item {
     Text {
       anchors.centerIn: parent
       text: rowItem.presentation.launchingProject ? "…" : "+"
-      color: newProjectMouse.containsMouse ? Color.accent : panel.foreground
-      font.family: panel.fontFamily
+      color: newProjectMouse.containsMouse ? Color.accent : panel.appearance.foreground
+      font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.title
     }
 

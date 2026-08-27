@@ -4,21 +4,24 @@ set -euo pipefail
 
 plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 window="$plugin_root/app/ChatWindow.qml"
+transcript="$plugin_root/app/ChatTranscriptPane.qml"
+composer="$plugin_root/app/ChatComposer.qml"
+toolbar="$plugin_root/app/ChatComposerToolbar.qml"
 
 grep -F -- 'import Quickshell.Io' "$window" >/dev/null
 grep -F -- 'target: "agentChat"' "$window" >/dev/null
-grep -F -- 'WebTranscript {' "$window" >/dev/null
-grep -F -- 'loading: conversation.loading || !conversation.ready' "$window" >/dev/null
-grep -F -- 'conversationTitle: conversation.activeThreadId' "$window" >/dev/null
-grep -F -- 'conversationDetail: root.workingDirectory' "$window" >/dev/null
+grep -F -- 'WebTranscript {' "$transcript" >/dev/null
+grep -F -- 'loading: client.loading || !client.ready' "$transcript" >/dev/null
+grep -F -- 'conversationTitle: client.activeThreadId' "$transcript" >/dev/null
+grep -F -- 'conversationDetail: window.workingDirectory' "$transcript" >/dev/null
 grep -F -- 'sequence: "PgUp"' "$window" >/dev/null
 grep -F -- 'sequence: "PgDown"' "$window" >/dev/null
-grep -F -- 'transcriptView.scrollPage(-1)' "$window" >/dev/null
-grep -F -- 'transcriptView.scrollPage(1)' "$window" >/dev/null
+grep -F -- 'transcriptPane.scrollPage(-1)' "$window" >/dev/null
+grep -F -- 'transcriptPane.scrollPage(1)' "$window" >/dev/null
 grep -F -- 'sequence: "Ctrl+Home"' "$window" >/dev/null
 grep -F -- 'sequence: "Ctrl+End"' "$window" >/dev/null
-grep -F -- 'transcriptView.scrollEdge(-1)' "$window" >/dev/null
-grep -F -- 'transcriptView.scrollEdge(1)' "$window" >/dev/null
+grep -F -- 'transcriptPane.scrollEdge(-1)' "$window" >/dev/null
+grep -F -- 'transcriptPane.scrollEdge(1)' "$window" >/dev/null
 grep -F -- 'sequence: "Escape"' "$window" >/dev/null
 grep -F -- 'onActivated: composer.forceActiveFocus()' "$window" >/dev/null
 grep -F -- 'sequence: "Meta+Ctrl+F"' "$window" >/dev/null
@@ -27,18 +30,18 @@ grep -F -- 'sequence: "Meta+Ctrl+E"' "$window" >/dev/null
 grep -F -- 'function effort(mode: string): string' "$window" >/dev/null
 grep -F -- 'settings.localStorageEnabled: false' \
   "$plugin_root/app/WebTranscript.qml" >/dev/null
-grep -F -- 'id: composerToolbar' "$window" >/dev/null
-grep -F -- 'height: Math.max(88, Math.min(204, composer.implicitHeight + 54))' "$window" >/dev/null
-grep -F -- 'ConversationLogic.boundedPromptInput(text)' "$window" >/dev/null
-if grep -F -- 'maximumLength:' "$window" >/dev/null; then
+grep -F -- 'id: composerToolbar' "$composer" >/dev/null
+grep -F -- 'height: Math.max(88, Math.min(204, editor.implicitHeight + 54))' "$composer" >/dev/null
+grep -F -- 'ConversationLogic.boundedPromptInput(text)' "$composer" >/dev/null
+if grep -F -- 'maximumLength:' "$composer" >/dev/null; then
   printf 'chat composer uses a property unsupported by TextArea\n' >&2
   exit 1
 fi
-grep -F -- 'id: fastButton' "$window" >/dev/null
-grep -F -- 'text: "⚡︎"' "$window" >/dev/null
-grep -F -- 'id: approveForMeButton' "$window" >/dev/null
-grep -F -- 'text: "✓  Approve for me"' "$window" >/dev/null
-grep -F -- 'id: optionsMenu' "$window" >/dev/null
+grep -F -- 'id: fastButton' "$toolbar" >/dev/null
+grep -F -- 'text: "⚡︎"' "$toolbar" >/dev/null
+grep -F -- 'id: approveForMeButton' "$toolbar" >/dev/null
+grep -F -- 'text: "✓  Approve for me"' "$toolbar" >/dev/null
+grep -F -- 'id: optionsMenu' "$toolbar" >/dev/null
 grep -F -- 'conversation.configure(next)' "$window" >/dev/null
 
 if grep -F -- 'Layout.preferredHeight: 54' "$window" >/dev/null; then
@@ -46,10 +49,10 @@ if grep -F -- 'Layout.preferredHeight: 54' "$window" >/dev/null; then
   exit 1
 fi
 
-composer_line="$(grep -nF 'id: composerFrame' "$window" | cut -d: -f1)"
-new_chat_line="$(grep -nF 'id: newChatButton' "$window" | cut -d: -f1)"
-model_line="$(grep -nF 'id: modelSelector' "$window" | cut -d: -f1)"
-if (( new_chat_line <= composer_line || model_line <= composer_line )); then
+composer_line="$(grep -nF 'id: composerFrame' "$composer" | cut -d: -f1)"
+new_chat_line="$(grep -nF 'id: newChatButton' "$toolbar" | cut -d: -f1)"
+model_line="$(grep -nF 'id: modelSelector' "$toolbar" | cut -d: -f1)"
+if (( composer_line <= 0 || new_chat_line <= 0 || model_line <= 0 )); then
   printf 'chat controls are not embedded in the composer\n' >&2
   exit 1
 fi

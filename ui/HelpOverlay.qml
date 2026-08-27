@@ -9,7 +9,7 @@ Rectangle {
 
   required property var panel
   anchors.fill: parent
-  visible: panel.helpOpen && !panel.remoteSetupOpen
+  visible: panel.session.helpOpen && !panel.session.remoteSetupOpen
   color: Color.popups.background
   radius: Style.cornerRadius
 
@@ -66,7 +66,7 @@ Rectangle {
         width: parent.width
         text: "KEYBOARD"
         color: Color.accent
-        font.family: panel.fontFamily
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.caption
         font.bold: true
       }
@@ -88,8 +88,8 @@ Rectangle {
               id: helpKey
               width: Style.space(120)
               text: parent.modelData.keys
-              color: panel.foreground
-              font.family: panel.fontFamily
+              color: panel.appearance.foreground
+              font.family: panel.appearance.fontFamily
               font.pixelSize: Style.font.body
               font.bold: true
             }
@@ -99,8 +99,8 @@ Rectangle {
               anchors.left: helpKey.right
               anchors.right: parent.right
               text: parent.modelData.description
-              color: panel.dim
-              font.family: panel.fontFamily
+              color: panel.appearance.dim
+              font.family: panel.appearance.fontFamily
               font.pixelSize: Style.font.body
               wrapMode: Text.Wrap
             }
@@ -114,7 +114,7 @@ Rectangle {
         width: parent.width
         text: "HIGHLIGHTS"
         color: Color.accent
-        font.family: panel.fontFamily
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.caption
         font.bold: true
       }
@@ -122,8 +122,8 @@ Rectangle {
       Text {
         width: parent.width
         text: "Strong blue: active thread\nFaint: keyboard selection or pointer hover"
-        color: panel.dim
-        font.family: panel.fontFamily
+        color: panel.appearance.dim
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.body
         lineHeight: 1.2
         wrapMode: Text.Wrap
@@ -132,8 +132,8 @@ Rectangle {
       Text {
         width: parent.width
         text: "Close with ?, Enter, or Esc."
-        color: panel.dim
-        font.family: panel.fontFamily
+        color: panel.appearance.dim
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.caption
         wrapMode: Text.Wrap
       }
@@ -142,9 +142,9 @@ Rectangle {
         width: parent.width
         text: "Documentation: <a href=\"https://github.com/adamritter/omarchy-agent-threads\">github.com/adamritter/omarchy-agent-threads</a>"
         textFormat: Text.StyledText
-        color: panel.dim
+        color: panel.appearance.dim
         linkColor: Color.accent
-        font.family: panel.fontFamily
+        font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.caption
         wrapMode: Text.Wrap
         onLinkActivated: function(link) { Qt.openUrlExternally(link) }

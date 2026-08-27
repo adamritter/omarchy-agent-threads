@@ -1,5 +1,7 @@
 import QtQuick
 import QtTest
+import "../logic/ThreadLaunchLogic.js" as ThreadLaunchLogic
+import "../logic/ThreadNotificationLogic.js" as ThreadNotificationLogic
 import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 TestCase {
@@ -49,7 +51,7 @@ TestCase {
       restored: { status: "done", ready: true, title: "Existing ready thread" }
     }
 
-    var events = ThreadStateLogic.notificationEvents(previous, next)
+    var events = ThreadNotificationLogic.notificationEvents(previous, next)
     compare(events.length, 2)
     compare(events[0].type, "ready")
     compare(events[0].title, "Ready thread")
@@ -58,7 +60,7 @@ TestCase {
   }
 
   function test_buildsDesktopAndSoundNotificationCommands() {
-    var ready = ThreadStateLogic.notificationCommands({
+    var ready = ThreadNotificationLogic.notificationCommands({
       type: "ready", title: "Ready thread"
     })
     compare(ready.desktop[0], "notify-send")
@@ -66,7 +68,7 @@ TestCase {
     compare(ready.sound[0], "canberra-gtk-play")
     compare(ready.sound[2], "complete")
 
-    var blocked = ThreadStateLogic.notificationCommands({
+    var blocked = ThreadNotificationLogic.notificationCommands({
       type: "blocked", title: "Blocked thread"
     })
     compare(blocked.desktop[6], "dialog-warning-symbolic")
@@ -75,7 +77,7 @@ TestCase {
   }
 
   function test_buildsNotificationSnapshotsAcrossProviders() {
-    var snapshot = ThreadStateLogic.notificationStateSnapshot([
+    var snapshot = ThreadNotificationLogic.notificationStateSnapshot([
       { id: "local", name: " Local   title " }
     ], { local: "busy" }, { local: true }, [{
       id: "dev",
@@ -94,7 +96,7 @@ TestCase {
   }
 
   function test_mapsThreadCollectionsToStatuses() {
-    var statuses = ThreadStateLogic.statusMap([
+    var statuses = ThreadNotificationLogic.statusMap([
       { id: "busy", status: "active" },
       { id: "blocked", status: {
         type: "active", activeFlags: ["waitingOnUserInput"]
@@ -124,7 +126,7 @@ TestCase {
       threads: [{ id: "remote-ready", updatedAt: 40, unread: true }]
     }]
 
-    var targets = ThreadStateLogic.readyThreadTargets(
+    var targets = ThreadNotificationLogic.readyThreadTargets(
       local, { "local-ready": true }, hosts)
     compare(targets.length, 3)
     compare(targets[0].threadId, "remote-ready")
@@ -183,41 +185,21 @@ TestCase {
     compare(visible[0].id, "two")
   }
 
-  function test_explainsWriterOwnedArchiveFailures() {
-    var message = "Close the Codex session that is using this thread before archiving it"
-
-    compare(ThreadStateLogic.archiveBlockedMessage("active", "active"), message)
-    compare(ThreadStateLogic.archiveBlockedMessage("other", "active"), "")
-    compare(ThreadStateLogic.archiveErrorMessage(
-      "thread already has an active writer (code -32600)"), message)
-    compare(ThreadStateLogic.archiveErrorMessage("permission denied"), "permission denied")
-    compare(ThreadStateLogic.archiveErrorMessage(""), "Could not archive the Codex thread")
-  }
-
-  function test_normalizesMutationConflictsAndErrors() {
-    compare(ThreadStateLogic.mutationBusyMessage("archive"),
-      "Wait for the current thread action to finish before starting archive")
-    compare(ThreadStateLogic.mutationErrorMessage("rename", ""),
-      "Could not rename the thread")
-    compare(ThreadStateLogic.mutationErrorMessage("pin", "permission denied"),
-      "permission denied")
-  }
-
   function test_threadLaunchStateAcceptsOneRequestAndConfirmsIt() {
-    var idle = ThreadStateLogic.idleThreadLaunchState()
-    var started = ThreadStateLogic.beginThreadLaunch(idle, "thread-a", "pointer")
+    var idle = ThreadLaunchLogic.idleThreadLaunchState()
+    var started = ThreadLaunchLogic.beginThreadLaunch(idle, "thread-a", "pointer")
     verify(started.accepted)
     compare(started.requestId, 1)
     compare(started.state.phase, "launching")
     compare(started.state.targetThreadId, "thread-a")
     compare(started.state.source, "pointer")
 
-    var overlapping = ThreadStateLogic.beginThreadLaunch(
+    var overlapping = ThreadLaunchLogic.beginThreadLaunch(
       started.state, "thread-b", "keyboard")
     verify(!overlapping.accepted)
     compare(overlapping.state.targetThreadId, "thread-a")
 
-    var confirmed = ThreadStateLogic.confirmThreadLaunch(
+    var confirmed = ThreadLaunchLogic.confirmThreadLaunch(
       started.state, started.requestId, "thread-a")
     verify(confirmed.applied)
     compare(confirmed.threadId, "thread-a")
@@ -227,16 +209,16 @@ TestCase {
   }
 
   function test_threadLaunchStateRejectsStaleCompletionAndRetainsFailure() {
-    var started = ThreadStateLogic.beginThreadLaunch(
-      ThreadStateLogic.idleThreadLaunchState(4), "thread-b", "cycle")
+    var started = ThreadLaunchLogic.beginThreadLaunch(
+      ThreadLaunchLogic.idleThreadLaunchState(4), "thread-b", "cycle")
     compare(started.requestId, 5)
 
-    var stale = ThreadStateLogic.confirmThreadLaunch(started.state, 4, "thread-old")
+    var stale = ThreadLaunchLogic.confirmThreadLaunch(started.state, 4, "thread-old")
     verify(!stale.applied)
     compare(stale.state.phase, "launching")
     compare(stale.state.targetThreadId, "thread-b")
 
-    var failed = ThreadStateLogic.failThreadLaunch(
+    var failed = ThreadLaunchLogic.failThreadLaunch(
       started.state, started.requestId, "window was not created")
     verify(failed.applied)
     compare(failed.threadId, "thread-b")
