@@ -140,6 +140,11 @@ Item {
       refreshHost(String(localRegistry.hosts[i].id || ""))
   }
 
+  function markSupplementalThreadSeen(threadId) {
+    localRegistry.markThreadSeen(threadId)
+    remoteProvider.markThreadSeen(threadId)
+  }
+
   function archiveThread(hostId, thread) {
     if (isLocalCodex(hostId)) return controller.archiveLocalCodexThread(thread)
     var local = localProviderForHost(hostId)

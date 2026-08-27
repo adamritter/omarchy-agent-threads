@@ -8,6 +8,9 @@ import "../logic/PresentationLogic.js" as PresentationLogic
 ListView {
   id: root
 
+  readonly property color busyThreadColor: "#e5c07b"
+  readonly property color readyThreadColor: "#98c379"
+
   function renderSnapshot() {
     var rendered = []
     for (var index = 0; index < count; index++) {
@@ -173,27 +176,8 @@ ListView {
         width: Style.space(10)
         height: width
         radius: width / 2
-        color: row.blocked ? Color.urgent : (row.unread ? Color.accent : "transparent")
-        border.width: row.blocked ? 0 : Math.max(1, Style.space(2))
-        border.color: row.blocked ? Color.urgent : Color.accent
-      }
-
-      Rectangle {
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        width: Style.space(4)
-        height: width
-        radius: width / 2
-        visible: row.busy && !row.blocked
-        color: Color.accent
-      }
-
-      RotationAnimator on rotation {
-        from: 0
-        to: 360
-        duration: 850
-        loops: Animation.Infinite
-        running: row.busy && !row.blocked
+        color: row.blocked ? Color.urgent
+          : (row.busy ? root.busyThreadColor : root.readyThreadColor)
       }
     }
 

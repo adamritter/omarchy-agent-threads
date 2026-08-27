@@ -17,6 +17,8 @@ if [[ "$live_wayland" != "1" ]]; then
   fi
   grep -q 'id: panel' "$panel_source"
   grep -q 'exclusiveZone: root.sidebarContentWidth' "$panel_source"
+  grep -q 'sidebarBarGap: Style.gapsOut' "$panel_source"
+  [[ "$(grep -c '? root.sidebarBarGap : 0' "$panel_source")" == "2" ]]
   grep -q 'id: threadList' "$panel_source"
   grep -q 'id: helpOverlay' "$panel_source"
   grep -q 'Ui.CodexThreadList' "$panel_source"
@@ -25,6 +27,13 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'id: fastModeButton' "$panel_source"
   grep -q 'text: "⚡︎"' "$panel_source"
   grep -q 'onClicked: root.service.toggleFastMode()' "$panel_source"
+  grep -q 'readyThreadColor: "#98c379"' "$panel_source"
+  grep -q 'function openLatestReadyThread()' "$panel_source"
+  grep -q 'function openReady(): string' "$panel_source"
+  grep -q 'root.readyThreadCount > 0' "$panel_source"
+  grep -q 'HyprlandFocusGrab {' "$plugin_root/ui/ModelEffortSelector.qml"
+  grep -q 'active: picker.opened' "$plugin_root/ui/ModelEffortSelector.qml"
+  grep -q 'onCleared: picker.close()' "$plugin_root/ui/ModelEffortSelector.qml"
   grep -q 'onFastToggleRequested:' "$panel_source"
   grep -q 'Super+Ctrl+F' "$panel_source"
   grep -q 'function fast(mode: string): string' "$panel_source"

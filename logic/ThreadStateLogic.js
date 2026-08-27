@@ -31,6 +31,52 @@ function nextUnreadThreads(previousStatuses, unreadThreads, nextStatuses, active
   return nextUnread
 }
 
+function readyThreadTargets(localThreads, unreadThreads, supplementalHosts) {
+  var targets = []
+  var order = 0
+
+  function append(thread, host, providerType, scope) {
+    var id = String(thread && thread.id || "")
+    if (id === "") return
+    targets.push({
+      threadId: id,
+      thread: thread,
+      host: host,
+      hostId: host ? String(host.id || "") : "provider-codex",
+      providerType: String(providerType || "codex").toLowerCase(),
+      scope: String(scope || "local"),
+      updatedAt: Number(thread.updatedAt || 0),
+      order: order++
+    })
+  }
+
+  var locals = Array.isArray(localThreads) ? localThreads : []
+  var unread = unreadThreads && typeof unreadThreads === "object"
+    ? unreadThreads : ({})
+  for (var localIndex = 0; localIndex < locals.length; localIndex++) {
+    var local = locals[localIndex]
+    if (unread[String(local && local.id || "")] === true)
+      append(local, null, "codex", "local")
+  }
+
+  var hosts = Array.isArray(supplementalHosts) ? supplementalHosts : []
+  for (var hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
+    var host = hosts[hostIndex] || ({})
+    var threads = Array.isArray(host.threads) ? host.threads : []
+    for (var threadIndex = 0; threadIndex < threads.length; threadIndex++) {
+      var thread = threads[threadIndex]
+      if (thread && thread.unread === true)
+        append(thread, host, host.providerType || "codex", host.id)
+    }
+  }
+
+  targets.sort(function(a, b) {
+    var timestampDifference = b.updatedAt - a.updatedAt
+    return timestampDifference !== 0 ? timestampDifference : a.order - b.order
+  })
+  return targets
+}
+
 function remoteStatusValue(status) {
   var flags = status && Array.isArray(status.activeFlags) ? status.activeFlags : []
   if (flags.indexOf("waitingOnApproval") >= 0

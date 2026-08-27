@@ -2,14 +2,77 @@
 
 set -euo pipefail
 
-config_file="${1:-}"
-host_id="${2:-}"
-remote_cwd="${3:-}"
-thread_id="${4:-}"
-selected_model="${5:-}"
-selected_effort="${6:-}"
-selected_agent="${7:-}"
-selected_service_tier="${8:-}"
+config_file=""
+host_id=""
+remote_cwd=""
+thread_id=""
+selected_model=""
+selected_effort=""
+selected_agent=""
+selected_service_tier=""
+
+# Detached QML instances can retain the pre-refactor positional call until the
+# in-process graph reload completes. Translate it once into the named interface.
+if (( $# > 0 )) && [[ "$1" != --* ]]; then
+  legacy_config="${1:-}"
+  legacy_host_id="${2:-}"
+  legacy_cwd="${3:-}"
+  legacy_thread_id="${4:-}"
+  legacy_model="${5:-}"
+  legacy_effort="${6:-}"
+  legacy_agent="${7:-}"
+  legacy_service_tier="${8:-}"
+  legacy_named=(--config "$legacy_config" --host-id "$legacy_host_id" --cwd "$legacy_cwd")
+  [[ -z "$legacy_thread_id" ]] || legacy_named+=(--thread-id "$legacy_thread_id")
+  [[ -z "$legacy_model" ]] || legacy_named+=(--model "$legacy_model")
+  [[ -z "$legacy_effort" ]] || legacy_named+=(--effort "$legacy_effort")
+  [[ -z "$legacy_agent" ]] || legacy_named+=(--agent "$legacy_agent")
+  [[ -z "$legacy_service_tier" ]] \
+    || legacy_named+=(--service-tier "$legacy_service_tier")
+  set -- "${legacy_named[@]}"
+fi
+
+remote_usage() {
+  cat <<'EOF'
+Usage: omarchy-codex-remote-open --config FILE --host-id ID --cwd DIR [OPTIONS]
+
+Options:
+  --thread-id ID
+  --model MODEL
+  --effort EFFORT
+  --agent AGENT
+  --service-tier TIER
+EOF
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --config|--host-id|--cwd|--thread-id|--model|--effort|--agent|--service-tier)
+      (( $# >= 2 )) || { echo "Missing value for $1" >&2; exit 2; }
+      option="$1"
+      value="$2"
+      shift 2
+      case "$option" in
+        --config) config_file="$value" ;;
+        --host-id) host_id="$value" ;;
+        --cwd) remote_cwd="$value" ;;
+        --thread-id) thread_id="$value" ;;
+        --model) selected_model="$value" ;;
+        --effort) selected_effort="$value" ;;
+        --agent) selected_agent="$value" ;;
+        --service-tier) selected_service_tier="$value" ;;
+      esac
+      ;;
+    -h|--help)
+      remote_usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown remote launch option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
 
 [[ -r "$config_file" && -n "$host_id" && -n "$remote_cwd" ]] || {
   echo "Invalid remote agent launch arguments" >&2
@@ -31,13 +94,14 @@ if (( ${#selected_model} > 256 )) || [[ "$selected_model" == *$'\n'* \
   echo "Invalid remote model" >&2
   exit 2
 fi
-if [[ "$provider_type" == "opencode" ]]; then
+if [[ "$provider_type" == "opencode" || "$provider_type" == "codex" ]]; then
   if (( ${#selected_effort} > 256 )) || [[ "$selected_effort" == *$'\n'* \
       || "$selected_effort" == *$'\r'* || "$selected_effort" == *$'\t'* ]]; then
-    echo "Invalid remote OpenCode variant" >&2
+    echo "Invalid remote ${provider_type} effort" >&2
     exit 2
   fi
-elif [[ -n "$selected_effort" && ! "$selected_effort" =~ ^(none|minimal|low|medium|high|xhigh|max|auto)$ ]]; then
+elif [[ -n "$selected_effort" \
+    && ! "$selected_effort" =~ ^(low|medium|high|xhigh|max|auto)$ ]]; then
   echo "Invalid remote effort" >&2
   exit 2
 fi
@@ -60,14 +124,45 @@ if [[ "$remote_type" != "ssh" ]]; then
   token_env="$(jq -r '.authTokenEnv // ""' <<<"$remote_json")"
   token_file="$(jq -r '.authTokenFile // ""' <<<"$remote_json")"
   helper_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-  if [[ -n "$thread_id" ]]; then
-    exec "${helper_dir}/omarchy-codex-thread-open" \
-      "$thread_id" "$remote_cwd" "$remote_url" "$token_env" "$token_file" "$host_id" \
-      "$selected_model" "$selected_effort" "$selected_service_tier"
+  if [[ -n "$token_file" ]]; then
+    if [[ "$token_file" == "~/"* ]]; then
+      token_file="${HOME}/${token_file#~/}"
+    fi
+    [[ -r "$token_file" ]] || {
+      echo "Codex remote token file is not readable" >&2
+      exit 2
+    }
+    [[ -n "$token_env" ]] || token_env="CODEX_REMOTE_TOKEN"
+    [[ "$token_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+      echo "Invalid Codex remote token environment variable" >&2
+      exit 2
+    }
+    token_bytes="$(wc -c <"$token_file")"
+    [[ "$token_bytes" =~ ^[0-9]+$ && "$token_bytes" -le 65536 ]] || {
+      echo "Codex remote token file exceeded the 64 KiB limit" >&2
+      exit 2
+    }
+    remote_token="$(<"$token_file")"
+    export "${token_env}=${remote_token}"
   fi
-  exec "${helper_dir}/omarchy-codex-project-new" \
-    "$remote_cwd" "$remote_url" "$token_env" "$token_file" \
-    "$selected_model" "$selected_effort" "$selected_service_tier"
+
+  terminal_command=("${helper_dir}/omarchy-codex-terminal-open"
+    --terminal-cwd "${HOME}" --mapping-namespace "$host_id")
+  if [[ -n "$thread_id" ]]; then
+    terminal_command+=(--thread-id "$thread_id")
+  else
+    terminal_command+=(--move-to-active-workspace)
+  fi
+  codex_command=(codex --remote "$remote_url")
+  [[ -z "$token_env" ]] || codex_command+=(--remote-auth-token-env "$token_env")
+  [[ -z "$selected_model" ]] || codex_command+=(--model "$selected_model")
+  [[ -z "$selected_effort" ]] \
+    || codex_command+=(-c "model_reasoning_effort=\"${selected_effort}\"")
+  [[ -z "$selected_service_tier" ]] \
+    || codex_command+=(-c "service_tier=\"${selected_service_tier}\"")
+  codex_command+=(-C "$remote_cwd")
+  [[ -z "$thread_id" ]] || codex_command+=(resume "$thread_id")
+  exec "${terminal_command[@]}" -- "${codex_command[@]}"
 fi
 
 ssh_host="$(jq -r '.sshHost // ""' <<<"$remote_json")"

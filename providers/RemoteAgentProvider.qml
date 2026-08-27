@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 
 Item {
@@ -483,7 +484,7 @@ Item {
     openHostId = String(hostId || "")
     controller.launchingThreadId = String(thread.id)
     controller.launchError = ""
-    openProcess.command = [
+    openProcess.command = ActionLogic.remoteAgentOpenCommand(
       openHelperPath,
       configPath,
       String(hostId || ""),
@@ -492,8 +493,7 @@ Item {
       controller.selectedModelForProvider(providerType),
       controller.selectedEffortForProvider(providerType),
       controller.selectedAgentForProvider(providerType),
-      providerType === "codex" ? controller.codexServiceTier : ""
-    ]
+      providerType === "codex" ? controller.codexServiceTier : "")
     openProcess.running = true
     controller.threadLaunchRequested(controller.launchingThreadId)
   }
@@ -525,17 +525,16 @@ Item {
         pendingKnownIds[String(host.threads[i].id)] = true
     }
     controller.launchError = ""
-    openProcess.command = [
+    openProcess.command = ActionLogic.remoteAgentOpenCommand(
       openHelperPath,
       configPath,
       pendingHostId,
       pendingPath,
-      "",
+      "", // new session
       controller.selectedModelForProvider(providerType),
       controller.selectedEffortForProvider(providerType),
       controller.selectedAgentForProvider(providerType),
-      providerType === "codex" ? controller.codexServiceTier : ""
-    ]
+      providerType === "codex" ? controller.codexServiceTier : "")
     openProcess.running = true
   }
 

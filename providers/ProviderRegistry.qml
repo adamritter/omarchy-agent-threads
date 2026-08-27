@@ -60,6 +60,11 @@ Item {
     return providerByType(thread && thread.providerType)
   }
 
+  function markThreadSeen(threadId) {
+    claudeProvider.markThreadSeen(threadId)
+    openCodeProvider.markThreadSeen(threadId)
+  }
+
   function snapshotHosts() {
     return {
       claude: claudeProvider.host,

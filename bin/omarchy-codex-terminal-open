@@ -1,0 +1,391 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/lib/launch-diagnostics.sh"
+agent_threads_launch_log_init
+
+terminal_cwd=""
+thread_id=""
+mapping_namespace=""
+move_to_active_workspace=false
+require_terminal_cwd=false
+forwarded_command=()
+launch_status_dir=""
+launch_status_file=""
+
+usage() {
+  cat <<'EOF'
+Usage: omarchy-codex-terminal-open --terminal-cwd DIR [OPTIONS] -- COMMAND [ARG...]
+
+Terminal adapter options:
+  --terminal-cwd DIR          Local directory used by the terminal
+  --thread-id ID              Existing Codex thread used for window mapping
+  --mapping-namespace NAME    Namespace for remote window mappings
+  --move-to-active-workspace  Move a newly created window to the active workspace
+  --require-terminal-cwd      Fail instead of falling back to HOME if DIR is missing
+  -h, --help                  Show this help
+
+Everything after -- is forwarded unchanged to the terminal.
+EOF
+}
+
+fail_usage() {
+  agent_threads_launch_log codex-terminal-open invalid-options "error=$1"
+  printf '%s\n' "$1" >&2
+  printf '%s\n' 'Run with --help for usage.' >&2
+  exit 2
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --terminal-cwd)
+      (( $# >= 2 )) || fail_usage "Missing value for --terminal-cwd"
+      terminal_cwd="$2"
+      shift 2
+      ;;
+    --thread-id)
+      (( $# >= 2 )) || fail_usage "Missing value for --thread-id"
+      thread_id="$2"
+      shift 2
+      ;;
+    --mapping-namespace)
+      (( $# >= 2 )) || fail_usage "Missing value for --mapping-namespace"
+      mapping_namespace="$2"
+      shift 2
+      ;;
+    --move-to-active-workspace)
+      move_to_active_workspace=true
+      shift
+      ;;
+    --require-terminal-cwd)
+      require_terminal_cwd=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      forwarded_command=("$@")
+      break
+      ;;
+    *)
+      fail_usage "Unknown terminal adapter option: $1"
+      ;;
+  esac
+done
+
+[[ -n "$terminal_cwd" ]] || fail_usage "Missing --terminal-cwd"
+(( ${#forwarded_command[@]} > 0 )) || fail_usage "Missing command after --"
+if [[ -n "$thread_id" && ! "$thread_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  fail_usage "Invalid Codex thread id"
+fi
+if [[ -n "$mapping_namespace" \
+    && ! "$mapping_namespace" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  fail_usage "Invalid Codex mapping namespace"
+fi
+
+requested_terminal_cwd="$terminal_cwd"
+if [[ ! -d "$terminal_cwd" ]]; then
+  if [[ "$require_terminal_cwd" == true ]]; then
+    fail_usage "Invalid terminal directory: $terminal_cwd"
+  fi
+  terminal_cwd="${HOME}"
+fi
+
+remote_url=""
+for (( command_index = 0; command_index < ${#forwarded_command[@]}; command_index++ )); do
+  case "${forwarded_command[$command_index]}" in
+    --remote)
+      if (( command_index + 1 < ${#forwarded_command[@]} )); then
+        remote_url="${forwarded_command[$((command_index + 1))]}"
+      fi
+      ;;
+    --remote=*) remote_url="${forwarded_command[$command_index]#--remote=}" ;;
+  esac
+done
+
+launch_kind="new"
+[[ -z "$thread_id" ]] || launch_kind="resume"
+agent_threads_launch_log codex-terminal-open request \
+  "kind=$launch_kind" "thread_id=${thread_id:-none}" \
+  "terminal_cwd=$terminal_cwd" "requested_terminal_cwd=$requested_terminal_cwd" \
+  "mapping_namespace=${mapping_namespace:-none}" \
+  "remote=$([[ -n "$remote_url" ]] && printf yes || printf no)" \
+  "command=${forwarded_command[*]}"
+
+cleanup_launch_status() {
+  [[ -z "$launch_status_file" ]] || rm -f -- "$launch_status_file"
+  [[ -z "$launch_status_dir" ]] || rmdir -- "$launch_status_dir" 2>/dev/null || true
+}
+
+trap 'launch_status=$?; agent_threads_launch_log codex-terminal-open unexpected-error "exit_status=${launch_status}" "line=${LINENO}" "command=${BASH_COMMAND}"; echo "The Codex terminal adapter failed unexpectedly at line ${LINENO}; see $(agent_threads_launch_log_path)" >&2' ERR
+trap 'launch_status=$?; cleanup_launch_status; if (( launch_status != 0 )); then agent_threads_launch_log codex-terminal-open failed "exit_status=${launch_status}"; fi' EXIT
+
+runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
+state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
+proc_root="${CODEX_PROC_ROOT:-/proc}"
+mapping_file=""
+if [[ -n "$thread_id" ]]; then
+  mapping_prefix="${mapping_namespace:+${mapping_namespace}--}"
+  mapping_file="${state_dir}/${mapping_prefix}${thread_id}.address"
+fi
+mkdir -p -m 700 "$state_dir"
+
+client_exists() {
+  local address="$1"
+  hyprctl -j clients 2>/dev/null \
+    | jq -e --arg address "$address" '.[] | select(.address == $address)' >/dev/null
+}
+
+focus_client() {
+  local address="$1"
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:${address}\" })" >/dev/null
+}
+
+move_client_to_launch_workspace() {
+  local address="$1"
+
+  [[ "$launch_workspace" =~ ^[0-9]+$ ]] || return 0
+  hyprctl dispatch movetoworkspacesilent \
+    "${launch_workspace},address:${address}" >/dev/null
+}
+
+codex_process_matches_thread() {
+  local pid="$1"
+  local cmdline fd fd_target
+
+  if [[ -r "${proc_root}/${pid}/cmdline" ]]; then
+    cmdline="$(tr '\0' ' ' < "${proc_root}/${pid}/cmdline")"
+    if [[ "$cmdline" == *"$thread_id"* \
+      && ( -n "$remote_url" && "$cmdline" == *"--remote $remote_url"* \
+        || -z "$remote_url" && "$cmdline" != *"--remote "* ) ]]; then
+      return 0
+    fi
+  fi
+
+  # A running local Codex process keeps its rollout JSONL open. This also
+  # identifies sessions initially started without an explicit `resume` argv.
+  if [[ -z "$remote_url" && -d "${proc_root}/${pid}/fd" ]]; then
+    for fd in "${proc_root}/${pid}/fd/"*; do
+      [[ -e "$fd" || -L "$fd" ]] || continue
+      fd_target="$(readlink "$fd" 2>/dev/null || true)"
+      if [[ "$fd_target" == *"/rollout-"*"-${thread_id}.jsonl" ]]; then
+        return 0
+      fi
+    done
+  fi
+
+  return 1
+}
+
+client_for_process_ancestry() {
+  local current_pid="$1"
+  local parent_pid
+
+  while [[ "$current_pid" =~ ^[0-9]+$ && "$current_pid" -gt 1 ]]; do
+    if [[ -n "${client_by_pid[$current_pid]:-}" ]]; then
+      printf '%s\n' "${client_by_pid[$current_pid]}"
+      return 0
+    fi
+    parent_pid="$(ps -o ppid= -p "$current_pid" 2>/dev/null | tr -d ' ' || true)"
+    [[ "$parent_pid" =~ ^[0-9]+$ ]] || break
+    current_pid="$parent_pid"
+  done
+  return 1
+}
+
+tmux_target_for_process() {
+  local codex_pid="$1"
+  local process_tty pane_pid pane_tty pane_session pane_window pane_id
+
+  command -v tmux >/dev/null 2>&1 || return 1
+  process_tty="$(readlink "${proc_root}/${codex_pid}/fd/0" 2>/dev/null || true)"
+  [[ "$process_tty" == /dev/pts/* ]] || return 1
+
+  while IFS='|' read -r pane_pid pane_tty pane_session pane_window pane_id; do
+    if [[ "$pane_tty" == "$process_tty" && -n "$pane_session" \
+        && -n "$pane_window" && -n "$pane_id" ]]; then
+      printf '%s|%s|%s\n' "$pane_session" "$pane_window" "$pane_id"
+      return 0
+    fi
+  done < <(tmux list-panes -a \
+    -F '#{pane_pid}|#{pane_tty}|#{session_name}|#{window_id}|#{pane_id}' \
+    2>/dev/null || true)
+  return 1
+}
+
+tmux_client_for_process() {
+  local codex_pid="$1"
+  local target pane_session client_pid client_session address
+
+  target="$(tmux_target_for_process "$codex_pid")" || return 1
+  pane_session="${target%%|*}"
+
+  while IFS='|' read -r client_pid client_session; do
+    [[ "$client_session" == "$pane_session" && "$client_pid" =~ ^[0-9]+$ ]] \
+      || continue
+    if address="$(client_for_process_ancestry "$client_pid")"; then
+      printf '%s\n' "$address"
+      return 0
+    fi
+  done < <(tmux list-clients -F '#{client_pid}|#{client_session}' 2>/dev/null || true)
+  return 1
+}
+
+find_detached_tmux_target() {
+  local codex_pid target
+
+  [[ -n "$thread_id" ]] || return 1
+  while read -r codex_pid; do
+    [[ "$codex_pid" =~ ^[0-9]+$ ]] || continue
+    codex_process_matches_thread "$codex_pid" || continue
+    target="$(tmux_target_for_process "$codex_pid")" || continue
+    printf '%s\n' "$target"
+    return 0
+  done < <(pgrep -x codex 2>/dev/null || true)
+  return 1
+}
+
+find_existing_client() {
+  local address pid codex_pid
+  declare -A client_by_pid=()
+
+  [[ -n "$thread_id" ]] || return 1
+  while IFS=$'\t' read -r address pid; do
+    [[ -n "$address" && "$pid" =~ ^[0-9]+$ ]] || continue
+    client_by_pid["$pid"]="$address"
+  done < <(hyprctl -j clients 2>/dev/null | jq -r '.[] | [.address, .pid] | @tsv')
+
+  while read -r codex_pid; do
+    [[ "$codex_pid" =~ ^[0-9]+$ ]] || continue
+    codex_process_matches_thread "$codex_pid" || continue
+    if address="$(client_for_process_ancestry "$codex_pid")"; then
+      printf '%s\n' "$address"
+      return 0
+    fi
+    if address="$(tmux_client_for_process "$codex_pid")"; then
+      printf '%s\n' "$address"
+      return 0
+    fi
+  done < <(pgrep -x codex 2>/dev/null || true)
+
+  return 1
+}
+
+if [[ -n "$mapping_file" && -f "$mapping_file" ]]; then
+  mapped_address="$(<"$mapping_file")"
+  if [[ -n "$mapped_address" ]] && client_exists "$mapped_address"; then
+    agent_threads_launch_log codex-terminal-open existing-window \
+      "address=$mapped_address" "source=mapping"
+    focus_client "$mapped_address"
+    printf '%s\n' "$mapped_address"
+    exit 0
+  fi
+  rm -f -- "$mapping_file"
+fi
+
+if existing_address="$(find_existing_client)"; then
+  printf '%s\n' "$existing_address" >"$mapping_file"
+  agent_threads_launch_log codex-terminal-open existing-window \
+    "address=$existing_address" "source=process"
+  focus_client "$existing_address"
+  printf '%s\n' "$existing_address"
+  exit 0
+fi
+
+if detached_tmux_target="$(find_detached_tmux_target)"; then
+  IFS='|' read -r detached_tmux_session detached_tmux_window detached_tmux_pane \
+    <<<"$detached_tmux_target"
+  forwarded_command=(
+    tmux select-window -t "$detached_tmux_window" ';'
+    select-pane -t "$detached_tmux_pane" ';'
+    attach-session -t "=${detached_tmux_session}"
+  )
+  agent_threads_launch_log codex-terminal-open tmux-attach \
+    "session=$detached_tmux_session" "window=$detached_tmux_window" \
+    "pane=$detached_tmux_pane"
+fi
+
+wait_for_codex_bootstrap() {
+  local poll
+
+  bootstrap_exit_status=""
+  for (( poll = 0; poll < 20; poll++ )); do
+    if [[ -s "$launch_status_file" ]]; then
+      bootstrap_exit_status="$(<"$launch_status_file")"
+      [[ "$bootstrap_exit_status" =~ ^[0-9]+$ ]] || bootstrap_exit_status="unknown"
+      agent_threads_launch_log codex-terminal-open bootstrap-exit \
+        "exit_status=$bootstrap_exit_status"
+      return 1
+    fi
+    sleep 0.1
+  done
+  return 0
+}
+
+launch_workspace=""
+if [[ "$move_to_active_workspace" == true ]]; then
+  launch_workspace="$(hyprctl -j activeworkspace 2>/dev/null \
+    | jq -r '.id // empty')"
+fi
+before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
+launch_status_dir="$(mktemp -d "${state_dir}/launch-status.XXXXXX")"
+launch_status_file="${launch_status_dir}/command.status"
+agent_threads_launch_log codex-terminal-open terminal-launch \
+  "workspace=${launch_workspace:-unchanged}"
+setsid uwsm-app -- xdg-terminal-exec --dir="$terminal_cwd" \
+  bash -lc 'status_file=$1; project=$2; shift 2; cd -- "$project"; agent_status=$?; if (( agent_status == 0 )); then "$@"; agent_status=$?; fi; printf '\''%s\n'\'' "$agent_status" >"$status_file" 2>/dev/null || true; if [[ -n "${AGENT_THREADS_LAUNCH_LOG_PATH:-}" ]]; then printf '\''%(%Y-%m-%dT%H:%M:%S%z)T component=%q phase=%q exit_status=%q cwd=%q\n'\'' -1 codex-terminal-open command-exit "$agent_status" "$project" >>"$AGENT_THREADS_LAUNCH_LOG_PATH" 2>/dev/null || true; fi; exit "$agent_status"' \
+  _ "$launch_status_file" "$terminal_cwd" "${forwarded_command[@]}" \
+  >>"${AGENT_THREADS_LAUNCH_LOG_PATH:-/dev/null}" 2>&1 &
+launcher_pid=$!
+
+for _ in $(seq 1 80); do
+  new_address="$(hyprctl -j clients 2>/dev/null | jq -r --arg before "$before_addresses" '
+    .[] | .address as $address
+    | select((($before | split("\n")) | index($address)) == null)
+    | $address' | head -n 1)"
+  if [[ -n "$new_address" ]]; then
+    if [[ -n "$mapping_file" ]]; then
+      printf '%s\n' "$new_address" >"$mapping_file"
+    fi
+    move_client_to_launch_workspace "$new_address"
+    focus_client "$new_address"
+    if ! wait_for_codex_bootstrap; then
+      [[ -z "$mapping_file" ]] || rm -f -- "$mapping_file"
+      echo "Codex exited during terminal startup with status ${bootstrap_exit_status}; see $(agent_threads_launch_log_path)" >&2
+      exit 1
+    fi
+    agent_threads_launch_log codex-terminal-open window-mapped \
+      "address=$new_address" "launcher_pid=$launcher_pid"
+    printf '%s\n' "$new_address"
+    exit 0
+  fi
+  sleep 0.1
+done
+
+# A terminal may reuse an existing process/window, producing no new address.
+if existing_address="$(find_existing_client)"; then
+  printf '%s\n' "$existing_address" >"$mapping_file"
+  agent_threads_launch_log codex-terminal-open existing-window \
+    "address=$existing_address" "source=final-process-check"
+  focus_client "$existing_address"
+  printf '%s\n' "$existing_address"
+  exit 0
+fi
+
+if kill -0 "$launcher_pid" 2>/dev/null; then
+  launcher_status="running"
+else
+  set +e
+  wait "$launcher_pid"
+  launcher_status="$?"
+  set -e
+fi
+agent_threads_launch_log codex-terminal-open window-timeout \
+  "launcher_pid=$launcher_pid" "launcher_status=$launcher_status"
+echo "The Codex terminal could not be identified; see $(agent_threads_launch_log_path)" >&2
+exit 1

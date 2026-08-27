@@ -555,10 +555,13 @@ Item {
 
   function markThreadSeen(threadId) {
     var id = String(threadId || "")
-    if (id === "" || unreadThreads[id] !== true) return
-    var nextUnread = Object.assign({}, unreadThreads)
-    delete nextUnread[id]
-    unreadThreads = nextUnread
+    if (id === "") return
+    if (unreadThreads[id] === true) {
+      var nextUnread = Object.assign({}, unreadThreads)
+      delete nextUnread[id]
+      unreadThreads = nextUnread
+    }
+    agentProviders.markSupplementalThreadSeen(id)
   }
 
   function applyThreadStatuses(nextStatuses) {

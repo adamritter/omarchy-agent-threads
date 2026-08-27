@@ -71,6 +71,49 @@ function normalizeCodexServiceTier(value) {
   return String(value || "").toLowerCase() === "fast" ? "fast" : "default"
 }
 
+function localCodexTerminalCommand(helperPath, threadId, cwd, model, effort,
+    serviceTier) {
+  var id = String(threadId || "")
+  var path = String(cwd || "")
+  var command = [String(helperPath || ""), "--terminal-cwd", path]
+  if (id !== "") command.push("--thread-id", id)
+  else command.push("--require-terminal-cwd", "--move-to-active-workspace")
+
+  command.push("--", "codex")
+  var selectedModel = String(model || "")
+  var selectedEffort = String(effort || "")
+  if (selectedModel !== "") command.push("--model", selectedModel)
+  if (selectedEffort !== "")
+    command.push("-c", "model_reasoning_effort=\"" + selectedEffort + "\"")
+  command.push("-c", "service_tier=\""
+    + normalizeCodexServiceTier(serviceTier) + "\"")
+  command.push("-C", path)
+  if (id !== "") command.push("resume", id)
+  return command
+}
+
+function remoteAgentOpenCommand(helperPath, configPath, hostId, cwd, threadId,
+    model, effort, agent, serviceTier) {
+  var command = [
+    String(helperPath || ""),
+    "--config", String(configPath || ""),
+    "--host-id", String(hostId || ""),
+    "--cwd", String(cwd || "")
+  ]
+  var optional = [
+    ["--thread-id", threadId],
+    ["--model", model],
+    ["--effort", effort],
+    ["--agent", agent],
+    ["--service-tier", serviceTier]
+  ]
+  for (var i = 0; i < optional.length; i++) {
+    var value = String(optional[i][1] || "")
+    if (value !== "") command.push(optional[i][0], value)
+  }
+  return command
+}
+
 function nextChoiceId(currentValue, entries) {
   var choices = Array.isArray(entries) ? entries : []
   var ids = []

@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Controls
+import Quickshell
+import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
 
@@ -196,6 +198,12 @@ Item {
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onClicked: picker.opened ? picker.close() : picker.open()
+  }
+
+  HyprlandFocusGrab {
+    active: picker.opened
+    windows: root.QsWindow.window ? [root.QsWindow.window] : []
+    onCleared: picker.close()
   }
 
   Popup {

@@ -90,7 +90,8 @@ printf '%s\n' '{"version":2,"remotes":[{"id":"remote-claude","label":"Remote Cla
   > "$test_root/remotes.json"
 rm -f -- "$HYPR_STUB_COUNT"
 remote_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
-  "$test_root/remotes.json" remote-claude /work "" opus xhigh reviewer)"
+  --config "$test_root/remotes.json" --host-id remote-claude --cwd /work \
+  --model opus --effort xhigh --agent reviewer)"
 remote_session="$(jq -er '.sessionId | select(test("^[0-9a-f-]{36}$"))' <<<"$remote_result")"
 jq -e '.address == "0xabc123"' <<<"$remote_result" >/dev/null
 grep -F -- "claude --session-id $remote_session --model opus --effort xhigh --agent reviewer" \
@@ -103,7 +104,8 @@ test "$(<"$runtime_dir/omarchy-codex-threads-${UID}/remote-claude--${remote_sess
 rm -f -- "$HYPR_STUB_COUNT"
 rm -f -- "$runtime_dir/omarchy-codex-threads-${UID}/remote-claude--${resume_session}.address"
 remote_resume_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
-  "$test_root/remotes.json" remote-claude /work "$resume_session" sonnet medium)"
+  --config "$test_root/remotes.json" --host-id remote-claude --cwd /work \
+  --thread-id "$resume_session" --model sonnet --effort medium)"
 jq -e --arg id "$resume_session" '.sessionId == $id and .address == "0xabc123"' \
   <<<"$remote_resume_result" >/dev/null
 grep -F -- "claude --resume $resume_session --model sonnet --effort medium" \
@@ -116,8 +118,10 @@ jq '.remotes += [{
 mv -- "$test_root/remotes-next.json" "$test_root/remotes.json"
 rm -f -- "$HYPR_STUB_COUNT"
 remote_codex_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
-  "$test_root/remotes.json" remote-codex /work "" gpt-test high "" fast)"
+  --config "$test_root/remotes.json" --host-id remote-codex --cwd /work \
+  --model gpt-test --effort ultra --service-tier fast)"
 jq -e '.address == "0xabc123"' <<<"$remote_codex_result" >/dev/null
+grep -F -- 'model_reasoning_effort=\"ultra\"' "$OMARCHY_STUB_LOG" >/dev/null
 grep -F -- 'service_tier=\"fast\"' "$OMARCHY_STUB_LOG" >/dev/null
 
 jq '.remotes += [{
@@ -127,7 +131,8 @@ jq '.remotes += [{
 mv -- "$test_root/remotes-next.json" "$test_root/remotes.json"
 rm -f -- "$HYPR_STUB_COUNT"
 remote_opencode_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
-  "$test_root/remotes.json" remote-opencode /work "" fixture/model high build)"
+  --config "$test_root/remotes.json" --host-id remote-opencode --cwd /work \
+  --model fixture/model --effort high --agent build)"
 jq -e '
   .sessionId == "ses_opencode_remote_new" and .address == "0xabc123"
 ' <<<"$remote_opencode_result" >/dev/null

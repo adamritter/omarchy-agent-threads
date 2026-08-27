@@ -117,6 +117,44 @@ TestCase {
     compare(ActionLogic.normalizeCodexServiceTier("flex"), "default")
   }
 
+  function test_buildsNamedAdapterAndNativeCodexCommands() {
+    compare(ActionLogic.localCodexTerminalCommand(
+      "/plugin/bin/omarchy-codex-terminal-open", "thread-1", "/work/app",
+      "gpt-5.6-sol", "high", "fast"), [
+        "/plugin/bin/omarchy-codex-terminal-open",
+        "--terminal-cwd", "/work/app",
+        "--thread-id", "thread-1",
+        "--", "codex", "--model", "gpt-5.6-sol",
+        "-c", "model_reasoning_effort=\"high\"",
+        "-c", "service_tier=\"fast\"",
+        "-C", "/work/app", "resume", "thread-1"
+      ])
+    compare(ActionLogic.localCodexTerminalCommand(
+      "/plugin/bin/omarchy-codex-terminal-open", "", "/work/new",
+      "gpt-5.6-terra", "high", "default"), [
+        "/plugin/bin/omarchy-codex-terminal-open",
+        "--terminal-cwd", "/work/new",
+        "--require-terminal-cwd", "--move-to-active-workspace",
+        "--", "codex", "--model", "gpt-5.6-terra",
+        "-c", "model_reasoning_effort=\"high\"",
+        "-c", "service_tier=\"default\"",
+        "-C", "/work/new"
+      ])
+
+    compare(ActionLogic.remoteAgentOpenCommand(
+      "/plugin/bin/omarchy-codex-remote-open", "/state/remotes.json",
+      "build", "/srv/app", "thread-2", "gpt-5.6-sol", "high", "", "fast"), [
+        "/plugin/bin/omarchy-codex-remote-open",
+        "--config", "/state/remotes.json",
+        "--host-id", "build",
+        "--cwd", "/srv/app",
+        "--thread-id", "thread-2",
+        "--model", "gpt-5.6-sol",
+        "--effort", "high",
+        "--service-tier", "fast"
+      ])
+  }
+
   function test_cyclesChoiceIdsIncludingDefault() {
     var choices = [
       { id: "", label: "default" },

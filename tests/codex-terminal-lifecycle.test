@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d -t agent-threads-codex-lifecycle-XXXXXX)"
+project_dir="$test_root/project"
+capture="$test_root/launch-arguments"
+launched="$test_root/launched"
+focused="$test_root/focused"
+fake_pid=987654
+thread_id=fixture-active-thread
+trap 'rm -rf -- "$test_root"' EXIT
+
+mkdir -p -- "$test_root/bin" "$test_root/runtime" "$project_dir" \
+  "$test_root/proc/$fake_pid/fd"
+ln -s -- \
+  "/state/rollout-2026-08-27T12-00-00-${thread_id}.jsonl" \
+  "$test_root/proc/$fake_pid/fd/46"
+ln -s -- /dev/pts/2 "$test_root/proc/$fake_pid/fd/0"
+
+cat >"$test_root/bin/hyprctl" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-j" && "${2:-}" == "clients" ]]; then
+  if [[ "${CODEX_TEST_SCENARIO:-}" == "tmux-attached" ]]; then
+    if [[ -f "$CODEX_LAUNCH_MARKER" ]]; then
+      printf '%s\n' '[
+        {"address":"0xtmux","pid":7000},
+        {"address":"0xduplicate","pid":8000}
+      ]'
+    else
+      printf '%s\n' '[{"address":"0xtmux","pid":7000}]'
+    fi
+  elif [[ "${CODEX_TEST_SCENARIO:-}" == "tmux-detached" \
+      && -f "$CODEX_LAUNCH_MARKER" ]]; then
+    printf '%s\n' '[{"address":"0xattached","pid":8000}]'
+  elif [[ -f "$CODEX_LAUNCH_MARKER" ]]; then
+    printf '%s\n' '[{"address":"0xfailed","pid":8000}]'
+  else
+    printf '%s\n' '[]'
+  fi
+elif [[ "${1:-}" == "dispatch" ]]; then
+  printf '%s\n' "$*" >"$CODEX_FOCUS_CAPTURE"
+fi
+EOF
+
+cat >"$test_root/bin/pgrep" <<EOF
+#!/usr/bin/env bash
+if [[ "\${CODEX_TEST_SCENARIO:-}" == tmux-* ]]; then
+  printf '%s\n' '$fake_pid'
+else
+  exit 1
+fi
+EOF
+
+cat >"$test_root/bin/ps" <<EOF
+#!/usr/bin/env bash
+pid="\${!#}"
+case "\$pid" in
+  $fake_pid) printf '%s\n' 4000 ;;
+  4000) printf '%s\n' 3000 ;;
+  3000) printf '%s\n' 1 ;;
+  6000) printf '%s\n' 7000 ;;
+  7000) printf '%s\n' 1 ;;
+  *) exit 1 ;;
+esac
+EOF
+
+cat >"$test_root/bin/tmux" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  list-panes)
+    printf '%s|%s|%s|%s|%s\n' \
+      4000 /dev/pts/2 fixture-session '@fixture-window' '%fixture-pane'
+    ;;
+  list-clients)
+    if [[ "${CODEX_TEST_SCENARIO:-}" == "tmux-attached" ]]; then
+      printf '%s|%s\n' 6000 fixture-session
+    fi
+    ;;
+  select-window)
+    if [[ "$*" != 'select-window -t @fixture-window ; select-pane -t %fixture-pane ; attach-session -t =fixture-session' ]]; then
+      printf 'Unexpected tmux attach command: %s\n' "$*" >&2
+      exit 2
+    fi
+    sleep 3
+    ;;
+  *) exit 1 ;;
+esac
+EOF
+
+cat >"$test_root/bin/codex" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'thread already has an active writer (code -32600)' >&2
+exit 1
+EOF
+
+cat >"$test_root/bin/uwsm-app" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$CODEX_LAUNCH_CAPTURE"
+touch "$CODEX_LAUNCH_MARKER"
+if [[ "${CODEX_TEST_SCENARIO:-}" == "immediate-exit" \
+    || "${CODEX_TEST_SCENARIO:-}" == "tmux-detached" ]]; then
+  while (( $# > 0 )); do
+    if [[ "$1" == "bash" ]]; then exec "$@"; fi
+    shift
+  done
+  exit 127
+fi
+EOF
+
+chmod +x "$test_root/bin/"*
+
+common_env=(
+  CODEX_LAUNCH_CAPTURE="$capture"
+  CODEX_LAUNCH_MARKER="$launched"
+  CODEX_FOCUS_CAPTURE="$focused"
+  CODEX_PROC_ROOT="$test_root/proc"
+  AGENT_THREADS_LAUNCH_LOG="$test_root/launch.log"
+  XDG_RUNTIME_DIR="$test_root/runtime"
+  PATH="$test_root/bin:$PATH"
+)
+failures=0
+
+# A running Codex process inside tmux belongs to the attached tmux client's
+# terminal, even though the process ancestry leads through the tmux server.
+rm -f -- "$capture" "$launched" "$focused"
+tmux_result="$(env "${common_env[@]}" CODEX_TEST_SCENARIO=tmux-attached \
+  "$plugin_root/bin/omarchy-codex-terminal-open" \
+  --terminal-cwd "$project_dir" --thread-id "$thread_id" -- \
+  codex -C "$project_dir" resume "$thread_id")"
+if [[ "$tmux_result" != "0xtmux" ]]; then
+  printf 'Expected the existing tmux terminal, got: %s\n' "$tmux_result" >&2
+  failures=$((failures + 1))
+fi
+if [[ -e "$capture" ]]; then
+  printf '%s\n' 'A duplicate terminal was launched for an active tmux thread' >&2
+  failures=$((failures + 1))
+fi
+if ! grep -F -- 'address:0xtmux' "$focused" >/dev/null 2>&1; then
+  printf '%s\n' 'The existing tmux terminal was not focused' >&2
+  failures=$((failures + 1))
+fi
+
+# If no tmux client is attached, the adapter must open a terminal attached to
+# the owning session instead of starting a second Codex writer.
+rm -f -- "$capture" "$launched" "$focused"
+detached_result="$(env "${common_env[@]}" CODEX_TEST_SCENARIO=tmux-detached \
+  "$plugin_root/bin/omarchy-codex-terminal-open" \
+  --terminal-cwd "$project_dir" --thread-id "$thread_id" -- \
+  codex -C "$project_dir" resume "$thread_id")"
+if [[ "$detached_result" != "0xattached" ]]; then
+  printf 'Expected a terminal attached to tmux, got: %s\n' "$detached_result" >&2
+  failures=$((failures + 1))
+fi
+if ! grep -xF -- 'tmux' "$capture" >/dev/null \
+    || ! grep -xF -- 'attach-session' "$capture" >/dev/null; then
+  printf '%s\n' 'The detached tmux session was not attached in the new terminal' >&2
+  failures=$((failures + 1))
+fi
+if grep -xF -- 'codex' "$capture" >/dev/null; then
+  printf '%s\n' 'A second Codex writer was started for a detached tmux session' >&2
+  failures=$((failures + 1))
+fi
+
+# A terminal window appearing is not success when Codex exits during bootstrap.
+rm -f -- "$capture" "$launched" "$focused"
+if env "${common_env[@]}" CODEX_TEST_SCENARIO=immediate-exit \
+    "$plugin_root/bin/omarchy-codex-terminal-open" \
+    --terminal-cwd "$project_dir" --thread-id fixture-failed-thread -- \
+    codex -C "$project_dir" resume fixture-failed-thread \
+    >"$test_root/immediate-output" 2>"$test_root/immediate-error"; then
+  printf '%s\n' 'The adapter reported success after Codex exited during bootstrap' >&2
+  failures=$((failures + 1))
+fi
+if ! grep -F -- 'Codex exited during terminal startup' \
+    "$test_root/immediate-error" >/dev/null 2>&1; then
+  printf '%s\n' 'The Codex bootstrap failure was not reported to the caller' >&2
+  failures=$((failures + 1))
+fi
+if ! grep -F -- 'component=codex-terminal-open phase=command-exit exit_status=1' \
+    "$test_root/launch.log" >/dev/null 2>&1; then
+  printf '%s\n' 'The Codex bootstrap exit was not recorded in diagnostics' >&2
+  failures=$((failures + 1))
+fi
+
+if (( failures > 0 )); then exit 1; fi
+
+printf '%s\n' 'codex-terminal-lifecycle tests passed'

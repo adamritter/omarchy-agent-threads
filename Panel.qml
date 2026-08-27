@@ -11,6 +11,7 @@ import "ui" as Ui
 import "logic/ActionLogic.js" as ActionLogic
 import "logic/NavigationLogic.js" as NavigationLogic
 import "logic/PointerFocusLogic.js" as PointerFocusLogic
+import "logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Panel {
   id: root
@@ -38,6 +39,7 @@ Panel {
   readonly property string workspaceStateHelperPath: Qt.resolvedUrl(
     "bin/omarchy-agent-workspace-state").toString().replace(/^file:\/\//, "")
   readonly property int sidebarContentWidth: Style.space(380)
+  readonly property int sidebarBarGap: Style.gapsOut
   property bool fullscreenSuppressionEnabled: true
   readonly property bool fullscreenSuppressed: fullscreenSuppressionEnabled
     && activeWorkspaceHasFullscreen
@@ -47,6 +49,10 @@ Panel {
   readonly property bool sidebarFocused: keyboardFocusRequested && sidebarItemFocused
   readonly property string activeProvider: service.selectedProvider || "codex"
   readonly property var activeProviderHost: providerHost(activeProvider)
+  readonly property var readyThreadTargets: ThreadStateLogic.readyThreadTargets(
+    service.threads, service.unreadThreads, service.remoteHosts)
+  readonly property int readyThreadCount: readyThreadTargets.length
+  readonly property color readyThreadColor: "#98c379"
   readonly property var providerChoices: [
     { id: "codex", label: "CODEX" },
     { id: "claude", label: "CLAUDE" },
@@ -158,6 +164,20 @@ Panel {
     var next = ActionLogic.nextChoiceId(current, modelEffortSelector.effortChoices())
     service.setEffortForProvider(activeProvider, next)
     return next || "default"
+  }
+
+  function openLatestReadyThread() {
+    if (readyThreadTargets.length === 0) return ""
+    var target = readyThreadTargets[0]
+    var thread = target.thread
+    selectProvider(target.providerType)
+    releaseSidebarFocus(true)
+    if (target.hostId === "provider-codex")
+      service.openThread(thread, projectPath(thread))
+    else service.openRemoteThread(
+      target.hostId, thread, service.remotePathForThread(target.host, thread))
+    service.markThreadSeen(target.threadId)
+    return "thread:" + target.scope + ":" + target.threadId
   }
 
   function visibleRowIndex(first) {
@@ -1130,6 +1150,7 @@ Panel {
     function previousThread(): string {
       return root.sidebarActions.activateAdjacentThread(-1)
     }
+    function openReady(): string { return root.openLatestReadyThread() }
     function cursorPoint(): string { return root.sidebarActions.activeThreadCursorPoint() }
     function refresh(): string {
       root.service.refreshThreads()
@@ -1164,6 +1185,7 @@ Panel {
         pinningThreadId: root.service.pinningThreadId,
         movingThreadId: root.service.movingThreadId,
         activeThreadId: root.service.activeThreadId,
+        readyThreadCount: root.readyThreadCount,
         selectedRowKey: root.rowKey(root.viewRows[root.selectedIndex]),
         searchText: root.searchText,
         searchOpen: root.searchOpen,
@@ -1214,8 +1236,14 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: "󰚩"
-    active: root.sidebarFocused
-    tooltipText: root.fullscreenSuppressed
+    active: root.sidebarFocused || root.readyThreadCount > 0
+    activeColor: root.readyThreadCount > 0
+      ? root.readyThreadColor : (root.bar ? root.bar.urgent : Color.urgent)
+    tooltipText: root.readyThreadCount > 0
+      ? root.readyThreadCount + " agent thread"
+        + (root.readyThreadCount === 1 ? " is" : "s are")
+        + " ready · click to open the newest"
+      : root.fullscreenSuppressed
       ? "Agent Threads is hidden while fullscreen"
       : root.opened
       ? (root.sidebarFocused
@@ -1223,7 +1251,9 @@ Panel {
           : "Codex thread sidebar · click to close")
       : "Open Codex thread sidebar"
     onPressed: function(buttonCode) {
-      if (buttonCode === Qt.LeftButton) root.requestToggle()
+      if (buttonCode !== Qt.LeftButton) return
+      if (root.readyThreadCount > 0) root.openLatestReadyThread()
+      else root.requestToggle()
     }
   }
 
@@ -1251,11 +1281,13 @@ Panel {
       left: true
     }
 
+    // The bar's exclusive zone already places this surface beyond the bar.
+    // Add only the shared panel gap instead of counting the bar height twice.
     margins {
       top: root.bar && root.bar.position === "top"
-        ? root.bar.barSize : 0
+        ? root.sidebarBarGap : 0
       bottom: root.bar && root.bar.position === "bottom"
-        ? root.bar.barSize : 0
+        ? root.sidebarBarGap : 0
     }
 
     BorderSurface {

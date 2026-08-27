@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import Quickshell.Wayland
+import "../logic/ActionLogic.js" as ActionLogic
 
 Item {
   id: root
@@ -14,12 +15,12 @@ Item {
   property string pendingNewWindowAddress: ""
   property int pendingNewThreadAttempts: 0
 
-  readonly property string openHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-codex-thread-open").toString().replace(/^file:\/\//, "")
+  readonly property string terminalHelperPath: Qt.resolvedUrl(
+    "../bin/omarchy-codex-terminal-open").toString().replace(/^file:\/\//, "")
   readonly property string activeThreadHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-active-thread").toString().replace(/^file:\/\//, "")
-  readonly property string newProjectHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-codex-project-new").toString().replace(/^file:\/\//, "")
+  readonly property string launchLogPath:
+    controller.stateHome + "/omarchy/agent-threads-launch.log"
 
   ThreadLaunchCoordinator { id: launchCoordinator }
 
@@ -27,16 +28,14 @@ Item {
     if (!thread || !thread.id || openProcess.running) return
     controller.launchingThreadId = String(thread.id)
     controller.launchError = ""
-    openProcess.command = [
-      openHelperPath,
+    openProcess.command = ActionLogic.localCodexTerminalCommand(
+      terminalHelperPath,
       controller.launchingThreadId,
       String(cwdOverride || controller.projectPathForThread(thread)
         || controller.backendHomePath),
-      "", "", "",
       controller.effectiveModel(),
       controller.effectiveEffort(),
-      controller.codexServiceTier
-    ]
+      controller.codexServiceTier)
     openProcess.running = true
     controller.threadLaunchRequested(controller.launchingThreadId)
   }
@@ -55,11 +54,10 @@ Item {
     pendingNewThreadId = ""
     pendingNewWindowAddress = ""
     pendingNewThreadAttempts = 20
-    newProjectProcess.command = [
-      newProjectHelperPath, path, "", "", "",
+    newProjectProcess.command = ActionLogic.localCodexTerminalCommand(
+      terminalHelperPath, "", path,
       controller.effectiveModel(), controller.effectiveEffort(),
-      controller.codexServiceTier
-    ]
+      controller.codexServiceTier)
     newProjectProcess.running = true
   }
 
@@ -131,7 +129,7 @@ Item {
     onExited: function(exitCode) {
       if (exitCode !== 0) {
         controller.launchError = newProjectStderr.text.trim()
-          || "Could not start Codex in the project"
+          || ("Could not start Codex in the project; check " + root.launchLogPath)
         root.clearPendingNew()
         return
       }

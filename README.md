@@ -98,6 +98,12 @@ thread frontend. Click the terminal/Agent Chat button in the sidebar header to
 switch. The setting is persisted, remains off by default, and does not change
 how remote Codex, Claude, or OpenCode threads are opened.
 
+The terminal frontend builds the native Codex argument vector in QML logic and
+passes it unchanged after `--` to one `omarchy-codex-terminal-open` adapter.
+That adapter accepts only named terminal, workspace, and window-mapping options;
+it does not parse model, reasoning-effort, service-tier, `-C`, or `resume`
+positions.
+
 Local Codex conversations open inline through the Codex App Server, with full
 history loading, streaming assistant and tool output, Stop, approval prompts,
 and runtime model/reasoning-effort/Fast/approval controls. Remote `ws://`,
@@ -176,6 +182,9 @@ o.bind("SUPER + S", "Toggle Agent Threads", "omarchy-shell -q adam.codex-threads
 -- Select only thread rows, skipping project/remote headers and wrapping at the ends.
 o.bind("SUPER + CTRL + DOWN", "Next agent thread", "omarchy-shell -q adam.codex-threads nextThread")
 o.bind("SUPER + CTRL + UP", "Previous agent thread", "omarchy-shell -q adam.codex-threads previousThread")
+
+-- Open the newest completed/unread agent thread. Choose any free shortcut.
+o.bind("SUPER + CTRL + J", "Open ready agent thread", "omarchy-shell -q adam.codex-threads openReady")
 ```
 
 `Super+A` is the fast keyboard-navigation entry point. `Super+S` only opens or
@@ -186,6 +195,9 @@ The `nextThread` and `previousThread` IPC actions switch from the active thread
 to the next or previous visible thread. They also update the sidebar selection,
 and skip project, remote, and “show more” rows. `nextThread` wraps from the last
 thread to the first; `previousThread` stops at the first thread.
+When a background thread finishes, the Agent Threads bar icon turns green.
+Clicking it, or invoking the `openReady` IPC action, opens the newest unread
+completion. Repeating the action advances through any remaining completions.
 
 ## Controls
 
@@ -267,6 +279,13 @@ Other UI state is stored in `~/.local/state/omarchy/codex-threads.json`.
 This state includes provider selections, model/effort/agent choices, pinned
 sections, and collapsed projects/remotes. Runtime window-address files are
 temporary and are stored below `$XDG_RUNTIME_DIR`.
+
+Local Codex terminal launches write private diagnostics to
+`~/.local/state/omarchy/agent-threads-launch.log` (or the corresponding
+`$XDG_STATE_HOME` path). The log records the selected model, reasoning effort,
+service tier, terminal/window mapping, and final Codex exit status without
+recording authentication token values. It is mode `0600` and trims itself after
+reaching 1 MiB.
 
 Provider thread and project snapshots are cached at
 `$XDG_RUNTIME_DIR/omarchy-agent-threads-provider-snapshot.json`. This

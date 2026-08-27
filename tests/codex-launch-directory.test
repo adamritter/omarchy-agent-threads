@@ -8,6 +8,7 @@ capture="$test_root/arguments"
 launched="$test_root/launched"
 project_dir="$test_root/project directory"
 trap 'rm -rf -- "$test_root"' EXIT
+export AGENT_THREADS_LAUNCH_LOG="$test_root/launch.log"
 
 mkdir -p -- "$test_root/bin" "$project_dir" "$test_root/runtime"
 
@@ -26,19 +27,31 @@ if [[ "${1:-}" == "-j" && "${2:-}" == "clients" ]]; then
     printf '%s\n' '[]'
   fi
 elif [[ "${1:-}" == "-j" && "${2:-}" == "activeworkspace" ]]; then
+  if [[ "${CODEX_LAUNCH_MALFORMED_HYPR:-}" == "yes" ]]; then
+    printf '%s\n' '{'
+    exit 0
+  fi
   printf '%s\n' '{"id":1}'
 fi
 EOF
 
 chmod +x "$test_root/bin/uwsm-app" "$test_root/bin/hyprctl"
 
+# A detached pre-reload QML instance can briefly keep invoking the previous
+# launcher paths. Removing those files makes every click fail until the entire
+# Shell graph is replaced, so they must remain executable compatibility shims.
+for legacy_helper in omarchy-codex-thread-open omarchy-codex-project-new; do
+  if [[ ! -x "$plugin_root/bin/$legacy_helper" ]]; then
+    printf 'Missing hot-reload compatibility launcher: %s\n' "$legacy_helper" >&2
+    exit 1
+  fi
+done
+
 run_helper() {
-  local helper="$1"
-  shift
   rm -f -- "$capture" "$launched"
   CODEX_LAUNCH_CAPTURE="$capture" CODEX_LAUNCH_MARKER="$launched" \
     XDG_RUNTIME_DIR="$test_root/runtime" PATH="$test_root/bin:$PATH" \
-    "$helper" "$@" >/dev/null
+    "$plugin_root/bin/omarchy-codex-terminal-open" "$@" >/dev/null
   mapfile -t launch_args <"$capture"
   [[ "${launch_args[0]}" == "--" ]]
   [[ "${launch_args[1]}" == "xdg-terminal-exec" ]]
@@ -46,52 +59,160 @@ run_helper() {
   [[ "${launch_args[3]}" == "bash" ]]
   [[ "${launch_args[4]}" == "-lc" ]]
   [[ "${launch_args[5]}" == *'agent_status=$?'* ]]
-  [[ "${launch_args[7]}" == "$project_dir" ]]
-  [[ "${launch_args[8]}" == "codex" ]]
+  [[ "${launch_args[7]}" == */command.status ]]
+  [[ "${launch_args[8]}" == "$project_dir" ]]
+  [[ "${launch_args[9]}" == "codex" ]]
 }
 
-run_helper "$plugin_root/bin/omarchy-codex-thread-open" \
-  fixture-thread "$project_dir"
-[[ "${launch_args[9]}" == "-C" ]]
-[[ "${launch_args[10]}" == "$project_dir" ]]
-[[ "${launch_args[11]}" == "resume" ]]
-[[ "${launch_args[12]}" == "fixture-thread" ]]
+run_legacy_helper() {
+  local helper="$1"
+  shift
+  rm -f -- "$capture" "$launched"
+  CODEX_LAUNCH_CAPTURE="$capture" CODEX_LAUNCH_MARKER="$launched" \
+    XDG_RUNTIME_DIR="$test_root/runtime" PATH="$test_root/bin:$PATH" \
+    "$plugin_root/bin/$helper" "$@" >/dev/null
+  mapfile -t launch_args <"$capture"
+  [[ "${launch_args[0]}" == "--" ]]
+  [[ "${launch_args[1]}" == "xdg-terminal-exec" ]]
+  [[ "${launch_args[2]}" == "--dir=$project_dir" ]]
+  [[ "${launch_args[7]}" == */command.status ]]
+  [[ "${launch_args[8]}" == "$project_dir" ]]
+  [[ "${launch_args[9]}" == "codex" ]]
+}
 
-run_helper "$plugin_root/bin/omarchy-codex-project-new" "$project_dir"
-[[ "${launch_args[9]}" == "-C" ]]
-[[ "${launch_args[10]}" == "$project_dir" ]]
+# This is the exact eight-argument layout retained by the stale local QML
+# instance: it omitted mapping namespace before model, effort, and tier.
+run_legacy_helper omarchy-codex-thread-open \
+  fixture-thread "$project_dir" "" "" "" gpt-5.6-sol high fast
+[[ "${launch_args[10]}" == "--model" ]]
+[[ "${launch_args[11]}" == "gpt-5.6-sol" ]]
+[[ "${launch_args[12]}" == "-c" ]]
+[[ "${launch_args[13]}" == 'model_reasoning_effort="high"' ]]
+[[ "${launch_args[14]}" == "-c" ]]
+[[ "${launch_args[15]}" == 'service_tier="fast"' ]]
+[[ "${launch_args[16]}" == "-C" ]]
+[[ "${launch_args[17]}" == "$project_dir" ]]
+[[ "${launch_args[18]}" == "resume" ]]
+[[ "${launch_args[19]}" == "fixture-thread" ]]
 
-run_helper "$plugin_root/bin/omarchy-codex-thread-open" \
-  fixture-thread "$project_dir" "" "" "" "" "" "" fast
-[[ "${launch_args[9]}" == "-c" ]]
-[[ "${launch_args[10]}" == 'service_tier="fast"' ]]
-[[ "${launch_args[11]}" == "-C" ]]
-[[ "${launch_args[12]}" == "$project_dir" ]]
-[[ "${launch_args[13]}" == "resume" ]]
-[[ "${launch_args[14]}" == "fixture-thread" ]]
+run_legacy_helper omarchy-codex-project-new \
+  "$project_dir" "" "" "" gpt-5.6-terra high default
+[[ "${launch_args[10]}" == "--model" ]]
+[[ "${launch_args[11]}" == "gpt-5.6-terra" ]]
+[[ "${launch_args[12]}" == "-c" ]]
+[[ "${launch_args[13]}" == 'model_reasoning_effort="high"' ]]
+[[ "${launch_args[14]}" == "-c" ]]
+[[ "${launch_args[15]}" == 'service_tier="default"' ]]
+[[ "${launch_args[16]}" == "-C" ]]
+[[ "${launch_args[17]}" == "$project_dir" ]]
 
-run_helper "$plugin_root/bin/omarchy-codex-project-new" \
-  "$project_dir" "" "" "" "" "" default
-[[ "${launch_args[9]}" == "-c" ]]
-[[ "${launch_args[10]}" == 'service_tier="default"' ]]
-[[ "${launch_args[11]}" == "-C" ]]
-[[ "${launch_args[12]}" == "$project_dir" ]]
+run_helper --terminal-cwd "$project_dir" --thread-id fixture-thread -- \
+  codex --model gpt-5.6-sol \
+  -c 'model_reasoning_effort="high"' -c 'service_tier="fast"' \
+  -C "$project_dir" resume fixture-thread
+[[ "${launch_args[10]}" == "--model" ]]
+[[ "${launch_args[11]}" == "gpt-5.6-sol" ]]
+[[ "${launch_args[12]}" == "-c" ]]
+[[ "${launch_args[13]}" == 'model_reasoning_effort="high"' ]]
+[[ "${launch_args[14]}" == "-c" ]]
+[[ "${launch_args[15]}" == 'service_tier="fast"' ]]
+[[ "${launch_args[16]}" == "-C" ]]
+[[ "${launch_args[17]}" == "$project_dir" ]]
+[[ "${launch_args[18]}" == "resume" ]]
+[[ "${launch_args[19]}" == "fixture-thread" ]]
 
-token_file="$test_root/oversized-token"
+run_helper --terminal-cwd "$project_dir" --require-terminal-cwd \
+  --move-to-active-workspace -- codex --model gpt-5.6-terra \
+  -c 'model_reasoning_effort="high"' -c 'service_tier="default"' \
+  -C "$project_dir"
+[[ "${launch_args[10]}" == "--model" ]]
+[[ "${launch_args[11]}" == "gpt-5.6-terra" ]]
+[[ "${launch_args[12]}" == "-c" ]]
+[[ "${launch_args[13]}" == 'model_reasoning_effort="high"' ]]
+[[ "${launch_args[14]}" == "-c" ]]
+[[ "${launch_args[15]}" == 'service_tier="default"' ]]
+[[ "${launch_args[16]}" == "-C" ]]
+[[ "${launch_args[17]}" == "$project_dir" ]]
+
+# The adapter must not interpret future Codex options or effort values.
+run_helper --terminal-cwd "$project_dir" -- codex \
+  --future-codex-option fixture \
+  -c 'model_reasoning_effort="future-effort"' -C "$project_dir"
+[[ "${launch_args[10]}" == "--future-codex-option" ]]
+[[ "${launch_args[11]}" == "fixture" ]]
+[[ "${launch_args[12]}" == "-c" ]]
+[[ "${launch_args[13]}" == 'model_reasoning_effort="future-effort"' ]]
+
+grep -F -- 'component=codex-terminal-open phase=request' \
+  "$test_root/launch.log" >/dev/null
+grep -F -- 'model_reasoning_effort=' "$test_root/launch.log" >/dev/null
+grep -F -- 'high' "$test_root/launch.log" >/dev/null
+grep -F -- 'component=codex-terminal-open phase=window-mapped' \
+  "$test_root/launch.log" >/dev/null
+[[ "$(stat -c '%a' "$test_root/launch.log")" == "600" ]]
+
+if "$plugin_root/bin/omarchy-codex-terminal-open" "$project_dir" -- codex \
+    >"$test_root/positional-output" 2>"$test_root/positional-error"; then
+  printf '%s\n' 'Codex terminal adapter unexpectedly accepted positional options' >&2
+  exit 1
+fi
+grep -F -- 'Unknown terminal adapter option' "$test_root/positional-error" >/dev/null
+
+if CODEX_LAUNCH_MALFORMED_HYPR=yes \
+    XDG_RUNTIME_DIR="$test_root/runtime" PATH="$test_root/bin:$PATH" \
+    "$plugin_root/bin/omarchy-codex-terminal-open" \
+    --terminal-cwd "$project_dir" --move-to-active-workspace -- \
+    codex -C "$project_dir" \
+    >"$test_root/malformed-output" 2>"$test_root/malformed-error"; then
+  printf '%s\n' 'Codex terminal adapter unexpectedly accepted malformed Hyprland state' >&2
+  exit 1
+fi
+grep -F -- 'terminal adapter failed unexpectedly at line' \
+  "$test_root/malformed-error" >/dev/null
+grep -F -- 'component=codex-terminal-open phase=unexpected-error' \
+  "$test_root/launch.log" >/dev/null
+
+token_file="$test_root/remote-token"
+printf '%s\n' 'fixture-token' >"$token_file"
+remote_config="$test_root/remotes.json"
+jq -n --arg tokenFile "$token_file" '{version:2,remotes:[{
+  id:"direct",label:"Direct",type:"app-server",providerType:"codex",
+  url:"ws://127.0.0.1:1",authTokenFile:$tokenFile
+}]}' >"$remote_config"
+
+rm -f -- "$capture" "$launched"
+CODEX_LAUNCH_CAPTURE="$capture" CODEX_LAUNCH_MARKER="$launched" \
+  XDG_RUNTIME_DIR="$test_root/runtime" PATH="$test_root/bin:$PATH" \
+  "$plugin_root/bin/omarchy-codex-remote-open" \
+  --config "$remote_config" --host-id direct --cwd /remote/project \
+  --model gpt-5.6-sol --effort high --service-tier fast \
+  >/dev/null
+mapfile -t remote_launch_args <"$capture"
+[[ "${remote_launch_args[2]}" == "--dir=${HOME}" ]]
+[[ "${remote_launch_args[7]}" == */command.status ]]
+[[ "${remote_launch_args[8]}" == "${HOME}" ]]
+[[ "${remote_launch_args[9]}" == "codex" ]]
+[[ "${remote_launch_args[10]}" == "--remote" ]]
+[[ "${remote_launch_args[11]}" == "ws://127.0.0.1:1" ]]
+[[ "${remote_launch_args[12]}" == "--remote-auth-token-env" ]]
+[[ "${remote_launch_args[13]}" == "CODEX_REMOTE_TOKEN" ]]
+[[ "${remote_launch_args[14]}" == "--model" ]]
+[[ "${remote_launch_args[15]}" == "gpt-5.6-sol" ]]
+[[ "${remote_launch_args[16]}" == "-c" ]]
+[[ "${remote_launch_args[17]}" == 'model_reasoning_effort="high"' ]]
+[[ "${remote_launch_args[18]}" == "-c" ]]
+[[ "${remote_launch_args[19]}" == 'service_tier="fast"' ]]
+[[ "${remote_launch_args[20]}" == "-C" ]]
+[[ "${remote_launch_args[21]}" == "/remote/project" ]]
+
 head -c $((65 * 1024)) /dev/zero | tr '\0' t >"$token_file"
-for helper in omarchy-codex-thread-open omarchy-codex-project-new; do
-  if [[ "$helper" == "omarchy-codex-thread-open" ]]; then
-    arguments=(fixture-thread "$project_dir" ws://127.0.0.1:1 TOKEN "$token_file")
-  else
-    arguments=("$project_dir" ws://127.0.0.1:1 TOKEN "$token_file")
-  fi
-  if "$plugin_root/bin/$helper" "${arguments[@]}" \
-      >"$test_root/token-output" 2>"$test_root/token-error"; then
-    printf '%s unexpectedly accepted an oversized token file\n' "$helper" >&2
-    exit 1
-  fi
-  grep -F -- 'token file exceeded the 64 KiB limit' \
-    "$test_root/token-error" >/dev/null
-done
+if "$plugin_root/bin/omarchy-codex-remote-open" \
+    --config "$remote_config" --host-id direct --cwd /remote/project \
+    --effort high --service-tier default \
+    >"$test_root/token-output" 2>"$test_root/token-error"; then
+  printf '%s\n' 'Codex remote launcher unexpectedly accepted an oversized token' >&2
+  exit 1
+fi
+grep -F -- 'token file exceeded the 64 KiB limit' "$test_root/token-error" >/dev/null
 
 printf '%s\n' 'codex-launch-directory tests passed'

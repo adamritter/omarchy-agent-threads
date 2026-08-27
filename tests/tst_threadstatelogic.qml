@@ -36,6 +36,37 @@ TestCase {
     verify(unread.active !== true)
   }
 
+  function test_ordersReadyThreadsAcrossProviders() {
+    var local = [
+      { id: "local-old", updatedAt: 10 },
+      { id: "local-ready", updatedAt: 20 }
+    ]
+    var hosts = [{
+      id: "claude-local",
+      providerType: "claude",
+      threads: [
+        { id: "claude-seen", updatedAt: 50, unread: false },
+        { id: "claude-ready", updatedAt: 30, unread: true }
+      ]
+    }, {
+      id: "codex-remote",
+      providerType: "codex",
+      threads: [{ id: "remote-ready", updatedAt: 40, unread: true }]
+    }]
+
+    var targets = ThreadStateLogic.readyThreadTargets(
+      local, { "local-ready": true }, hosts)
+    compare(targets.length, 3)
+    compare(targets[0].threadId, "remote-ready")
+    compare(targets[0].hostId, "codex-remote")
+    compare(targets[0].providerType, "codex")
+    compare(targets[0].scope, "codex-remote")
+    compare(targets[1].threadId, "claude-ready")
+    compare(targets[2].threadId, "local-ready")
+    compare(targets[2].hostId, "provider-codex")
+    compare(targets[2].scope, "local")
+  }
+
   function test_mapsRemoteStatuses() {
     compare(ThreadStateLogic.remoteStatusValue("active"), "busy")
     compare(ThreadStateLogic.remoteStatusValue({ type: "idle" }), "done")
