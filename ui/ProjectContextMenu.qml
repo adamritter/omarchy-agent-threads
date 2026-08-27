@@ -71,15 +71,10 @@ Popup {
             var action = String(projectMenuChoice.modelData.action || "")
             projectMenu.close()
             if (action === "terminal") panel.sidebarActions.openSelectedTerminal()
-            else if (action === "new") {
-              if (rowItem.modelData.remoteId)
-                panel.service.newRemoteThread(
-                  rowItem.modelData.remoteId, rowItem.modelData.path)
-              else panel.service.newProjectThread(rowItem.modelData.path)
-            } else if (action === "pin") {
-              panel.toggleSectionPin(
-                "project", rowItem.modelData.path, rowItem.modelData.remoteId)
-            }
+            else if (action === "new")
+              panel.sidebarActions.createThreadForRow(rowItem.modelData)
+            else if (action === "pin")
+              panel.sidebarActions.toggleSectionPinForRow(rowItem.modelData)
           }
         }
       }

@@ -74,6 +74,60 @@ function notificationCommands(event) {
   }
 }
 
+function notificationThreadTitle(thread) {
+  var name = String(thread && thread.name || "").replace(/\s+/g, " ").trim()
+  if (name !== "") return name
+  var preview = String(thread && thread.preview || "").replace(/\s+/g, " ").trim()
+  return preview !== "" ? preview : "Untitled agent thread"
+}
+
+function statusMap(threads) {
+  var result = ({})
+  var items = Array.isArray(threads) ? threads : []
+  for (var i = 0; i < items.length; i++) {
+    var thread = items[i]
+    var id = String(thread && thread.id || "")
+    if (id !== "") result[id] = remoteStatusValue(thread.status)
+  }
+  return result
+}
+
+function notificationStateSnapshot(localThreads, localStatuses, unreadThreads, hosts) {
+  var states = ({})
+  var locals = Array.isArray(localThreads) ? localThreads : []
+  var statuses = localStatuses && typeof localStatuses === "object"
+    ? localStatuses : ({})
+  var unread = unreadThreads && typeof unreadThreads === "object"
+    ? unreadThreads : ({})
+  for (var localIndex = 0; localIndex < locals.length; localIndex++) {
+    var localThread = locals[localIndex]
+    var localId = String(localThread && localThread.id || "")
+    if (localId === "") continue
+    states["local:" + localId] = {
+      status: String(statuses[localId] || "done"),
+      ready: unread[localId] === true,
+      title: notificationThreadTitle(localThread)
+    }
+  }
+
+  var remoteHosts = Array.isArray(hosts) ? hosts : []
+  for (var hostIndex = 0; hostIndex < remoteHosts.length; hostIndex++) {
+    var host = remoteHosts[hostIndex] || ({})
+    var threads = Array.isArray(host.threads) ? host.threads : []
+    for (var threadIndex = 0; threadIndex < threads.length; threadIndex++) {
+      var thread = threads[threadIndex]
+      var id = String(thread && thread.id || "")
+      if (id === "") continue
+      states[String(host.id || "remote") + ":" + id] = {
+        status: remoteStatusValue(thread.status),
+        ready: thread.unread === true,
+        title: notificationThreadTitle(thread)
+      }
+    }
+  }
+  return states
+}
+
 function readyThreadTargets(localThreads, unreadThreads, supplementalHosts) {
   var targets = []
   var order = 0

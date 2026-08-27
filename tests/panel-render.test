@@ -9,6 +9,7 @@ if [[ "$live_wayland" != "1" ]]; then
   panel_source="$plugin_root/Panel.qml"
   list_source="$plugin_root/ui/CodexThreadList.qml"
   row_source="$plugin_root/ui/ThreadListRow.qml"
+  row_actions_source="$plugin_root/ui/ThreadListRowActions.qml"
   project_menu_source="$plugin_root/ui/ProjectContextMenu.qml"
   remote_menu_source="$plugin_root/ui/RemoteContextMenu.qml"
   help_source="$plugin_root/ui/HelpOverlay.qml"
@@ -21,6 +22,13 @@ if [[ "$live_wayland" != "1" ]]; then
   fi
   grep -q 'id: panel' "$panel_source"
   grep -q 'exclusiveZone: root.sidebarContentWidth' "$panel_source"
+  grep -q ': Border.flat("transparent", Math.max(1, Style.space(2)))' \
+    "$panel_source"
+  if grep -A3 'borderSpec: root.sidebarFocused' "$panel_source" \
+      | grep -q 'Border.none()'; then
+    printf '%s\n' 'The focus border changes panel content geometry.' >&2
+    exit 1
+  fi
   grep -q 'sidebarBarGap: Style.gapsOut' "$panel_source"
   [[ "$(grep -c '? root.sidebarBarGap : 0' "$panel_source")" == "2" ]]
   grep -q 'id: threadList' "$panel_source"
@@ -37,6 +45,8 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'helpOverlay.scrollToEdge(edge)' "$panel_source"
   grep -q 'Ui.CodexThreadList' "$panel_source"
   grep -q 'Components.ThreadListRow' "$list_source"
+  grep -q 'ThreadListRowActions.qml' "$row_source"
+  grep -q 'rowPresentation(' "$plugin_root/ui/SidebarController.qml"
   grep -q 'panel.sidebarActions.activateRow(row.index, "pointer")' "$row_source"
   grep -q 'id: searchButton' "$panel_source"
   grep -q 'onClicked: root.startSearch()' "$panel_source"
@@ -92,11 +102,11 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'cancelPanelReloadFocus()' "$panel_source"
   grep -q 'running: root.sidebarPresented || root.keyboardFocusRequested' "$panel_source"
   grep -q 'panel.reloadSelectionPending' "$plugin_root/ui/SidebarController.qml"
-  grep -q 'Components.ProjectContextMenu' "$row_source"
-  grep -q 'Components.ThreadContextMenu' "$row_source"
+  grep -q 'Components.ProjectContextMenu' "$row_actions_source"
+  grep -q 'Components.ThreadContextMenu' "$row_actions_source"
   grep -q 'panel.sidebarActions.openSelected("context-menu")' \
     "$plugin_root/ui/ThreadContextMenu.qml"
-  grep -q 'Components.RemoteContextMenu' "$row_source"
+  grep -q 'Components.RemoteContextMenu' "$row_actions_source"
   grep -q 'id: projectMenu' "$project_menu_source"
   grep -q 'panel.sidebarActions.openSelectedTerminal()' "$project_menu_source"
   if grep -q 'installRemoteClaude\|INSTALLING…\|"INSTALL"' "$remote_menu_source"; then

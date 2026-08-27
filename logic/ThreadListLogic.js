@@ -41,6 +41,15 @@ function projectForId(projects, projectId) {
   return null
 }
 
+function projectForRoot(projects, path) {
+  var wanted = text(path)
+  var items = Array.isArray(projects) ? projects : []
+  for (var i = 0; i < items.length; i++) {
+    if (projectRoot(items[i]) === wanted) return items[i]
+  }
+  return null
+}
+
 function pathForThread(projects, thread, fallbackHome, preferThreadCwd) {
   var cwd = text(thread && thread.cwd)
   if (preferThreadCwd && cwd !== "") return cwd
@@ -107,6 +116,37 @@ function threadVisible(thread, path, searchText) {
     if (terms[i] !== "" && haystack.indexOf(terms[i]) < 0) return false
   }
   return true
+}
+
+function projectMoveTargets(projects, threads, currentThread, options) {
+  var settings = options && typeof options === "object" ? options : ({})
+  var currentPath = pathForThread(
+    projects, currentThread, settings.homePath, false)
+  var seen = ({})
+  var targets = []
+
+  function append(path, name) {
+    var value = text(path)
+    if (value === "" || value === currentPath || seen[value]
+        || !isProjectPath(value, settings.homePath,
+          settings.workPath, settings.scratchRoot)) return
+    seen[value] = true
+    targets.push({ path: value, name: text(name) || directoryName(value) })
+  }
+
+  var projectItems = Array.isArray(projects) ? projects : []
+  for (var projectIndex = 0; projectIndex < projectItems.length; projectIndex++)
+    append(projectRoot(projectItems[projectIndex]), projectItems[projectIndex].name)
+
+  var threadItems = Array.isArray(threads) ? threads : []
+  for (var threadIndex = 0; threadIndex < threadItems.length; threadIndex++) {
+    var path = pathForThread(projectItems, threadItems[threadIndex],
+      settings.homePath, false)
+    append(path, directoryName(path))
+  }
+
+  targets.sort(function(a, b) { return a.name.localeCompare(b.name) })
+  return targets
 }
 
 function buildRows(input) {

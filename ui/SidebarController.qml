@@ -1,5 +1,6 @@
 import QtQuick
 import "../logic/ActionLogic.js" as ActionLogic
+import "../logic/ThreadRowLogic.js" as ThreadRowLogic
 
 Item {
   id: root
@@ -24,6 +25,108 @@ Item {
 
   function remoteHeaderIndex(remoteId) {
     return panel.rowIndexForKey("remote:" + String(remoteId || ""))
+  }
+
+  function rowPresentation(row, index, hovered) {
+    var entry = row || ({})
+    var thread = entry.kind === "thread" ? entry.thread || null : null
+    var remoteId = String(entry.remoteId || "")
+    var activeId = String(service.activeThreadId || "")
+    var activeThread = threadForId(activeId)
+    var status = thread
+      ? (remoteId !== "" ? service.remoteThreadStatus(thread)
+        : service.threadStatus(thread.id))
+      : "done"
+    var collapsed = entry.kind === "remote"
+      ? panel.remoteCollapsed(entry.remoteId)
+      : (entry.kind === "project"
+        ? panel.projectCollapsed(entry.path, entry.remoteId) : false)
+    return ThreadRowLogic.presentation({
+      row: entry,
+      activeThreadId: activeId,
+      activeThreadScope: threadScopeForId(activeId),
+      activeProjectPath: activeThread ? panel.projectPath(activeThread) : "",
+      threadStatus: status,
+      unread: !!thread && (remoteId !== ""
+        ? thread.unread === true : service.threadUnread(thread.id)),
+      pinnedSection: (entry.kind === "remote" || entry.kind === "project")
+        && panel.sectionPinned(entry.kind, entry.path, entry.remoteId),
+      operationRemoteId: service.remoteActionHostId,
+      archivingThreadId: service.archivingThreadId,
+      pinningThreadId: service.pinningThreadId,
+      renamingThreadId: service.renamingThreadId,
+      movingThreadId: service.movingThreadId,
+      launchingProjectPath: service.launchingProjectPath,
+      remoteClaudeLoginHostId: service.remoteClaudeLoginHostId,
+      remoteClaudeLoginRunning: service.remoteClaudeLoginRunning,
+      collapsed: collapsed,
+      threadTitle: thread ? panel.threadTitle(thread) : ""
+    })
+  }
+
+  function loginRemoteForRow(row) {
+    var entry = row || ({})
+    var remoteId = String(entry.remoteId || "")
+    return remoteId !== "" && service.loginRemoteClaude(remoteId)
+  }
+
+  function createThreadForRow(row) {
+    var entry = row || ({})
+    var path = String(entry.path || (entry.host ? entry.host.home : "")
+      || panel.homePath)
+    if (entry.remoteId)
+      return service.newRemoteThread(entry.remoteId, path)
+    return service.newProjectThread(path)
+  }
+
+  function toggleSectionPinForRow(row) {
+    var entry = row || ({})
+    if (entry.kind !== "remote" && entry.kind !== "project") return false
+    panel.toggleSectionPin(entry.kind, entry.path, entry.remoteId)
+    return true
+  }
+
+  function archiveRow(row) {
+    var entry = row || ({})
+    if (entry.kind !== "thread" || !entry.thread) return false
+    if (entry.remoteId) service.archiveRemoteThread(entry.remoteId, entry.thread)
+    else service.archiveThread(entry.thread)
+    return true
+  }
+
+  function renameRow(row) {
+    var entry = row || ({})
+    if (entry.kind !== "thread" || !entry.thread) return false
+    panel.startRename(entry.remoteId, entry.thread)
+    return true
+  }
+
+  function moveRowToProject(row, target) {
+    var entry = row || ({})
+    var destination = target || ({})
+    if (entry.kind !== "thread" || entry.remoteId || !entry.thread
+        || !destination.path) return false
+    return service.moveThreadToProject(
+      entry.thread, destination.path, destination.name)
+  }
+
+  function testRemoteForRow(row) {
+    var remoteId = String(row && row.remoteId || "")
+    return remoteId !== "" && service.testRemote(remoteId)
+  }
+
+  function manageRemoteForRow(row) {
+    var remoteId = String(row && row.remoteId || "")
+    if (remoteId === "") return false
+    panel.openRemoteSetup(remoteId)
+    return true
+  }
+
+  function disableRemoteForRow(row) {
+    var remoteId = String(row && row.remoteId || "")
+    if (remoteId === "") return false
+    panel.disableRemote(remoteId)
+    return true
   }
 
   function openSelected(source) {
@@ -163,10 +266,7 @@ Item {
 
   function archiveSelected() {
     if (panel.selectedIndex < 0 || panel.selectedIndex >= panel.viewRows.length) return
-    var row = panel.viewRows[panel.selectedIndex]
-    if (row.kind !== "thread") return
-    if (row.remoteId) service.archiveRemoteThread(row.remoteId, row.thread)
-    else service.archiveThread(row.thread)
+    archiveRow(panel.viewRows[panel.selectedIndex])
   }
 
   function renameSelected() {

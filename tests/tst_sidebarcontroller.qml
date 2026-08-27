@@ -24,6 +24,9 @@ TestCase {
   property bool opened: true
   property bool sidebarFocused: false
   property bool reloadSelectionPending: false
+  property int archiveCount: 0
+  property string createdPath: ""
+  property string renamedThreadId: ""
 
   QtObject {
     id: fakeService
@@ -33,6 +36,14 @@ TestCase {
     property string activeThreadId: ""
     property string launchingThreadId: ""
     property string failedLaunchThreadId: ""
+    property string remoteActionHostId: ""
+    property string archivingThreadId: ""
+    property string pinningThreadId: ""
+    property string renamingThreadId: ""
+    property string movingThreadId: ""
+    property string launchingProjectPath: ""
+    property string remoteClaudeLoginHostId: ""
+    property bool remoteClaudeLoginRunning: false
     property bool acceptLaunch: true
     function openThread(thread, path, source) {
       testCase.activationEvents.push("open:" + String(thread.id || ""))
@@ -58,6 +69,13 @@ TestCase {
       testCase.terminalPath = path
       return true
     }
+    function threadStatus(threadId) { return threadId === "busy" ? "busy" : "done" }
+    function remoteThreadStatus(thread) { return String(thread && thread.status || "done") }
+    function threadUnread(threadId) { return threadId === "ready" }
+    function archiveThread(thread) { testCase.archiveCount++; return true }
+    function archiveRemoteThread(remoteId, thread) { testCase.archiveCount++; return true }
+    function newProjectThread(path) { testCase.createdPath = path; return true }
+    function newRemoteThread(remoteId, path) { testCase.createdPath = path; return true }
   }
 
   Item {
@@ -93,6 +111,13 @@ TestCase {
     return -1
   }
   function projectPath(thread) { return String(thread && thread.cwd || "") }
+  function remoteCollapsed(remoteId) { return true }
+  function projectCollapsed(path, remoteId) { return true }
+  function sectionPinned(kind, path, remoteId) { return false }
+  function threadTitle(thread) { return String(thread && thread.name || "Untitled") }
+  function startRename(remoteId, thread) {
+    renamedThreadId = String(thread && thread.id || "")
+  }
 
   function init() {
     activeProvider = "codex"
@@ -116,6 +141,9 @@ TestCase {
     fakeService.launchingThreadId = ""
     fakeService.failedLaunchThreadId = ""
     fakeService.acceptLaunch = true
+    archiveCount = 0
+    createdPath = ""
+    renamedThreadId = ""
     fakeListView.positionedIndex = -1
     controller.activationIntentThreadId = ""
   }
@@ -131,6 +159,30 @@ TestCase {
     compare(openedThreadCount, 1)
     compare(openedThreadId, "alpha")
     compare(activationEvents.join(","), "release,open:alpha")
+  }
+
+  function test_derivesRowPresentationAtControllerBoundary() {
+    fakeService.activeThreadId = "busy"
+    fakeService.threads = [{ id: "busy", name: "Busy", cwd: "/work" }]
+    var state = controller.rowPresentation({
+      kind: "thread", path: "/work", thread: fakeService.threads[0]
+    }, 0, false)
+    verify(state.threadRow)
+    verify(state.activeThread)
+    verify(state.busy)
+    compare(state.threadTitle, "Busy")
+  }
+
+  function test_routesRowCommandsThroughController() {
+    var threadRow = {
+      kind: "thread", path: "/work/app", thread: { id: "thread-1" }
+    }
+    verify(controller.archiveRow(threadRow))
+    compare(archiveCount, 1)
+    verify(controller.renameRow(threadRow))
+    compare(renamedThreadId, "thread-1")
+    verify(controller.createThreadForRow({ kind: "project", path: "/work/new" }))
+    compare(createdPath, "/work/new")
   }
 
   function test_selectsAdjacentThreadsAndSkipsStructuralRows() {

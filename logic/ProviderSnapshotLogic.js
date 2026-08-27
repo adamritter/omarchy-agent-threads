@@ -35,3 +35,29 @@ function hydratedHosts(snapshots) {
   }
   return result
 }
+
+function codexState(snapshot) {
+  var codex = snapshot && snapshot.codex
+    && typeof snapshot.codex === "object" && !Array.isArray(snapshot.codex)
+    ? snapshot.codex : ({})
+  return {
+    threads: Array.isArray(codex.threads) ? codex.threads : [],
+    projects: Array.isArray(codex.projects) ? codex.projects : [],
+    rateLimits: codex.rateLimits && typeof codex.rateLimits === "object"
+      && !Array.isArray(codex.rateLimits) ? codex.rateLimits : ({}),
+    rateLimitResetCredits: codex.rateLimitResetCredits
+      && typeof codex.rateLimitResetCredits === "object"
+      && !Array.isArray(codex.rateLimitResetCredits)
+      ? codex.rateLimitResetCredits : ({}),
+    models: Array.isArray(codex.models) ? codex.models : [],
+    codexConfig: codex.codexConfig && typeof codex.codexConfig === "object"
+      && !Array.isArray(codex.codexConfig) ? codex.codexConfig : ({}),
+    threadStatuses: codex.threadStatuses
+      && typeof codex.threadStatuses === "object"
+      && !Array.isArray(codex.threadStatuses) ? codex.threadStatuses : ({}),
+    unreadThreads: codex.unreadThreads
+      && typeof codex.unreadThreads === "object"
+      && !Array.isArray(codex.unreadThreads) ? codex.unreadThreads : ({}),
+    activeThreadId: String(codex.activeThreadId || "")
+  }
+}

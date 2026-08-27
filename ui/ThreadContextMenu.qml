@@ -98,15 +98,11 @@ Popup {
             } else if (action === "terminal") {
               panel.sidebarActions.openSelectedTerminal()
             } else if (action === "rename") {
-              panel.startRename(rowItem.modelData.remoteId, rowItem.threadData)
+              panel.sidebarActions.renameRow(rowItem.modelData)
             } else if (action === "new") {
-              if (rowItem.modelData.remoteId)
-                panel.service.newRemoteThread(rowItem.modelData.remoteId, rowItem.modelData.path)
-              else panel.service.newProjectThread(rowItem.modelData.path)
+              panel.sidebarActions.createThreadForRow(rowItem.modelData)
             } else if (action === "archive") {
-              if (rowItem.modelData.remoteId)
-                panel.service.archiveRemoteThread(rowItem.modelData.remoteId, rowItem.threadData)
-              else panel.service.archiveThread(rowItem.threadData)
+              panel.sidebarActions.archiveRow(rowItem.modelData)
             }
           }
         }
@@ -198,10 +194,8 @@ Popup {
             cursorShape: Qt.PointingHandCursor
             onClicked: {
               threadMenu.close()
-              panel.service.moveThreadToProject(
-                rowItem.threadData,
-                projectChoice.modelData.path,
-                projectChoice.modelData.name)
+              panel.sidebarActions.moveRowToProject(
+                rowItem.modelData, projectChoice.modelData)
             }
           }
         }

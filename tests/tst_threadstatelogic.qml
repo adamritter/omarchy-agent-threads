@@ -74,6 +74,38 @@ TestCase {
     compare(blocked.sound[4], "Agent thread needs attention")
   }
 
+  function test_buildsNotificationSnapshotsAcrossProviders() {
+    var snapshot = ThreadStateLogic.notificationStateSnapshot([
+      { id: "local", name: " Local   title " }
+    ], { local: "busy" }, { local: true }, [{
+      id: "dev",
+      threads: [{
+        id: "remote", preview: "Remote preview",
+        status: { type: "active", activeFlags: ["waitingOnApproval"] },
+        unread: true
+      }]
+    }])
+    compare(snapshot["local:local"].status, "busy")
+    compare(snapshot["local:local"].title, "Local title")
+    verify(snapshot["local:local"].ready)
+    compare(snapshot["dev:remote"].status, "blocked")
+    compare(snapshot["dev:remote"].title, "Remote preview")
+    verify(snapshot["dev:remote"].ready)
+  }
+
+  function test_mapsThreadCollectionsToStatuses() {
+    var statuses = ThreadStateLogic.statusMap([
+      { id: "busy", status: "active" },
+      { id: "blocked", status: {
+        type: "active", activeFlags: ["waitingOnUserInput"]
+      } },
+      { id: "done", status: "idle" }
+    ])
+    compare(statuses.busy, "busy")
+    compare(statuses.blocked, "blocked")
+    compare(statuses.done, "done")
+  }
+
   function test_ordersReadyThreadsAcrossProviders() {
     var local = [
       { id: "local-old", updatedAt: 10 },

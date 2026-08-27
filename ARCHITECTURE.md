@@ -12,12 +12,15 @@ logic/ -> services/ and providers/ -> ui/ -> Panel.qml
 - `logic/` contains deterministic transformations and must not import
   Quickshell or execute processes.
 - `services/ThreadStore.qml` is the stable UI-facing façade. Persistence is
-  delegated to focused stores under `services/`.
+  delegated to focused stores under `services/`; snapshot normalization,
+  project lookup, and state transitions stay in deterministic logic modules.
 - `providers/` owns provider transports, helper processes, and normalization.
 - `ui/ThreadListModel.qml` adapts service state to `ThreadListLogic`; it does
   not implement grouping or sorting itself.
-- `ui/CodexThreadList.qml` owns scrolling. `ThreadListRow.qml` and the context
-  menu components own row presentation and row-local interaction.
+- `ui/CodexThreadList.qml` owns scrolling. `ThreadListRow.qml` owns core row
+  presentation, while `ThreadListRowActions.qml` owns its buttons and menus.
+  The action layer is loaded by URL so adding it does not depend on QML type
+  directory discovery during a live reload.
 - `Panel.qml` directly owns the bar button, layer-shell window, focus lifecycle,
   overlays, IPC, and top-level coordination.
 
@@ -42,7 +45,10 @@ the following invariants.
 
 - Pointer, keyboard, cycling, and IPC activation route through
   `ui/SidebarController.qml`.
-- Row components select and delegate; they never call provider launch methods.
+- Row components and context menus select and delegate; they never mutate the
+  store or call provider methods directly.
+- `ThreadRowLogic.presentation` derives row state once at the controller
+  boundary instead of letting rendered controls inspect store internals.
 - Selection, pending launch, and confirmed active thread are separate states.
 - A failed launch preserves the user's selected thread and reports an error.
 

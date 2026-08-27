@@ -69,16 +69,16 @@ Popup {
           onClicked: {
             var action = String(remoteMenuChoice.modelData.action || "")
             if (action === "test") {
-              panel.service.testRemote(rowItem.modelData.remoteId)
+              panel.sidebarActions.testRemoteForRow(rowItem.modelData)
               return
             }
             remoteMenu.close()
             if (action === "terminal")
               panel.sidebarActions.openSelectedTerminal()
             else if (action === "edit")
-              panel.openRemoteSetup(rowItem.modelData.remoteId)
+              panel.sidebarActions.manageRemoteForRow(rowItem.modelData)
             else if (action === "disable")
-              panel.disableRemote(rowItem.modelData.remoteId)
+              panel.sidebarActions.disableRemoteForRow(rowItem.modelData)
           }
         }
       }

@@ -46,4 +46,21 @@ TestCase {
     compare(hosts[0].id, "dev")
     verify(!hosts[0].loading)
   }
+
+  function test_normalizesCodexSnapshotState() {
+    var state = ProviderSnapshotLogic.codexState({
+      codex: {
+        threads: [{ id: "one" }],
+        projects: "invalid",
+        rateLimits: { primary: { usedPercent: 5 } },
+        models: null,
+        activeThreadId: 42
+      }
+    })
+    compare(state.threads.length, 1)
+    compare(state.projects.length, 0)
+    compare(state.models.length, 0)
+    compare(state.rateLimits.primary.usedPercent, 5)
+    compare(state.activeThreadId, "42")
+  }
 }

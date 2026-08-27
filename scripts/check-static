@@ -34,6 +34,9 @@ grep -q 'ThreadStateLogic.mergeProviderUnread' \
   "$plugin_dir/providers/LocalAgentProvider.qml"
 grep -q 'ThreadStateLogic.mergeProviderUnread' \
   "$plugin_dir/providers/RemoteAgentProvider.qml"
+grep -q 'ThreadRowLogic.presentation' "$plugin_dir/ui/SidebarController.qml"
+grep -q 'ThreadListRowActions.qml' "$plugin_dir/ui/ThreadListRow.qml"
+grep -q 'PresentationLogic.statusText' "$plugin_dir/Panel.qml"
 
 if grep -q 'function threadById' \
   "$plugin_dir/providers/LocalAgentProvider.qml" \
@@ -56,6 +59,16 @@ fi
 
 if rg -n 'controller\.activeThreadId[[:space:]]*=' "$plugin_dir/providers"; then
   printf '%s\n' 'A provider bypasses confirmed active-thread observation.' >&2
+  exit 1
+fi
+
+if rg -n 'panel\.service\.[[:alnum:]_]+\(' \
+    "$plugin_dir/ui/ThreadListRow.qml" \
+    "$plugin_dir/ui/ThreadListRowActions.qml" \
+    "$plugin_dir/ui/ThreadContextMenu.qml" \
+    "$plugin_dir/ui/ProjectContextMenu.qml" \
+    "$plugin_dir/ui/RemoteContextMenu.qml"; then
+  printf '%s\n' 'A row component bypasses the sidebar command boundary.' >&2
   exit 1
 fi
 

@@ -12,6 +12,7 @@ import "logic/ActionLogic.js" as ActionLogic
 import "logic/NavigationLogic.js" as NavigationLogic
 import "logic/PanelReloadStateLogic.js" as PanelReloadStateLogic
 import "logic/PointerFocusLogic.js" as PointerFocusLogic
+import "logic/PresentationLogic.js" as PresentationLogic
 import "logic/ThreadListLogic.js" as ThreadListLogic
 import "logic/ThreadStateLogic.js" as ThreadStateLogic
 
@@ -292,11 +293,8 @@ Panel {
   }
 
   function providerLabel(providerId) {
-    var wanted = String(providerId || activeProvider).toLowerCase()
-    for (var i = 0; i < providerChoices.length; i++) {
-      if (providerChoices[i].id === wanted) return providerChoices[i].label
-    }
-    return wanted.toUpperCase()
+    return PresentationLogic.providerLabel(
+      providerChoices, providerId || activeProvider)
   }
 
   function saveProviderViewState(providerId) {
@@ -342,48 +340,31 @@ Panel {
     return !activeProviderHost || activeProviderHost.loading === true
   }
 
-  function rateLimitWindowText(window) {
-    if (!window || window.usedPercent === undefined || window.usedPercent === null)
-      return ""
-    var minutes = Number(window.windowDurationMins || 0)
-    var label = "limit"
-    if (minutes === 10080) label = "7d"
-    else if (minutes > 0 && minutes % 1440 === 0) label = (minutes / 1440) + "d"
-    else if (minutes > 0 && minutes % 60 === 0) label = (minutes / 60) + "h"
-    else if (minutes > 0) label = minutes + "m"
-    return label + " " + Math.round(Number(window.usedPercent)) + "%"
-  }
-
-  function rateLimitResetText(window) {
-    if (!window || !window.resetsAt) return ""
-    var resetAt = Number(window.resetsAt)
-    var resetMs = resetAt > 1000000000000 ? resetAt : resetAt * 1000
-    var totalMinutes = Math.max(0, Math.ceil((resetMs - nowMs) / 60000))
-    var days = Math.floor(totalMinutes / 1440)
-    var hours = Math.floor((totalMinutes % 1440) / 60)
-    var minutes = totalMinutes % 60
-    if (days > 0) return days + "d " + hours + "h"
-    if (hours > 0) return hours + "h " + minutes + "m"
-    return totalMinutes + "m"
+  function statusText() {
+    return PresentationLogic.statusText({
+      providerError: providerErrorText(),
+      activeProvider: activeProvider,
+      providerReady: service.ready,
+      providerLoading: providerLoading(),
+      providerLabel: providerLabel(),
+      totalThreadCount: totalThreadCount(),
+      visibleThreadCount: visibleThreadCount,
+      projectCount: projectCount,
+      filtered: searchText !== "",
+      movingThread: service.movingThreadId !== "",
+      renamingThread: service.renamingThreadId !== "",
+      archivingThread: service.archivingThreadId !== "",
+      pinningThread: service.pinningThreadId !== "",
+      navigationCount: navigationCount,
+      navigationFindDirection: navigationFindDirection
+    })
   }
 
   function rateLimitText(providerLimits) {
     var hasProviderLimits = providerLimits && typeof providerLimits === "object"
     var limits = hasProviderLimits ? providerLimits : (service.rateLimits || ({}))
-    var windows = [
-      rateLimitWindowText(limits.primary),
-      rateLimitWindowText(limits.secondary)
-    ].filter(function(value) { return value !== "" })
-    if (windows.length === 0) return ""
-    var weekly = Number(limits.primary && limits.primary.windowDurationMins) === 10080
-      ? limits.primary : limits.secondary
-    var reset = Number(weekly && weekly.windowDurationMins) === 10080
-      ? rateLimitResetText(weekly) : ""
-    var availableResets = hasProviderLimits ? 0 : Math.max(0, Math.floor(Number(
-      service.rateLimitResetCredits && service.rateLimitResetCredits.availableCount || 0)))
-    return windows.join(" · ")
-      + (reset !== "" ? " · reset " + reset : "")
-      + (availableResets > 0 ? " · reset×" + availableResets : "")
+    return PresentationLogic.rateLimitText(limits,
+      hasProviderLimits ? null : service.rateLimitResetCredits, nowMs)
   }
 
   function activeRateLimitText() {
@@ -403,49 +384,13 @@ Panel {
   }
 
   function threadTitle(thread) {
-    var name = cleanText(thread ? thread.name : "")
-    if (name !== "") return name
-    var preview = cleanText(thread ? thread.preview : "")
-    return preview !== "" ? preview : "Untitled " + providerLabel() + " thread"
-  }
-
-  function notificationThreadTitle(thread) {
-    var name = cleanText(thread ? thread.name : "")
-    if (name !== "") return name
-    var preview = cleanText(thread ? thread.preview : "")
-    return preview !== "" ? preview : "Untitled agent thread"
+    return PresentationLogic.threadTitle(thread, providerLabel())
   }
 
   function notificationStateSnapshot() {
-    var states = ({})
-    var localThreads = service.threads || []
-    for (var localIndex = 0; localIndex < localThreads.length; localIndex++) {
-      var localThread = localThreads[localIndex]
-      var localId = String(localThread && localThread.id || "")
-      if (localId === "") continue
-      states["local:" + localId] = {
-        status: service.threadStatus(localId),
-        ready: service.threadUnread(localId),
-        title: notificationThreadTitle(localThread)
-      }
-    }
-
-    var hosts = service.remoteHosts || []
-    for (var hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
-      var host = hosts[hostIndex] || ({})
-      var threads = host.threads || []
-      for (var threadIndex = 0; threadIndex < threads.length; threadIndex++) {
-        var thread = threads[threadIndex]
-        var id = String(thread && thread.id || "")
-        if (id === "") continue
-        states[String(host.id || "remote") + ":" + id] = {
-          status: service.remoteThreadStatus(thread),
-          ready: thread.unread === true,
-          title: notificationThreadTitle(thread)
-        }
-      }
-    }
-    return states
+    return ThreadStateLogic.notificationStateSnapshot(
+      service.threads, service.threadStatuses,
+      service.unreadThreads, service.remoteHosts)
   }
 
   function sendThreadNotification(event) {
@@ -469,38 +414,18 @@ Panel {
       sendThreadNotification(events[index])
   }
 
-  function directoryName(path) {
-    return ThreadListLogic.directoryName(path)
-  }
-
   function projectPath(thread) {
     var path = String(service.projectPathForThread(thread) || "")
     return path !== "" ? path : homePath
   }
 
   function projectMoveTargets(thread) {
-    var currentPath = projectPath(thread)
-    var seen = ({})
-    var targets = []
-
-    function appendTarget(path, name) {
-      var value = String(path || "")
-      if (value === "" || value === currentPath || seen[value] || !isProjectPath(value)) return
-      seen[value] = true
-      targets.push({ path: value, name: String(name || "") || directoryName(value) })
-    }
-
-    for (var projectIndex = 0; projectIndex < service.projects.length; projectIndex++) {
-      var project = service.projects[projectIndex]
-      appendTarget(service.projectRootPath(project), project ? project.name : "")
-    }
-    for (var threadIndex = 0; threadIndex < service.threads.length; threadIndex++) {
-      var candidatePath = projectPath(service.threads[threadIndex])
-      appendTarget(candidatePath, directoryName(candidatePath))
-    }
-
-    targets.sort(function(a, b) { return a.name.localeCompare(b.name) })
-    return targets
+    return ThreadListLogic.projectMoveTargets(
+      service.projects, service.threads, thread, {
+        homePath: homePath,
+        workPath: workPath,
+        scratchRoot: codexScratchRoot
+      })
   }
 
   function setSearchText(value) {
@@ -840,31 +765,12 @@ Panel {
   }
 
   function age(timestamp) {
-    var seconds = Math.max(0, Math.floor(root.nowMs / 1000 - Number(timestamp || 0)))
-    if (seconds < 60) return ""
-    var minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return minutes + "m"
-    var hours = Math.floor(minutes / 60)
-    if (hours < 24) return hours + "h"
-    var days = Math.floor(hours / 24)
-    if (days < 30) return days + "d"
-    return Math.floor(days / 30) + "mo"
+    return PresentationLogic.relativeAge(timestamp, nowMs)
   }
 
   function totalThreadCount() {
-    var count = activeProvider === "codex" ? service.threads.length : 0
-    if (activeProvider !== "codex") {
-      var selectedHost = providerHost(activeProvider)
-      count = selectedHost ? (selectedHost.threads || []).length : 0
-    }
-    var hosts = service.remoteHosts || []
-    for (var i = 0; i < hosts.length; i++) {
-      var hostId = String(hosts[i].id || "")
-      if (hostId === "provider-claude" || hostId === "provider-opencode") continue
-      if (String(hosts[i].providerType || "codex").toLowerCase() === activeProvider)
-        count += (hosts[i].threads || []).length
-    }
-    return count
+    return PresentationLogic.totalThreadCount(
+      activeProvider, service.threads, service.remoteHosts)
   }
 
   function applySidebarOpenState() {
@@ -1498,7 +1404,7 @@ Panel {
       borderSpec: root.sidebarFocused
         ? Border.surfaceSpec("popups", "border", Color.popups.border,
                              Math.max(1, Style.space(2)))
-        : Border.none()
+        : Border.flat("transparent", Math.max(1, Style.space(2)))
       padding: Style.spacing.popupPadding
       radius: Style.cornerRadius
 
@@ -1719,11 +1625,13 @@ Panel {
             anchors.right: sidebarScopeButton.left
             anchors.rightMargin: Style.space(8)
             height: parent.height
-            text: root.remoteSetupOpen ? "ADD REMOTE"
-              : (root.renameOpen ? "RENAME THREAD"
-              : (root.helpOpen
-                  ? root.providerLabel() + " · HELP"
-                  : root.providerLabel() + "  ▾"))
+            text: PresentationLogic.headerTitle({
+              projectPickerOpen: false,
+              remoteSetupOpen: root.remoteSetupOpen,
+              renameOpen: root.renameOpen,
+              helpOpen: root.helpOpen,
+              providerLabel: root.providerLabel()
+            })
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.title
@@ -2028,31 +1936,7 @@ Panel {
           id: statusLabel
           width: parent.width
           height: Style.space(18)
-          text: {
-            var providerError = root.providerErrorText()
-            if (providerError !== "") return providerError
-            if (root.activeProvider === "codex" && !root.service.ready)
-              return "Connecting to the local Codex App Server…"
-            if (root.providerLoading() && root.totalThreadCount() === 0)
-              return "Loading saved " + root.providerLabel() + " threads…"
-            if (root.activeProvider === "codex" && root.service.movingThreadId !== "")
-              return "Moving thread to project…"
-            if (root.service.renamingThreadId !== "") return "Renaming thread…"
-            if (root.activeProvider === "codex" && root.service.archivingThreadId !== "")
-              return "Archiving thread…"
-            if (root.activeProvider === "codex" && root.service.pinningThreadId !== "")
-              return "Updating pin…"
-            if (root.navigationFindDirection !== 0)
-              return (root.navigationCount !== "" ? root.navigationCount : "")
-                + (root.navigationFindDirection > 0 ? "f…" : "F…")
-            if (root.navigationCount !== "") return "Count: " + root.navigationCount
-            var filtered = root.searchText !== ""
-            return root.projectCount + " projects · "
-              + (filtered
-                  ? root.visibleThreadCount + " of " + root.totalThreadCount()
-                  : root.totalThreadCount())
-              + " threads · newest first"
-          }
+          text: root.statusText()
           color: root.providerErrorText() !== ""
             ? Color.urgent : root.dim
           font.family: root.fontFamily

@@ -5,6 +5,8 @@ import Quickshell
 import Quickshell.Io
 import "../providers" as Providers
 import "../logic/ActionLogic.js" as ActionLogic
+import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
+import "../logic/ThreadListLogic.js" as ThreadListLogic
 import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Item {
@@ -262,23 +264,16 @@ Item {
 
   function restoreProviderSnapshot(snapshot) {
     if (!snapshot) return
-    var codex = snapshot.codex && typeof snapshot.codex === "object"
-      ? snapshot.codex : ({})
-    threads = Array.isArray(codex.threads) ? codex.threads : []
-    projects = Array.isArray(codex.projects) ? codex.projects : []
-    rateLimits = codex.rateLimits && typeof codex.rateLimits === "object"
-      ? codex.rateLimits : ({})
+    var codex = ProviderSnapshotLogic.codexState(snapshot)
+    threads = codex.threads
+    projects = codex.projects
+    rateLimits = codex.rateLimits
     rateLimitResetCredits = codex.rateLimitResetCredits
-      && typeof codex.rateLimitResetCredits === "object"
-      ? codex.rateLimitResetCredits : ({})
-    models = Array.isArray(codex.models) ? codex.models : []
-    codexConfig = codex.codexConfig && typeof codex.codexConfig === "object"
-      ? codex.codexConfig : ({})
-    threadStatuses = codex.threadStatuses && typeof codex.threadStatuses === "object"
-      ? codex.threadStatuses : ({})
-    unreadThreads = codex.unreadThreads && typeof codex.unreadThreads === "object"
-      ? codex.unreadThreads : ({})
-    activeThreadId = String(codex.activeThreadId || "")
+    models = codex.models
+    codexConfig = codex.codexConfig
+    threadStatuses = codex.threadStatuses
+    unreadThreads = codex.unreadThreads
+    activeThreadId = codex.activeThreadId
     agentProviders.restoreRemoteHosts(snapshot.remoteHosts)
     agentProviders.restoreLocalProviders(snapshot.localProviders)
   }
@@ -510,31 +505,19 @@ Item {
   }
 
   function projectForId(projectId) {
-    var wanted = String(projectId || "")
-    if (wanted === "") return null
-    for (var i = 0; i < projects.length; i++) {
-      if (String(projects[i].id || "") === wanted) return projects[i]
-    }
-    return null
+    return ThreadListLogic.projectForId(projects, projectId)
   }
 
   function projectRootPath(project) {
-    if (!project || !project.roots || project.roots.length === 0) return ""
-    return String(project.roots[0].path || "")
+    return ThreadListLogic.projectRoot(project)
   }
 
   function projectPathForThread(thread) {
-    var project = projectForId(thread ? thread.projectId : "")
-    var path = projectRootPath(project)
-    return path !== "" ? path : String(thread && thread.cwd || "")
+    return ThreadListLogic.pathForThread(projects, thread, "", false)
   }
 
   function projectForRoot(path) {
-    var wanted = String(path || "")
-    for (var i = 0; i < projects.length; i++) {
-      if (projectRootPath(projects[i]) === wanted) return projects[i]
-    }
-    return null
+    return ThreadListLogic.projectForRoot(projects, path)
   }
 
   function moveThreadToProject(thread, targetPath, targetName) {
@@ -617,13 +600,7 @@ Item {
   }
 
   function applyRemoteThreadStatuses() {
-    var next = ({})
-    for (var i = 0; i < threads.length; i++) {
-      var thread = threads[i]
-      if (thread && thread.id)
-        next[String(thread.id)] = remoteStatusValue(thread.status)
-    }
-    applyThreadStatuses(next)
+    applyThreadStatuses(ThreadStateLogic.statusMap(threads))
   }
 
   function applyRemoteStatusNotification(params) {

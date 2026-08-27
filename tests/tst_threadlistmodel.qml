@@ -89,6 +89,28 @@ TestCase {
       "/runtime")
   }
 
+  function test_buildsUniqueProjectMoveTargets() {
+    var projects = [
+      { id: "current", name: "Current", roots: [{ path: "/work/current" }] },
+      { id: "beta", name: "Beta", roots: [{ path: "/work/beta" }] }
+    ]
+    var threads = [
+      { id: "one", projectId: "current" },
+      { id: "two", cwd: "/work/alpha" },
+      { id: "three", cwd: "/work/alpha" }
+    ]
+    var targets = ThreadListLogic.projectMoveTargets(
+      projects, threads, threads[0], {
+        homePath: "/home/test",
+        workPath: "/home/test/Work",
+        scratchRoot: "/home/test/Documents/Codex/"
+    })
+    compare(targets.length, 2)
+    compare(targets[0].name, "Beta")
+    compare(targets[1].name, "alpha")
+    compare(ThreadListLogic.projectForRoot(projects, "/work/beta").id, "beta")
+  }
+
   function test_filtersRows() {
     searchText = "beta"
     listModel.rebuildRows("")
