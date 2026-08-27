@@ -116,6 +116,7 @@ Item {
   readonly property alias selectedEffort: persisted.selectedEffort
   readonly property alias threadFrontend: persisted.threadFrontend
   readonly property alias fastMode: persisted.fastMode
+  readonly property alias notificationsEnabled: persisted.notificationsEnabled
   readonly property string codexServiceTier: fastMode ? "fast" : "default"
 
   PersistentProperties {
@@ -128,6 +129,7 @@ Item {
     // Agent Chat is deliberately opt-in; existing behavior remains the default.
     property string threadFrontend: "terminal"
     property bool fastMode: false
+    property bool notificationsEnabled: false
     onSidebarOpenChanged: {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
@@ -144,6 +146,9 @@ Item {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
     onFastModeChanged: {
+      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
+    }
+    onNotificationsEnabledChanged: {
       if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
     }
   }
@@ -817,6 +822,15 @@ Item {
     return persisted.fastMode
   }
 
+  function setNotificationsEnabled(value) {
+    persisted.notificationsEnabled = value === true
+  }
+
+  function toggleNotifications() {
+    setNotificationsEnabled(!persisted.notificationsEnabled)
+    return persisted.notificationsEnabled
+  }
+
   function setCollapsedProjects(value) {
     collapsedProjects = Object.assign({}, value || ({}))
   }
@@ -859,6 +873,7 @@ Item {
       persisted.selectedEffort = String(parsed.effort || "")
       persisted.threadFrontend = ActionLogic.normalizeThreadFrontend(parsed.threadFrontend)
       persisted.fastMode = parsed.fastMode === true
+      persisted.notificationsEnabled = parsed.notificationsEnabled === true
       var providerSettings = parsed.providerSettings && typeof parsed.providerSettings === "object"
         ? parsed.providerSettings : ({})
       agentProviders.loadSettings(providerSettings)
@@ -878,14 +893,14 @@ Item {
     }
 
     sidebarSettingsLoaded = true
-    if (!parsed || Number(parsed.version || 0) < 13) sidebarSaveTimer.restart()
+    if (!parsed || Number(parsed.version || 0) < 14) sidebarSaveTimer.restart()
     startAppServer()
   }
 
   function flushSidebarSettings() {
     if (!sidebarSettingsLoaded) return
     sidebarSettingsFile.setText(JSON.stringify({
-      version: 13,
+      version: 14,
       open: sidebarOpen,
       scope: sidebarScope,
       globalOpen: globalSidebarOpen,
@@ -895,6 +910,7 @@ Item {
       effort: persisted.selectedEffort,
       threadFrontend: persisted.threadFrontend,
       fastMode: persisted.fastMode,
+      notificationsEnabled: persisted.notificationsEnabled,
       collapsedProjects: collapsedProjects,
       collapsedRemotes: collapsedRemotes,
       pinnedSections: pinnedSections,

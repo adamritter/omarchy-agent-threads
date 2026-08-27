@@ -31,6 +31,49 @@ function nextUnreadThreads(previousStatuses, unreadThreads, nextStatuses, active
   return nextUnread
 }
 
+function notificationEvents(previousStates, nextStates) {
+  var events = []
+  var previous = previousStates && typeof previousStates === "object"
+    ? previousStates : ({})
+  var next = nextStates && typeof nextStates === "object" ? nextStates : ({})
+  for (var key in next) {
+    var before = previous[key]
+    var after = next[key]
+    if (!before || !after) continue
+    if (before.status !== "blocked" && after.status === "blocked") {
+      events.push({
+        key: key,
+        type: "blocked",
+        title: String(after.title || "Untitled agent thread")
+      })
+    } else if (before.ready !== true && after.ready === true) {
+      events.push({
+        key: key,
+        type: "ready",
+        title: String(after.title || "Untitled agent thread")
+      })
+    }
+  }
+  return events
+}
+
+function notificationCommands(event) {
+  var blocked = event && event.type === "blocked"
+  var heading = blocked ? "Agent thread needs attention" : "Agent thread is ready"
+  var title = String(event && event.title || "Untitled agent thread")
+  return {
+    desktop: [
+      "notify-send", "-a", "Agent Threads", "-u", "normal",
+      "-i", blocked ? "dialog-warning-symbolic" : "emblem-default-symbolic",
+      heading, title
+    ],
+    sound: [
+      "canberra-gtk-play", "-i", blocked ? "dialog-warning" : "complete",
+      "-d", heading
+    ]
+  }
+}
+
 function readyThreadTargets(localThreads, unreadThreads, supplementalHosts) {
   var targets = []
   var order = 0

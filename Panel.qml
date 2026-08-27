@@ -53,6 +53,8 @@ Panel {
     service.threads, service.unreadThreads, service.remoteHosts)
   readonly property int readyThreadCount: readyThreadTargets.length
   readonly property color readyThreadColor: "#98c379"
+  property var notificationThreadStates: ({})
+  property bool notificationStateReady: false
   readonly property var providerChoices: [
     { id: "codex", label: "CODEX" },
     { id: "claude", label: "CLAUDE" },
@@ -326,6 +328,66 @@ Panel {
     return preview !== "" ? preview : "Untitled " + providerLabel() + " thread"
   }
 
+  function notificationThreadTitle(thread) {
+    var name = cleanText(thread ? thread.name : "")
+    if (name !== "") return name
+    var preview = cleanText(thread ? thread.preview : "")
+    return preview !== "" ? preview : "Untitled agent thread"
+  }
+
+  function notificationStateSnapshot() {
+    var states = ({})
+    var localThreads = service.threads || []
+    for (var localIndex = 0; localIndex < localThreads.length; localIndex++) {
+      var localThread = localThreads[localIndex]
+      var localId = String(localThread && localThread.id || "")
+      if (localId === "") continue
+      states["local:" + localId] = {
+        status: service.threadStatus(localId),
+        ready: service.threadUnread(localId),
+        title: notificationThreadTitle(localThread)
+      }
+    }
+
+    var hosts = service.remoteHosts || []
+    for (var hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
+      var host = hosts[hostIndex] || ({})
+      var threads = host.threads || []
+      for (var threadIndex = 0; threadIndex < threads.length; threadIndex++) {
+        var thread = threads[threadIndex]
+        var id = String(thread && thread.id || "")
+        if (id === "") continue
+        states[String(host.id || "remote") + ":" + id] = {
+          status: service.remoteThreadStatus(thread),
+          ready: thread.unread === true,
+          title: notificationThreadTitle(thread)
+        }
+      }
+    }
+    return states
+  }
+
+  function sendThreadNotification(event) {
+    if (!service.notificationsEnabled
+        || Quickshell.env("AGENT_THREADS_PANEL_TEST") === "1") return
+    var commands = ThreadStateLogic.notificationCommands(event)
+    Quickshell.execDetached(commands.desktop)
+    Quickshell.execDetached(commands.sound)
+  }
+
+  function syncThreadNotificationStates() {
+    var nextStates = notificationStateSnapshot()
+    if (!notificationStateReady) {
+      notificationThreadStates = nextStates
+      notificationStateReady = true
+      return
+    }
+    var events = ThreadStateLogic.notificationEvents(notificationThreadStates, nextStates)
+    notificationThreadStates = nextStates
+    for (var index = 0; index < events.length; index++)
+      sendThreadNotification(events[index])
+  }
+
   function directoryName(path) {
     var value = String(path || "")
     if (value === "") return "Unknown folder"
@@ -593,6 +655,7 @@ Panel {
       helpVisible: helpOverlay.visible,
       listVisible: threadList.visible,
       fastMode: service.fastMode,
+      notificationsEnabled: service.notificationsEnabled,
       selectedIndex: selectedIndex,
       selectedRowKey: rowKey(viewRows[selectedIndex]),
       modelRowCount: viewRows.length,
@@ -946,12 +1009,16 @@ Panel {
     function onThreadsChanged() {
       root.rebuildRows()
       root.sidebarActions.followActiveThread(false)
+      root.syncThreadNotificationStates()
     }
     function onProjectsChanged() { root.rebuildRows() }
     function onRemoteHostsChanged() {
       root.rebuildRows()
       root.sidebarActions.followActiveThread(false)
+      root.syncThreadNotificationStates()
     }
+    function onThreadStatusesChanged() { root.syncThreadNotificationStates() }
+    function onUnreadThreadsChanged() { root.syncThreadNotificationStates() }
     function onCollapsedProjectsChanged() { root.rebuildRows() }
     function onCollapsedRemotesChanged() { root.rebuildRows() }
     function onPinnedSectionsChanged() { root.rebuildRows() }
@@ -1122,6 +1189,13 @@ Panel {
       else if (wanted === "off" || wanted === "default") root.service.setFastMode(false)
       return root.service.fastMode ? "on" : "off"
     }
+    function notifications(mode: string): string {
+      var wanted = String(mode || "").toLowerCase()
+      if (wanted === "toggle") root.service.toggleNotifications()
+      else if (wanted === "on") root.service.setNotificationsEnabled(true)
+      else if (wanted === "off") root.service.setNotificationsEnabled(false)
+      return root.service.notificationsEnabled ? "on" : "off"
+    }
     function effort(mode: string): string {
       if (String(mode || "").toLowerCase() === "cycle") return root.cycleEffort()
       return root.service.selectedEffortForProvider(root.activeProvider) || "default"
@@ -1172,6 +1246,7 @@ Panel {
         instanceToken: root.instanceToken,
         activeProvider: root.activeProvider,
         threadFrontend: root.service.threadFrontend,
+        notificationsEnabled: root.service.notificationsEnabled,
         providerLoading: root.providerLoading(),
         providerSnapshotRestored: root.service.providerSnapshotRestored,
         ready: root.service.ready,
@@ -1678,7 +1753,7 @@ Panel {
           Item {
             id: searchButton
             visible: !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
-            anchors.right: remoteButton.left
+            anchors.right: notificationButton.left
             anchors.rightMargin: Style.space(4)
             anchors.top: parent.top
             anchors.topMargin: -Style.space(6)
@@ -1703,6 +1778,40 @@ Panel {
 
             ToolTip.visible: searchMouse.containsMouse
             ToolTip.text: "Search threads and projects · /"
+          }
+
+          Item {
+            id: notificationButton
+            visible: !root.remoteSetupOpen && !root.renameOpen && !root.helpOpen
+            anchors.right: remoteButton.left
+            anchors.rightMargin: Style.space(4)
+            anchors.top: parent.top
+            anchors.topMargin: -Style.space(6)
+            width: visible ? Style.space(20) : 0
+            height: Style.space(24)
+
+            Text {
+              anchors.centerIn: parent
+              text: root.service.notificationsEnabled ? "󰂚" : "󰂛"
+              color: notificationMouse.containsMouse
+                ? Color.accent
+                : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            MouseArea {
+              id: notificationMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.service.toggleNotifications()
+            }
+
+            ToolTip.visible: notificationMouse.containsMouse
+            ToolTip.text: root.service.notificationsEnabled
+              ? "Thread notifications: on · click to turn off"
+              : "Thread notifications: off · click to turn on"
           }
 
           Item {
@@ -2038,6 +2147,7 @@ Panel {
 
   Component.onCompleted: {
     rebuildRows()
+    syncThreadNotificationStates()
     applySidebarOpenState()
   }
 }

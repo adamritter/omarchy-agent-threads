@@ -24,6 +24,16 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'Ui.CodexThreadList' "$panel_source"
   grep -q 'id: searchButton' "$panel_source"
   grep -q 'onClicked: root.startSearch()' "$panel_source"
+  grep -q 'id: notificationButton' "$panel_source"
+  grep -q 'text: root.service.notificationsEnabled ? "󰂚" : "󰂛"' "$panel_source"
+  grep -q 'onClicked: root.service.toggleNotifications()' "$panel_source"
+  grep -q 'function notifications(mode: string): string' "$panel_source"
+  notification_source="$(sed -n '/id: notificationButton/,/id: remoteButton/p' "$panel_source")"
+  grep -q ': root.dim' <<<"$notification_source"
+  if grep -q 'readyThreadColor' <<<"$notification_source"; then
+    printf '%s\n' 'The notification bell still uses a status color' >&2
+    exit 1
+  fi
   grep -q 'id: fastModeButton' "$panel_source"
   grep -q 'text: "⚡︎"' "$panel_source"
   grep -q 'onClicked: root.service.toggleFastMode()' "$panel_source"

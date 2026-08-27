@@ -36,6 +36,44 @@ TestCase {
     verify(unread.active !== true)
   }
 
+  function test_reportsReadyAndBlockedNotificationTransitions() {
+    var previous = {
+      ready: { status: "busy", ready: false, title: "Ready thread" },
+      blocked: { status: "busy", ready: false, title: "Blocked thread" },
+      unchanged: { status: "blocked", ready: false, title: "Still blocked" }
+    }
+    var next = {
+      ready: { status: "done", ready: true, title: "Ready thread" },
+      blocked: { status: "blocked", ready: false, title: "Blocked thread" },
+      unchanged: { status: "blocked", ready: false, title: "Still blocked" },
+      restored: { status: "done", ready: true, title: "Existing ready thread" }
+    }
+
+    var events = ThreadStateLogic.notificationEvents(previous, next)
+    compare(events.length, 2)
+    compare(events[0].type, "ready")
+    compare(events[0].title, "Ready thread")
+    compare(events[1].type, "blocked")
+    compare(events[1].title, "Blocked thread")
+  }
+
+  function test_buildsDesktopAndSoundNotificationCommands() {
+    var ready = ThreadStateLogic.notificationCommands({
+      type: "ready", title: "Ready thread"
+    })
+    compare(ready.desktop[0], "notify-send")
+    compare(ready.desktop[ready.desktop.length - 1], "Ready thread")
+    compare(ready.sound[0], "canberra-gtk-play")
+    compare(ready.sound[2], "complete")
+
+    var blocked = ThreadStateLogic.notificationCommands({
+      type: "blocked", title: "Blocked thread"
+    })
+    compare(blocked.desktop[6], "dialog-warning-symbolic")
+    compare(blocked.sound[2], "dialog-warning")
+    compare(blocked.sound[4], "Agent thread needs attention")
+  }
+
   function test_ordersReadyThreadsAcrossProviders() {
     var local = [
       { id: "local-old", updatedAt: 10 },

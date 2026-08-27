@@ -57,6 +57,7 @@ ShellRoot {
     property string sidebarScope: "global"
     property string threadFrontend: "terminal"
     property bool fastMode: false
+    property bool notificationsEnabled: false
     property int openedThreadCount: 0
     property int newProjectThreadCount: 0
     property int pinnedThreadCount: 0
@@ -103,6 +104,11 @@ ShellRoot {
     }
     function setFastMode(value) { fastMode = value === true }
     function toggleFastMode() { fastMode = !fastMode; return fastMode }
+    function setNotificationsEnabled(value) { notificationsEnabled = value === true }
+    function toggleNotifications() {
+      notificationsEnabled = !notificationsEnabled
+      return notificationsEnabled
+    }
     function setSidebarOpenOnWorkspace(workspaceId, opened) {}
     function setSidebarScope(scope, workspaceId, opened) { sidebarScope = scope }
     function openThread(thread, path) { openedThreadCount++ }
