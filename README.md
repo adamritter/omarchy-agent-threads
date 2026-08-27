@@ -11,17 +11,9 @@ supports local and remote agents, and keeps completed work one shortcut away.
 
 ## Install
 
-### 1. Check the requirements
+Agent Threads works out of the box on a current standard Omarchy installation.
 
-- A current Omarchy release with Shell plugin support.
-- Codex CLI available as `codex`.
-- Node.js 22 or newer, `jq`, `inotifywait`, `hyprctl`, and procps tools.
-- `ssh` for SSH remotes. OpenCode remotes also require `curl` and `ss`.
-- Claude Code and OpenCode CLIs only if you want to use those providers.
-- Qt 6 WebEngine development files, `pkg-config`, and a C++ compiler only if
-  you want to open local Codex sessions in the optional Agent Chat window.
-
-### 2. Install and enable the plugin
+### 1. Install and enable the plugin
 
 ```bash
 omarchy plugin add https://github.com/adamritter/omarchy-agent-threads.git --enable
@@ -30,7 +22,7 @@ omarchy plugin add https://github.com/adamritter/omarchy-agent-threads.git --ena
 The plugin appears in the left section of the Omarchy bar. Click its icon to
 open the sidebar.
 
-### 3. Add the recommended global shortcuts
+### 2. Add the recommended global shortcuts
 
 Open `~/.config/hypr/bindings.lua` and add:
 
