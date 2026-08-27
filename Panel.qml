@@ -1400,7 +1400,10 @@ Panel {
         anchors.leftMargin: card.contentLeftInset
 
       onMoveRequested: function(dx, dy) {
-        if (root.helpOpen) return
+        if (root.helpOpen) {
+          if (dy !== 0) helpOverlay.scrollRows(dy)
+          return
+        }
         if (providerMenu.opened) {
           if (dy !== 0) providerMenu.moveSelection(dy)
           return
@@ -1420,7 +1423,11 @@ Panel {
         }
       }
       onPageRequested: function(direction, fraction) {
-        if (root.helpOpen || providerMenu.opened || root.viewRows.length === 0) return
+        if (root.helpOpen) {
+          helpOverlay.scrollPage(direction, fraction)
+          return
+        }
+        if (providerMenu.opened || root.viewRows.length === 0) return
         var first = root.visibleRowIndex(true)
         var last = root.visibleRowIndex(false)
         var step = NavigationLogic.pageStep(first, last, fraction)
@@ -1430,7 +1437,11 @@ Panel {
         threadList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
       }
       onEdgeRequested: function(edge) {
-        if (root.helpOpen || providerMenu.opened || root.viewRows.length === 0) return
+        if (root.helpOpen) {
+          helpOverlay.scrollToEdge(edge)
+          return
+        }
+        if (providerMenu.opened || root.viewRows.length === 0) return
         root.clearNavigationPrefix()
         root.selectedIndex = edge < 0 ? 0 : root.viewRows.length - 1
         threadList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
@@ -1816,7 +1827,8 @@ Panel {
 
           Item {
             id: remoteButton
-            visible: !root.renameOpen && (root.activeProvider === "codex"
+            visible: !root.renameOpen && !root.helpOpen
+              && (root.activeProvider === "codex"
               || root.activeProvider === "claude" || root.activeProvider === "opencode")
             anchors.right: helpButton.left
             anchors.rightMargin: Style.space(4)

@@ -8,6 +8,7 @@ live_wayland="${PANEL_TEST_LIVE_WAYLAND:-0}"
 if [[ "$live_wayland" != "1" ]]; then
   panel_source="$plugin_root/Panel.qml"
   list_source="$plugin_root/ui/CodexThreadList.qml"
+  help_source="$plugin_root/ui/HelpOverlay.qml"
   local_codex_source="$plugin_root/providers/LocalCodexProvider.qml"
 
   [[ "$(grep -c '^[[:space:]]*PanelWindow[[:space:]]*{' "$panel_source")" == "1" ]]
@@ -21,6 +22,16 @@ if [[ "$live_wayland" != "1" ]]; then
   [[ "$(grep -c '? root.sidebarBarGap : 0' "$panel_source")" == "2" ]]
   grep -q 'id: threadList' "$panel_source"
   grep -q 'id: helpOverlay' "$panel_source"
+  grep -q 'Documentation:' "$help_source"
+  grep -q 'https://github.com/adamritter/omarchy-agent-threads' "$help_source"
+  grep -q 'onLinkActivated: function(link) { Qt.openUrlExternally(link) }' "$help_source"
+  grep -q 'id: helpFlickable' "$help_source"
+  grep -q 'ScrollBar.vertical: ScrollBar' "$help_source"
+  grep -q 'Components.FastScrollHandler' "$help_source"
+  grep -q 'spacing: 0' "$help_source"
+  grep -q 'helpOverlay.scrollRows(dy)' "$panel_source"
+  grep -q 'helpOverlay.scrollPage(direction, fraction)' "$panel_source"
+  grep -q 'helpOverlay.scrollToEdge(edge)' "$panel_source"
   grep -q 'Ui.CodexThreadList' "$panel_source"
   grep -q 'id: searchButton' "$panel_source"
   grep -q 'onClicked: root.startSearch()' "$panel_source"
@@ -29,6 +40,8 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'onClicked: root.service.toggleNotifications()' "$panel_source"
   grep -q 'function notifications(mode: string): string' "$panel_source"
   notification_source="$(sed -n '/id: notificationButton/,/id: remoteButton/p' "$panel_source")"
+  remote_button_source="$(sed -n '/id: remoteButton/,/id: helpButton/p' "$panel_source")"
+  grep -q 'visible: !root.renameOpen && !root.helpOpen' <<<"$remote_button_source"
   grep -q ': root.dim' <<<"$notification_source"
   if grep -q 'readyThreadColor' <<<"$notification_source"; then
     printf '%s\n' 'The notification bell still uses a status color' >&2

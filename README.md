@@ -4,7 +4,7 @@ A keyboard-first Omarchy Shell sidebar for Codex, Claude Code, and OpenCode.
 See which agents are busy, ready, or blocked, then jump back to the right
 terminal without hunting through workspaces.
 
-![Agent Threads preview](agent-threads-preview-v0.1.0.png)
+![Agent Threads preview](agent-threads-preview-v0.1.14.png)
 
 Agent Threads groups saved sessions by project, follows the active thread,
 supports local and remote agents, and keeps completed work one shortcut away.
