@@ -267,7 +267,7 @@ Item {
       followedActiveThreadId = ""
       return
     }
-    if (!force && panel.sidebarFocused) return
+    if (!force && (panel.sidebarFocused || panel.reloadSelectionPending)) return
 
     var activeThread = threadForId(activeId)
     if (!activeThread) return

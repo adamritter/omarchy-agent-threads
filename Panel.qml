@@ -10,6 +10,7 @@ import "services" as Services
 import "ui" as Ui
 import "logic/ActionLogic.js" as ActionLogic
 import "logic/NavigationLogic.js" as NavigationLogic
+import "logic/PanelReloadStateLogic.js" as PanelReloadStateLogic
 import "logic/PointerFocusLogic.js" as PointerFocusLogic
 import "logic/ThreadListLogic.js" as ThreadListLogic
 import "logic/ThreadStateLogic.js" as ThreadStateLogic
@@ -89,6 +90,16 @@ Panel {
   property int focusAttemptsRemaining: 0
   property bool focusPrimed: false
   property bool focusWorkflowPending: false
+  property bool reloadStateLoaded: false
+  property bool applyingReloadState: false
+  property string pendingReloadRowKey: ""
+  property bool reloadSelectionGuard: false
+  property bool pendingReloadFocus: false
+  property string pendingReloadFocusTarget: "list"
+  readonly property bool reloadSelectionPending: pendingReloadRowKey !== ""
+    || reloadSelectionGuard
+  readonly property string reloadStatePath: service && service.runtimeDir
+    ? service.runtimeDir + "/omarchy-agent-threads-panel-reload.json" : ""
   property bool pointerHoverSuppressed: false
   readonly property bool pointerWarpActive: pointerWarpGuard.running
   property int cursorReturnX: -1
@@ -104,11 +115,20 @@ Panel {
   property string activeWorkspaceKey: ""
 
   onSidebarItemFocusedChanged: {
-    if (!sidebarItemFocused && keyboardFocusRequested
-        && !internalFocusTransfer
-        && !focusAcquireTimer.running && !focusReleaseGuard.running)
-      releaseSidebarFocus(false)
+    if (sidebarItemFocused || !keyboardFocusRequested || internalFocusTransfer) return
+    if (focusReleaseGuard.running) {
+      focusPrimed = false
+      focusAttemptsRemaining = Math.max(focusAttemptsRemaining, 30)
+      if (!focusAcquireTimer.running) focusAcquireTimer.restart()
+      return
+    }
+    if (!focusAcquireTimer.running) releaseSidebarFocus(false)
   }
+  onSelectedIndexChanged: schedulePanelReloadStateCapture()
+  onKeyboardFocusRequestedChanged: schedulePanelReloadStateCapture()
+  onSearchTextChanged: schedulePanelReloadStateCapture()
+  onSearchOpenChanged: schedulePanelReloadStateCapture()
+  onExpandedGroupsChanged: schedulePanelReloadStateCapture()
   readonly property var helpItems: [
     { keys: "↑ ↓ / [count]j k", description: "Move selection" },
     { keys: "← →  /  h l", description: "Collapse or expand project" },
@@ -140,7 +160,8 @@ Panel {
     { keys: "?", description: "Open or close help" },
     { keys: "Esc / q", description: "Close help or release focus" }
   ]
-  // Mapping or reloading the sidebar must never request keyboard focus.
+  // Mapping never requests keyboard focus. An in-process reload may restore
+  // focus only when the replaced instance already owned it.
   property bool keyboardFocusRequested: false
   Ui.ThreadListModel {
     id: threadListModel
@@ -160,6 +181,59 @@ Panel {
   function clearNavigationPrefix() {
     navigationCount = ""
     navigationFindDirection = 0
+  }
+
+  function schedulePanelReloadStateCapture() {
+    if (reloadStateLoaded && !applyingReloadState)
+      reloadStateCaptureTimer.restart()
+  }
+
+  function capturePanelReloadState() {
+    if (reloadStatePath === "") return
+    reloadStateCaptureTimer.stop()
+    var encoded = PanelReloadStateLogic.encode({
+      selectedRowKey: rowKey(viewRows[selectedIndex]),
+      keyboardFocusRequested: keyboardFocusRequested,
+      focusTarget: searchField.activeFocus ? "search" : "list",
+      searchText: searchText,
+      searchOpen: searchOpen,
+      expandedGroups: expandedGroups,
+      cursorReturnX: cursorReturnX,
+      cursorReturnY: cursorReturnY
+    }, Quickshell.processId, Quickshell.instanceId, Date.now())
+    if (encoded !== "") reloadStateFile.setText(encoded)
+  }
+
+  function loadPanelReloadState(raw) {
+    var state = PanelReloadStateLogic.decode(
+      raw, Quickshell.processId, Quickshell.instanceId, Date.now(), 5000)
+    reloadStateLoaded = true
+    if (!state) return
+
+    applyingReloadState = true
+    expandedGroups = state.expandedGroups
+    searchText = state.searchText
+    searchOpen = state.searchOpen || searchText !== ""
+    pendingReloadRowKey = state.selectedRowKey
+    reloadSelectionGuard = pendingReloadRowKey !== ""
+    if (reloadSelectionGuard) reloadSelectionGuardTimer.restart()
+    pendingReloadFocus = state.keyboardFocusRequested
+    pendingReloadFocusTarget = state.focusTarget
+    cursorReturnX = state.cursorReturnX
+    cursorReturnY = state.cursorReturnY
+    rebuildRows(pendingReloadRowKey)
+    applyingReloadState = false
+
+    if (viewRows.length > 0) Qt.callLater(function() {
+      threadList.positionViewAtIndex(selectedIndex, ListView.Contain)
+    })
+    Qt.callLater(tryRestorePanelReloadFocus)
+  }
+
+  function tryRestorePanelReloadFocus() {
+    if (!pendingReloadFocus || !bar || fullscreenSuppressed) return
+    requestOpen()
+    reloadFocusRestoreTimer.restart()
   }
 
   function cycleEffort() {
@@ -684,7 +758,13 @@ Panel {
   }
 
   function rebuildRows(preferredKey) {
-    threadListModel.rebuildRows(preferredKey)
+    var wantedKey = preferredKey
+    if (wantedKey === undefined && pendingReloadRowKey !== "")
+      wantedKey = pendingReloadRowKey
+    threadListModel.rebuildRows(wantedKey)
+    if (pendingReloadRowKey !== ""
+        && rowKey(viewRows[selectedIndex]) === pendingReloadRowKey)
+      pendingReloadRowKey = ""
   }
   function projectCollapseKey(path, remoteId) {
     return ThreadListLogic.projectCollapseKey(path, remoteId)
@@ -975,6 +1055,7 @@ Panel {
   onBarChanged: {
     queryFullscreenState()
     applySidebarOpenState()
+    Qt.callLater(tryRestorePanelReloadFocus)
   }
 
   Connections {
@@ -1036,6 +1117,51 @@ Panel {
           || name === "openwindow" || name === "closewindow")
         fullscreenProbeDebounce.restart()
     }
+  }
+
+  Timer {
+    id: reloadStateCaptureTimer
+    interval: 40
+    repeat: false
+    onTriggered: root.capturePanelReloadState()
+  }
+
+  Timer {
+    id: reloadFocusRestoreTimer
+    interval: 350
+    repeat: false
+    onTriggered: {
+      if (!root.pendingReloadFocus || !root.sidebarPresented) return
+      root.pendingReloadFocus = false
+      root.focusSidebar()
+      if (root.pendingReloadFocusTarget === "search" && root.searchOpen)
+        Qt.callLater(function() { searchField.forceActiveFocus() })
+    }
+  }
+
+  Timer {
+    id: reloadSelectionGuardTimer
+    interval: 1000
+    repeat: false
+    onTriggered: root.reloadSelectionGuard = false
+  }
+
+  Timer {
+    interval: 1000
+    running: root.sidebarPresented || root.keyboardFocusRequested
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.capturePanelReloadState()
+  }
+
+  FileView {
+    id: reloadStateFile
+    path: root.reloadStatePath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadPanelReloadState(text())
+    onLoadFailed: root.loadPanelReloadState("")
   }
 
   Timer {
