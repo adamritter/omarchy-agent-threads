@@ -208,7 +208,7 @@ QtObject {
   }
   
   function openThread(thread, cwdOverride, source) {
-    if (store.threadFrontend === "agent-chat") {
+    if (store.settings.threadFrontend === "agent-chat") {
       var path = String(cwdOverride || projectPathForThread(thread) || store.backendHomePath)
       return launchAgentChat(thread, path, source)
     }
@@ -217,7 +217,7 @@ QtObject {
   }
   
   function newProjectThread(projectPath) {
-    if (store.threadFrontend === "agent-chat")
+    if (store.settings.threadFrontend === "agent-chat")
       return launchAgentChat(null, projectPath)
     return providerLibrary.createThread("provider-codex", projectPath)
   }
@@ -237,8 +237,8 @@ QtObject {
   
     return store.runtimeProcesses.startAgentChat(
       ActionLogic.agentChatCommand(
-        store.streamGuardPath, store.agentChatHelperPath, threadId, path, store.selectedModel,
-        store.selectedEffort, store.codexServiceTier),
+        store.streamGuardPath, store.agentChatHelperPath, threadId, path,
+        store.settings.selectedModel, store.settings.selectedEffort, store.codexServiceTier),
       threadId !== "" ? "thread" : "project", threadId, requestId)
   }
   

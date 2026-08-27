@@ -23,27 +23,27 @@ QtObject {
       layerNamespace: panel.layerNamespace,
       headerText: panel.providerActions.providerLabel(),
       statusText: panel.providerActions.statusText(),
-      searchVisible: panel.searchField.visible,
-      renameVisible: panel.renameField.visible,
+      searchVisible: panel.sidebarView.searchField.visible,
+      renameVisible: panel.sidebarView.renameField.visible,
       remoteSetupVisible: panel.remoteSetup.visible,
       helpVisible: panel.helpOverlay.visible,
-      listVisible: panel.threadList.visible,
-      fastMode: panel.service.fastMode,
-      notificationsEnabled: panel.service.notificationsEnabled,
+      listVisible: panel.sidebarView.threadList.visible,
+      fastMode: panel.service.settings.fastMode,
+      notificationsEnabled: panel.service.settings.notificationsEnabled,
       selectedIndex: panel.selectedIndex,
       selectedRowKey: rowKey(panel.viewRows[panel.selectedIndex]),
       modelRowCount: panel.viewRows.length,
-      renderedRows: panel.threadList.renderSnapshot()
+      renderedRows: panel.sidebarView.threadList.renderSnapshot()
     }
   }
   
   function dispatchTestInput(kind, first, second) {
     if (Quickshell.env("AGENT_THREADS_PANEL_TEST") !== "1") return false
-    if (kind === "move") panel.keyCatcher.moveRequested(Number(first), Number(second))
-    else if (kind === "text") panel.keyCatcher.textKey(String(first || ""))
-    else if (kind === "activate") panel.keyCatcher.activateRequested()
-    else if (kind === "frontend") panel.keyCatcher.frontendToggleRequested()
-    else if (kind === "close") panel.keyCatcher.closeRequested()
+    if (kind === "move") panel.sidebarView.moveRequested(Number(first), Number(second))
+    else if (kind === "text") panel.sidebarView.textKey(String(first || ""))
+    else if (kind === "activate") panel.sidebarView.activateRequested()
+    else if (kind === "frontend") panel.sidebarView.frontendToggleRequested()
+    else if (kind === "close") panel.sidebarView.closeRequested()
     else return false
     return true
   }
@@ -65,7 +65,7 @@ QtObject {
     next[groupPreviewKey(kind, path, remoteId)] = true
     panel.session.expandedGroups = next
     rebuildRows("")
-    panel.threadList.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
+    panel.sidebarView.threadList.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
   }
   
   function resetGroupPreview(kind, path, remoteId) {
@@ -80,7 +80,7 @@ QtObject {
     var wantedKey = preferredKey
     if (wantedKey === undefined && panel.session.pendingReloadRowKey !== "")
       wantedKey = panel.session.pendingReloadRowKey
-    panel.threadListModel.rebuildRows(wantedKey)
+    panel.listModel.rebuildRows(wantedKey)
     if (panel.session.pendingReloadRowKey !== ""
         && rowKey(panel.viewRows[panel.selectedIndex]) === panel.session.pendingReloadRowKey)
       panel.session.pendingReloadRowKey = ""
@@ -94,12 +94,12 @@ QtObject {
   }
   
   function sectionPinned(kind, path, remoteId) {
-    return panel.service.pinnedSections[sectionPinKey(kind, path, remoteId)] === true
+    return panel.service.settings.pinnedSections[sectionPinKey(kind, path, remoteId)] === true
   }
   
   function toggleSectionPin(kind, path, remoteId) {
     var key = sectionPinKey(kind, path, remoteId)
-    var next = Object.assign({}, panel.service.pinnedSections)
+    var next = Object.assign({}, panel.service.settings.pinnedSections)
     if (next[key] === true) delete next[key]
     else next[key] = true
     panel.service.settings.setPinnedSections(next)
@@ -111,17 +111,17 @@ QtObject {
   function setProjectCollapsed(path, collapsed, selectHeader, remoteId) {
     var project = String(path || "")
     if (collapsed) resetGroupPreview("project", project, remoteId)
-    var next = Object.assign({}, panel.service.collapsedProjects)
+    var next = Object.assign({}, panel.service.settings.collapsedProjects)
     next[projectCollapseKey(project, remoteId)] = !!collapsed
     panel.service.settings.setCollapsedProjects(next)
     rebuildRows(selectHeader
       ? "project:" + String(remoteId || "local") + ":" + project
       : undefined)
-    panel.threadList.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
+    panel.sidebarView.threadList.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
   }
   
   function projectCollapsed(path, remoteId) {
-    return panel.service.collapsedProjects[projectCollapseKey(path, remoteId)] !== false
+    return panel.service.settings.collapsedProjects[projectCollapseKey(path, remoteId)] !== false
   }
   
   function toggleProject(path, remoteId) {
@@ -129,18 +129,18 @@ QtObject {
   }
   
   function remoteCollapsed(remoteId) {
-    return panel.service.collapsedRemotes[String(remoteId || "")] !== false
+    return panel.service.settings.collapsedRemotes[String(remoteId || "")] !== false
   }
   
   function toggleRemote(remoteId) {
     var id = String(remoteId || "")
-    var next = Object.assign({}, panel.service.collapsedRemotes)
+    var next = Object.assign({}, panel.service.settings.collapsedRemotes)
     next[id] = !remoteCollapsed(id)
     if (next[id]) resetGroupPreview("remote", "", id)
     panel.service.settings.setCollapsedRemotes(next)
     rebuildRows("remote:" + id)
     if (next[id] === false) panel.service.providers.refreshRemotes(id)
-    panel.threadList.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
+    panel.sidebarView.threadList.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
   }
   
   function age(timestamp) {
@@ -149,6 +149,6 @@ QtObject {
 
   function totalThreadCount() {
     return PresentationLogic.totalThreadCount(
-      panel.activeProvider, panel.service.threads, panel.service.remoteHosts)
+      panel.activeProvider, panel.service.threads, panel.service.providers.remoteHosts)
   }
 }

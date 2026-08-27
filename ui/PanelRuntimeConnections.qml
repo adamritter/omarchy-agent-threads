@@ -19,7 +19,7 @@ Item {
         panel.service.providers.refreshThreads()
         panel.service.threadActions.refreshActiveThread()
         if (!panel.session.applyingWorkspaceSidebarState)
-          panel.sidebarActions.followActiveThread(true)
+          panel.sidebarActions.navigation.followActiveThread(true)
         panel.focusActions.queryFullscreenState()
       } else {
         panel.reloadActions.clearNavigationPrefix()
@@ -47,13 +47,13 @@ Item {
 
     function onThreadsChanged() {
       panel.listActions.rebuildRows()
-      panel.sidebarActions.followActiveThread(false)
+      panel.sidebarActions.navigation.followActiveThread(false)
       panel.providerActions.syncThreadNotificationStates()
     }
     function onProjectsChanged() { panel.listActions.rebuildRows() }
     function onRemoteHostsChanged() {
       panel.listActions.rebuildRows()
-      panel.sidebarActions.followActiveThread(false)
+      panel.sidebarActions.navigation.followActiveThread(false)
       panel.providerActions.syncThreadNotificationStates()
     }
     function onThreadStatusesChanged() {
@@ -69,10 +69,10 @@ Item {
       panel.providerActions.restoreProviderViewState(panel.activeProvider)
     }
     function onActiveThreadIdChanged() {
-      panel.sidebarActions.followActiveThread(false)
+      panel.sidebarActions.navigation.followActiveThread(false)
     }
     function onLaunchingThreadIdChanged() {
-      panel.sidebarActions.followActiveThread(false)
+      panel.sidebarActions.navigation.followActiveThread(false)
     }
     function onSidebarSettingsLoadedChanged() {
       panel.focusActions.applySidebarOpenState()
@@ -109,7 +109,7 @@ Item {
           || name === "fullscreen" || name === "fullscreenv2"
           || name === "activewindow" || name === "activewindowv2"
           || name === "openwindow" || name === "closewindow")
-        panel.fullscreenProbeDebounce.restart()
+        panel.runtime.fullscreenProbeDebounce.restart()
     }
   }
 

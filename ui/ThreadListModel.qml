@@ -4,12 +4,14 @@ import "../logic/ThreadListLogic.js" as ThreadListLogic
 Item {
   id: root
 
-  required property var controller
-  readonly property var service: controller.service
-  readonly property var session: controller.session || controller
-  readonly property string activeProvider: controller.activeProvider
+  required property var service
+  required property var session
+  required property string activeProvider
+  required property int groupPreviewLimit
+  required property string homePath
+  required property string workPath
+  required property string codexScratchRoot
   readonly property string searchText: session.searchText
-  readonly property int groupPreviewLimit: controller.groupPreviewLimit
 
   property var viewRows: []
   property int projectCount: 0
@@ -26,14 +28,14 @@ Item {
       groupPreviewLimit: groupPreviewLimit,
       localThreads: service.threads,
       localProjects: service.projects,
-      remoteHosts: service.remoteHosts,
+      remoteHosts: service.providers.remoteHosts,
       expandedGroups: session.expandedGroups,
-      collapsedProjects: service.collapsedProjects,
-      collapsedRemotes: service.collapsedRemotes,
-      pinnedSections: service.pinnedSections,
-      homePath: controller.homePath,
-      workPath: controller.workPath,
-      scratchRoot: controller.codexScratchRoot
+      collapsedProjects: service.settings.collapsedProjects,
+      collapsedRemotes: service.settings.collapsedRemotes,
+      pinnedSections: service.settings.pinnedSections,
+      homePath: root.homePath,
+      workPath: root.workPath,
+      scratchRoot: root.codexScratchRoot
     })
     projectCount = result.projectCount
     visibleThreadCount = result.visibleThreadCount

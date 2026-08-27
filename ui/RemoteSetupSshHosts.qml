@@ -18,15 +18,15 @@ Column {
   
   Text {
     visible: !setup.editing && panel.session.remoteSetupType === "ssh"
-      && (panel.service.sshHostsLoading === true
-          || String(panel.service.sshHostsError || "") !== ""
-          || (panel.service.sshHosts || []).length === 0)
+      && (panel.service.providers.sshHostsLoading === true
+          || String(panel.service.providers.sshHostsError || "") !== ""
+          || (panel.service.providers.sshHosts || []).length === 0)
     width: parent.width
-    text: panel.service.sshHostsLoading === true ? "Loading SSH hosts…"
-      : (String(panel.service.sshHostsError || "") !== ""
-        ? String(panel.service.sshHostsError || "")
+    text: panel.service.providers.sshHostsLoading === true ? "Loading SSH hosts…"
+      : (String(panel.service.providers.sshHostsError || "") !== ""
+        ? String(panel.service.providers.sshHostsError || "")
         : "No explicit Host entries found in ~/.ssh/config")
-    color: String(panel.service.sshHostsError || "") !== ""
+    color: String(panel.service.providers.sshHostsError || "") !== ""
       ? Color.urgent : panel.appearance.dim
     font.family: panel.appearance.fontFamily
     font.pixelSize: Style.font.caption
@@ -35,7 +35,7 @@ Column {
   
   Repeater {
     model: !setup.editing && panel.session.remoteSetupType === "ssh"
-      ? (panel.service.sshHosts || []) : []
+      ? (panel.service.providers.sshHosts || []) : []
   
     delegate: Rectangle {
       id: sshConfigHost

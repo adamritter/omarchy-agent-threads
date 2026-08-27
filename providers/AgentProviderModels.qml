@@ -11,7 +11,7 @@ Item {
     if (type === "codex") {
       return AgentProviderLogic.modelState(
         controller.models, controller.codexConfig,
-        controller.selectedModel, controller.selectedEffort, modelId)
+        controller.settings.selectedModel, controller.settings.selectedEffort, modelId)
     }
     var selected = registry.selectedModel(type)
     var requested = modelId !== undefined ? modelId : selected
@@ -27,12 +27,12 @@ Item {
   function agents(providerType) { return registry.agents(providerType) }
   function selectedModel(providerType) {
     var type = AgentProviderLogic.providerType(providerType)
-    return type === "codex" ? String(controller.selectedModel || "")
+    return type === "codex" ? String(controller.settings.selectedModel || "")
       : registry.selectedModel(type)
   }
   function selectedEffort(providerType) {
     var type = AgentProviderLogic.providerType(providerType)
-    return type === "codex" ? String(controller.selectedEffort || "")
+    return type === "codex" ? String(controller.settings.selectedEffort || "")
       : registry.selectedEffort(type)
   }
   function selectedAgent(providerType) { return registry.selectedAgent(providerType) }

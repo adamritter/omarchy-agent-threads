@@ -14,7 +14,7 @@ Rectangle {
   readonly property color readyThreadColor: "#98c379"
   readonly property bool pointerHovered: mouse.containsMouse
     && !panel.session.pointerHoverSuppressed
-  readonly property var presentation: panel.sidebarActions.rowPresentation(
+  readonly property var presentation: panel.sidebarActions.actions.rowPresentation(
     modelData, index, pointerHovered)
   readonly property bool remoteRow: presentation.remoteRow
   readonly property bool projectRow: presentation.projectRow
@@ -116,7 +116,7 @@ Rectangle {
         if (!panel.pointerWarpActive)
           panel.session.pointerHoverSuppressed = false
       }
-      onClicked: panel.sidebarActions.activateRow(row.index, "pointer")
+      onClicked: panel.sidebarActions.actions.activateRow(row.index, "pointer")
     }
 
     TapHandler {

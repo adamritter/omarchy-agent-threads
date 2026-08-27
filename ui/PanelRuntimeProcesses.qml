@@ -40,7 +40,7 @@ Item {
       panel.session.pendingReloadFocus = false
       panel.focusActions.focusSidebar()
       if (panel.session.pendingReloadFocusTarget === "search" && panel.session.searchOpen)
-        Qt.callLater(function() { panel.searchField.forceActiveFocus() })
+        Qt.callLater(function() { panel.sidebarView.searchField.forceActiveFocus() })
     }
   }
 
@@ -82,9 +82,9 @@ Item {
     interval: 10
     repeat: true
     onTriggered: {
-      panel.keyCatcher.forceActiveFocus()
+      panel.sidebarView.forceActiveFocus()
       panel.session.focusAttemptsRemaining--
-      if (panel.keyCatcher.activeFocus) {
+      if (panel.sidebarView.activeFocus) {
         stop()
         focusPrimeTimerObject.restart()
       } else if (panel.session.focusAttemptsRemaining <= 0) {

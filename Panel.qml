@@ -33,10 +33,10 @@ Panel {
   readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
     || renameField.activeFocus || remoteSetup.inputFocused
   readonly property bool sidebarFocused: session.keyboardFocusRequested && sidebarItemFocused
-  readonly property string activeProvider: service.selectedProvider || "codex"
+  readonly property string activeProvider: service.settings.selectedProvider || "codex"
   readonly property var activeProviderHost: providerActions.providerHost(activeProvider)
   readonly property var readyThreadTargets: ThreadNotificationLogic.readyThreadTargets(
-    service.threads, service.unreadThreads, service.remoteHosts)
+    service.threads, service.unreadThreads, service.providers.remoteHosts)
   readonly property int readyThreadCount: readyThreadTargets.length
   readonly property var providerChoices: [
     { id: "codex", label: "CODEX" },
@@ -44,9 +44,9 @@ Panel {
     { id: "opencode", label: "OPENCODE" }
   ]
   readonly property alias viewRows: threadListModelObject.viewRows
-  readonly property var collapsedProjects: service.collapsedProjects
-  readonly property var collapsedRemotes: service.collapsedRemotes
-  readonly property var pinnedSections: service.pinnedSections
+  readonly property var collapsedProjects: service.settings.collapsedProjects
+  readonly property var collapsedRemotes: service.settings.collapsedRemotes
+  readonly property var pinnedSections: service.settings.pinnedSections
   readonly property int groupPreviewLimit: 10
   readonly property alias projectCount: threadListModelObject.projectCount
   readonly property alias visibleThreadCount: threadListModelObject.visibleThreadCount
@@ -56,28 +56,34 @@ Panel {
     || session.reloadSelectionGuard
   readonly property string reloadStatePath: service && service.runtimeDir
     ? service.runtimeDir + "/omarchy-agent-threads-panel-reload.json" : ""
-  readonly property bool pointerWarpActive: pointerWarpGuard.running
+  readonly property bool pointerWarpActive: runtime.pointerWarpGuard.running
 
   onSidebarItemFocusedChanged: {
     if (sidebarItemFocused || !session.keyboardFocusRequested
         || session.internalFocusTransfer) return
-    if (focusReleaseGuard.running) {
+    if (runtime.focusReleaseGuard.running) {
       session.focusPrimed = false
       session.focusAttemptsRemaining = Math.max(session.focusAttemptsRemaining, 30)
-      if (!focusAcquireTimer.running) focusAcquireTimer.restart()
+      if (!runtime.focusAcquireTimer.running) runtime.focusAcquireTimer.restart()
       return
     }
-    if (!focusAcquireTimer.running) focusActions.releaseSidebarFocus(false)
+    if (!runtime.focusAcquireTimer.running) focusActions.releaseSidebarFocus(false)
   }
   onSelectedIndexChanged: reloadActions.schedulePanelReloadStateCapture()
   readonly property var helpItems: PanelHelpLogic.items(
-    service.threadFrontend, service.fastMode,
+    service.settings.threadFrontend, service.settings.fastMode,
     service.providers.selectedEffortForProvider(activeProvider))
   readonly property alias session: sessionObject
   Ui.PanelSessionState { id: sessionObject }
   Ui.ThreadListModel {
     id: threadListModelObject
-    controller: root
+    service: root.service
+    session: root.session
+    activeProvider: root.activeProvider
+    groupPreviewLimit: root.groupPreviewLimit
+    homePath: root.environment.homePath
+    workPath: root.environment.workPath
+    codexScratchRoot: root.environment.codexScratchRoot
   }
 
   Ui.SidebarController {
@@ -86,15 +92,10 @@ Panel {
     listView: threadList
   }
 
-  readonly property alias keyCatcher: keyRouter
-  readonly property alias searchField: keyRouter.searchField
-  readonly property alias renameField: keyRouter.renameField
-  readonly property alias threadList: keyRouter.threadList
-  readonly property alias providerMenu: keyRouter.providerMenu
+  readonly property alias sidebarView: keyRouter
   readonly property alias remoteSetup: remoteSetupControl
   readonly property alias helpOverlay: helpOverlayControl
-  readonly property alias modelEffortSelector: keyRouter.modelEffortSelector
-  readonly property alias threadListModel: threadListModelObject
+  readonly property alias listModel: threadListModelObject
   readonly property alias reloadActions: reloadActionsObject
   Ui.PanelReloadController { id: reloadActionsObject; panel: root }
   readonly property alias providerActions: providerActionsObject
@@ -106,17 +107,7 @@ Panel {
   readonly property alias focusActions: focusActionsObject
   Ui.PanelFocusController { id: focusActionsObject; panel: root }
   readonly property alias sidebarHover: sidebarHoverObject
-  readonly property alias reloadStateCaptureTimer: runtimeProcesses.reloadStateCaptureTimer
-  readonly property alias reloadStateFile: runtimeProcesses.reloadStateFile
-  readonly property alias reloadFocusRestoreTimer: runtimeProcesses.reloadFocusRestoreTimer
-  readonly property alias reloadSelectionGuardTimer: runtimeProcesses.reloadSelectionGuardTimer
-  readonly property alias focusAcquireTimer: runtimeProcesses.focusAcquireTimer
-  readonly property alias focusPrimeTimer: runtimeProcesses.focusPrimeTimer
-  readonly property alias focusReleaseGuard: runtimeProcesses.focusReleaseGuard
-  readonly property alias pointerWarpGuard: runtimeProcesses.pointerWarpGuard
-  readonly property alias fullscreenProbeDebounce: runtimeProcesses.fullscreenProbeDebounce
-  readonly property alias cursorPositionProbe: runtimeProcesses.cursorPositionProbe
-  readonly property alias fullscreenProbe: runtimeProcesses.fullscreenProbe
+  readonly property alias runtime: runtimeProcesses
 
   Ui.PanelRuntimeConnections { panel: root }
 
@@ -190,7 +181,7 @@ Panel {
       HoverHandler {
         id: sidebarHoverObject
         onHoveredChanged: {
-          if (hovered && !pointerWarpGuard.running)
+          if (hovered && !root.runtime.pointerWarpGuard.running)
             root.session.pointerHoverSuppressed = false
           // Super+A already starts an explicit focus cycle after moving the
           // pointer. Do not start a second competing cycle on pointer entry.

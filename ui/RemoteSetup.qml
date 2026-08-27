@@ -235,9 +235,9 @@ Rectangle {
       }
 
       Text {
-        visible: panel.service.remoteAddError !== ""
+        visible: panel.service.providers.remoteAddError !== ""
         width: parent.width
-        text: panel.service.remoteAddError
+        text: panel.service.providers.remoteAddError
         color: Color.urgent
         font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.caption
@@ -246,12 +246,12 @@ Rectangle {
 
       Text {
         visible: root.editing
-          && panel.service.remoteTestHostId === panel.session.editingRemoteId
-          && panel.service.remoteTestMessage !== ""
+          && panel.service.providers.remoteTestHostId === panel.session.editingRemoteId
+          && panel.service.providers.remoteTestMessage !== ""
         width: parent.width
-        text: panel.service.remoteTestMessage
-        color: panel.service.remoteTestRunning ? panel.appearance.dim
-          : (panel.service.remoteTestSucceeded ? Color.accent : Color.urgent)
+        text: panel.service.providers.remoteTestMessage
+        color: panel.service.providers.remoteTestRunning ? panel.appearance.dim
+          : (panel.service.providers.remoteTestSucceeded ? Color.accent : Color.urgent)
         font.family: panel.appearance.fontFamily
         font.pixelSize: Style.font.caption
         wrapMode: Text.Wrap

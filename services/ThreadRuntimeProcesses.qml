@@ -146,7 +146,7 @@ Item {
     // App Server events normally refresh immediately; polling is the fallback
     // if inotify or an App Server event is ever missed.
     interval: 60000
-    running: root.controller.ready
+    running: root.controller.providers.ready
     repeat: true
     onTriggered: {
       root.controller.providers.refreshThreads()
@@ -157,7 +157,7 @@ Item {
 
   Timer {
     interval: 900000
-    running: root.controller.ready
+    running: root.controller.providers.ready
     repeat: true
     onTriggered: root.controller.providers.refreshRateLimits()
   }

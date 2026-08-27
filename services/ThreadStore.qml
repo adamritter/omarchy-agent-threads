@@ -24,9 +24,6 @@ Item {
   property var codexConfig: ({})
   property var threadStatuses: ({})
   property var unreadThreads: ({})
-  readonly property alias ready: agentProviders.ready
-  readonly property alias loading: agentProviders.loading
-  readonly property alias refreshQueued: agentProviders.refreshQueued
   property bool shuttingDown: false
   property string errorText: ""
   property string launchError: ""
@@ -57,34 +54,6 @@ Item {
   readonly property string pendingMoveName: threadMutationState.moveName || ""
   property string activeThreadId: ""
   readonly property var runtimeProcesses: runtimeProcessesLoader.item
-  readonly property alias remoteConfigLoaded: agentProviders.remoteConfigLoaded
-  readonly property alias remoteConfig: agentProviders.remoteConfig
-  readonly property alias remoteHosts: agentProviders.supplementalHosts
-  readonly property alias remoteQueryHostId: agentProviders.remoteQueryHostId
-  readonly property alias remoteActionHostId: agentProviders.actionHostId
-  property alias remoteAddError: agentProviders.remoteAddError
-  readonly property alias remoteTestHostId: agentProviders.remoteTestHostId
-  readonly property alias remoteTestRunning: agentProviders.remoteTestRunning
-  readonly property alias remoteTestSucceeded: agentProviders.remoteTestSucceeded
-  readonly property alias remoteTestMessage: agentProviders.remoteTestMessage
-  readonly property alias remoteClaudeLoginHostId: agentProviders.remoteClaudeLoginHostId
-  readonly property alias remoteClaudeLoginRunning: agentProviders.remoteClaudeLoginRunning
-  readonly property alias sshHosts: agentProviders.sshHosts
-  readonly property alias sshHostsLoading: agentProviders.sshHostsLoading
-  readonly property alias sshHostsError: agentProviders.sshHostsError
-  readonly property alias sidebarSettingsLoaded: sidebarPreferences.loaded
-  readonly property alias hydratingSidebarSettings: sidebarPreferences.hydrating
-  readonly property alias providerSnapshotLoaded: providerSnapshotStore.loaded
-  readonly property alias providerSnapshotRestored: providerSnapshotStore.restored
-  readonly property alias hydratingProviderSnapshot: providerSnapshotStore.hydrating
-  readonly property alias providerSnapshot: providerSnapshotStore.encoded
-  property alias sidebarScope: sidebarPreferences.scope
-  property alias globalSidebarOpen: sidebarPreferences.globalOpen
-  property alias sidebarOpenWorkspaces: sidebarPreferences.openWorkspaces
-  property alias collapsedProjects: sidebarPreferences.collapsedProjects
-  property alias collapsedRemotes: sidebarPreferences.collapsedRemotes
-  property alias pinnedSections: sidebarPreferences.pinnedSections
-  readonly property alias lastRefreshMs: agentProviders.lastRefreshMs
 
   onThreadsChanged: providerApi.scheduleProviderSnapshot()
   onProjectsChanged: providerApi.scheduleProviderSnapshot()
@@ -115,18 +84,7 @@ Item {
   readonly property string providerSnapshotPath:
     runtimeDir + "/omarchy-agent-threads-provider-snapshot.json"
   readonly property string sidebarSettingsPath: stateHome + "/omarchy/codex-threads.json"
-  readonly property alias sidebarOpen: sidebarPreferences.sidebarOpen
-  readonly property alias selectedProvider: sidebarPreferences.selectedProvider
-  readonly property alias selectedModel: sidebarPreferences.selectedModel
-  readonly property alias selectedEffort: sidebarPreferences.selectedEffort
-  readonly property alias threadFrontend: sidebarPreferences.threadFrontend
-  readonly property alias threadFrontendChangedBy:
-    sidebarPreferences.threadFrontendChangedBy
-  readonly property alias threadFrontendChangedAt:
-    sidebarPreferences.threadFrontendChangedAt
-  readonly property alias fastMode: sidebarPreferences.fastMode
-  readonly property alias notificationsEnabled: sidebarPreferences.notificationsEnabled
-  readonly property string codexServiceTier: fastMode ? "fast" : "default"
+  readonly property string codexServiceTier: settings.fastMode ? "fast" : "default"
 
   signal threadLaunchRequested(string threadId)
 

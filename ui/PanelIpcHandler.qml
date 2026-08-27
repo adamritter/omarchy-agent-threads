@@ -32,7 +32,7 @@ Item {
 
   function testRemote(id: string): string {
     return panel.service.providers.testRemote(id)
-      ? "started" : panel.service.remoteAddError
+      ? "started" : panel.service.providers.remoteAddError
   }
 
   function provider(name: string): string {
@@ -46,7 +46,7 @@ Item {
       return panel.service.settings.toggleThreadFrontend("ipc")
     if (wanted === "terminal" || wanted === "agent-chat")
       panel.service.settings.setThreadFrontend(wanted, "ipc")
-    return panel.service.threadFrontend
+    return panel.service.settings.threadFrontend
   }
 
   function fast(mode: string): string {
@@ -56,7 +56,7 @@ Item {
       panel.service.settings.setFastMode(true)
     else if (wanted === "off" || wanted === "default")
       panel.service.settings.setFastMode(false)
-    return panel.service.fastMode ? "on" : "off"
+    return panel.service.settings.fastMode ? "on" : "off"
   }
 
   function notifications(mode: string): string {
@@ -64,7 +64,7 @@ Item {
     if (wanted === "toggle") panel.service.settings.toggleNotifications()
     else if (wanted === "on") panel.service.settings.setNotificationsEnabled(true)
     else if (wanted === "off") panel.service.settings.setNotificationsEnabled(false)
-    return panel.service.notificationsEnabled ? "on" : "off"
+    return panel.service.settings.notificationsEnabled ? "on" : "off"
   }
 
   function effort(mode: string): string {
@@ -77,36 +77,36 @@ Item {
   function scope(mode: string): string {
     var wanted = String(mode || "").toLowerCase()
     if (wanted === "toggle")
-      wanted = panel.service.sidebarScope === "global" ? "workspace" : "global"
+      wanted = panel.service.settings.scope === "global" ? "workspace" : "global"
     if (wanted !== "workspace" && wanted !== "global")
-      return panel.service.sidebarScope
-    if (panel.session.activeWorkspaceKey === "") return panel.service.sidebarScope
+      return panel.service.settings.scope
+    if (panel.session.activeWorkspaceKey === "") return panel.service.settings.scope
     panel.service.settings.setSidebarScope(
       wanted, panel.session.activeWorkspaceKey, panel.opened)
     panel.focusActions.applySidebarOpenState()
-    return panel.service.sidebarScope
+    return panel.service.settings.scope
   }
 
   function followThread(id: string): string {
     var threadId = String(id || "").trim()
     if (threadId === "") return ""
-    var index = panel.sidebarActions.rowIndexForThread(threadId)
-    return index >= 0 ? panel.sidebarActions.selectThreadIndex(index) : ""
+    var index = panel.sidebarActions.actions.rowIndexForThread(threadId)
+    return index >= 0 ? panel.sidebarActions.actions.selectThreadIndex(index) : ""
   }
 
   function nextThread(): string {
-    return panel.sidebarActions.activateAdjacentThread(1)
+    return panel.sidebarActions.actions.activateAdjacentThread(1)
   }
 
   function previousThread(): string {
-    return panel.sidebarActions.activateAdjacentThread(-1)
+    return panel.sidebarActions.actions.activateAdjacentThread(-1)
   }
 
   function openReady(): string {
     return panel.providerActions.openLatestReadyThread()
   }
   function cursorPoint(): string {
-    return panel.sidebarActions.activeThreadCursorPoint()
+    return panel.sidebarActions.navigation.activeThreadCursorPoint()
   }
 
   function refresh(): string {
@@ -131,14 +131,14 @@ Item {
     return JSON.stringify({
       instanceToken: panel.session.instanceToken,
       activeProvider: panel.activeProvider,
-      threadFrontend: panel.service.threadFrontend,
-      threadFrontendChangedBy: panel.service.threadFrontendChangedBy,
-      threadFrontendChangedAt: panel.service.threadFrontendChangedAt,
-      notificationsEnabled: panel.service.notificationsEnabled,
+      threadFrontend: panel.service.settings.threadFrontend,
+      threadFrontendChangedBy: panel.service.settings.threadFrontendChangedBy,
+      threadFrontendChangedAt: panel.service.settings.threadFrontendChangedAt,
+      notificationsEnabled: panel.service.settings.notificationsEnabled,
       providerLoading: panel.providerActions.providerLoading(),
-      providerSnapshotRestored: panel.service.providerSnapshotRestored,
-      ready: panel.service.ready,
-      loading: panel.service.loading,
+      providerSnapshotRestored: panel.service.providers.snapshotRestored,
+      ready: panel.service.providers.ready,
+      loading: panel.service.providers.loading,
       threadCount: panel.service.threads.length,
       appServerProjectCount: panel.service.projects.length,
       error: panel.service.errorText,
@@ -158,27 +158,27 @@ Item {
       helpOpen: panel.session.helpOpen,
       renameOpen: panel.session.renameOpen,
       sidebarFocused: panel.sidebarFocused,
-      sidebarOpen: panel.service.sidebarOpen,
+      sidebarOpen: panel.service.settings.sidebarOpen,
       sidebarOpenOnWorkspace: panel.service.settings.sidebarOpenOnWorkspace(
         panel.session.activeWorkspaceKey),
       activeWorkspaceId: panel.session.activeWorkspaceId,
       activeWorkspaceKey: panel.session.activeWorkspaceKey,
-      sidebarScope: panel.service.sidebarScope,
+      sidebarScope: panel.service.settings.scope,
       sidebarPresented: panel.sidebarPresented,
       fullscreenSuppressed: panel.fullscreenSuppressed,
       fullscreenInternalState: panel.session.fullscreenInternalState,
       fullscreenClientState: panel.session.fullscreenClientState,
       activeWorkspaceHasFullscreen: panel.session.activeWorkspaceHasFullscreen,
       activeWorkspaceGeometryFullscreen: panel.session.activeWorkspaceGeometryFullscreen,
-      remoteCount: (panel.service.remoteHosts || []).length,
-      pinnedThreadCount: panel.sidebarActions.pinnedThreadCount(),
-      availableSshHostCount: (panel.service.sshHosts || []).length,
+      remoteCount: (panel.service.providers.remoteHosts || []).length,
+      pinnedThreadCount: panel.sidebarActions.navigation.pinnedThreadCount(),
+      availableSshHostCount: (panel.service.providers.sshHosts || []).length,
       remoteSetupOpen: panel.session.remoteSetupOpen,
       editingRemoteId: panel.session.editingRemoteId,
-      remoteTestHostId: panel.service.remoteTestHostId,
-      remoteTestRunning: panel.service.remoteTestRunning,
-      remoteTestSucceeded: panel.service.remoteTestSucceeded,
-      remoteTestMessage: panel.service.remoteTestMessage,
+      remoteTestHostId: panel.service.providers.remoteTestHostId,
+      remoteTestRunning: panel.service.providers.remoteTestRunning,
+      remoteTestSucceeded: panel.service.providers.remoteTestSucceeded,
+      remoteTestMessage: panel.service.providers.remoteTestMessage,
       codexLimit: panel.providerActions.rateLimitText(),
       providerLimit: panel.providerActions.activeRateLimitText(),
       modelCount: panel.service.providers.modelsForProvider(

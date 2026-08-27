@@ -21,7 +21,8 @@ Item {
   }
 
   function applySidebarOpenState() {
-    if (!panel.bar || panel.session.activeWorkspaceKey === "" || !panel.service.sidebarSettingsLoaded) return
+    if (!panel.bar || panel.session.activeWorkspaceKey === ""
+        || !panel.service.settings.loaded) return
     panel.session.applyingWorkspaceSidebarState = true
     panel.service.settings.migrateSidebarOpenState(panel.session.activeWorkspaceKey)
     if (panel.service.settings.sidebarOpenOnWorkspace(panel.session.activeWorkspaceKey)) panel.open()
@@ -37,17 +38,17 @@ Item {
     // Briefly use Exclusive so Hyprland transfers the compositor keyboard
     // focus, then settle on OnDemand so normal window clicks keep working.
     panel.session.focusAttemptsRemaining = 30
-    panel.focusReleaseGuard.restart()
+    panel.runtime.focusReleaseGuard.restart()
     // Take Qt item focus in this same event turn. The retry remains for the
     // freshly mapped surface case, but an already visible sidebar can now
     // consume the very next key after the summon shortcut.
-    panel.keyCatcher.forceActiveFocus()
+    panel.sidebarView.forceActiveFocus()
     Qt.callLater(function() {
       if (panel.opened && panel.session.keyboardFocusRequested)
-        panel.keyCatcher.forceActiveFocus()
+        panel.sidebarView.forceActiveFocus()
     })
-    if (panel.keyCatcher.activeFocus) panel.focusPrimeTimer.restart()
-    else panel.focusAcquireTimer.restart()
+    if (panel.sidebarView.activeFocus) panel.runtime.focusPrimeTimer.restart()
+    else panel.runtime.focusAcquireTimer.restart()
   }
   
   function summonSidebarFocus() {
@@ -66,7 +67,7 @@ Item {
       return
     }
     focusWorkflowTimeout.restart()
-    panel.cursorPositionProbe.running = true
+    panel.runtime.cursorPositionProbe.running = true
   }
   
   function completeSidebarSummon(cursorText) {
@@ -78,12 +79,15 @@ Item {
       panel.session.cursorReturnY = returnPoint.y
     }
     var point
-    try { point = JSON.parse(panel.sidebarActions.activeThreadCursorPoint()) }
+    try {
+      point = JSON.parse(
+        panel.sidebarActions.navigation.activeThreadCursorPoint())
+    }
     catch (error) { point = ({ x: panel.appearance.sidebarContentWidth / 2, y: 1 }) }
     var summonPoint = PanelFocusLogic.summonPoint(
       panel.screen, panel.margins, panel.bar ? panel.bar.position : "",
       panel.bar ? panel.bar.barSize : 0, point, panel.appearance.sidebarContentWidth / 2)
-    panel.pointerWarpGuard.restart()
+    panel.runtime.pointerWarpGuard.restart()
     panel.session.focusWorkflowPending = false
     try {
       Hyprland.dispatch("hl.dsp.cursor.move({ x = " + summonPoint.x
@@ -116,17 +120,17 @@ Item {
       queryFullscreenState()
       return
     }
-    panel.service.settings.setSidebarScope(panel.service.sidebarScope === "global" ? "workspace" : "global",
+    panel.service.settings.setSidebarScope(panel.service.settings.scope === "global" ? "workspace" : "global",
                             panel.session.activeWorkspaceKey, panel.opened)
     applySidebarOpenState()
   }
   
   function queryFullscreenState() {
-    if (panel.fullscreenProbe.running) {
+    if (panel.runtime.fullscreenProbe.running) {
       panel.session.fullscreenProbeQueued = true
       return
     }
-    panel.fullscreenProbe.running = true
+    panel.runtime.fullscreenProbe.running = true
   }
   
   function applyFullscreenState(text) {
@@ -167,9 +171,9 @@ Item {
     if (!panel.opened) return
     // Moving the pointer into the layer surface can emit a delayed toplevel
     // change. Ignore only that transition; explicit Esc always passes force.
-    if (!force && panel.focusReleaseGuard.running) return
-    panel.focusAcquireTimer.stop()
-    panel.focusPrimeTimer.stop()
+    if (!force && panel.runtime.focusReleaseGuard.running) return
+    panel.runtime.focusAcquireTimer.stop()
+    panel.runtime.focusPrimeTimer.stop()
     panel.reloadActions.clearNavigationPrefix()
     panel.session.focusAttemptsRemaining = 0
     panel.session.focusPrimed = false
@@ -177,11 +181,12 @@ Item {
     panel.session.cursorReturnX = -1
     panel.session.cursorReturnY = -1
     panel.session.keyboardFocusRequested = false
-    panel.searchField.focus = false
+    panel.sidebarView.searchField.focus = false
     if (panel.session.searchText === "") panel.session.searchOpen = false
-    panel.keyCatcher.focus = false
+    panel.sidebarView.focus = false
     Qt.callLater(function() {
-      if (!panel.sidebarFocused) panel.sidebarActions.followActiveThread(true)
+      if (!panel.sidebarFocused)
+        panel.sidebarActions.navigation.followActiveThread(true)
     })
   }
 

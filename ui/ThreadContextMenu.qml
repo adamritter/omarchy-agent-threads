@@ -92,17 +92,18 @@ Popup {
             }
             threadMenu.close()
             if (action === "pin") {
-              panel.sidebarActions.togglePin(rowItem.modelData.remoteId, rowItem.threadData)
+              panel.sidebarActions.actions.togglePin(
+                rowItem.modelData.remoteId, rowItem.threadData)
             } else if (action === "open") {
-              panel.sidebarActions.openSelected("context-menu")
+              panel.sidebarActions.actions.openSelected("context-menu")
             } else if (action === "terminal") {
-              panel.sidebarActions.openSelectedTerminal()
+              panel.sidebarActions.actions.openSelectedTerminal()
             } else if (action === "rename") {
-              panel.sidebarActions.renameRow(rowItem.modelData)
+              panel.sidebarActions.actions.renameRow(rowItem.modelData)
             } else if (action === "new") {
-              panel.sidebarActions.createThreadForRow(rowItem.modelData)
+              panel.sidebarActions.actions.createThreadForRow(rowItem.modelData)
             } else if (action === "archive") {
-              panel.sidebarActions.archiveRow(rowItem.modelData)
+              panel.sidebarActions.actions.archiveRow(rowItem.modelData)
             }
           }
         }
@@ -194,7 +195,7 @@ Popup {
             cursorShape: Qt.PointingHandCursor
             onClicked: {
               threadMenu.close()
-              panel.sidebarActions.moveRowToProject(
+              panel.sidebarActions.actions.moveRowToProject(
                 rowItem.modelData, projectChoice.modelData)
             }
           }

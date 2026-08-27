@@ -111,41 +111,50 @@ Item {
   function openThread(hostId, thread, path, source) { return providerRouting.openThread(hostId, thread, path, source) }
   function createThread(hostId, path) { return providerRouting.createThread(hostId, path) }
 
-  AgentProviderOperations {
-    id: providerOperations
-    appServerClient: appServerClient
-    localCodexProvider: localCodexProvider
-    localRegistry: localRegistry
-    remoteProvider: remoteProvider
+  function reset() { appServerClient.reset() }
+  function start() { appServerClient.start() }
+  function refreshThreads() { appServerClient.refreshThreads() }
+  function refreshProjects() { appServerClient.refreshProjects() }
+  function refreshRateLimits() { appServerClient.refreshRateLimits() }
+  function refreshModels() { appServerClient.refreshModels() }
+  function refreshConfig() { appServerClient.refreshConfig() }
+  function createProject(threadId, name, path) {
+    return appServerClient.createProject(threadId, name, path)
   }
-
-  function reset() { return providerOperations.reset() }
-  function start() { return providerOperations.start() }
-  function refreshThreads() { return providerOperations.refreshThreads() }
-  function refreshProjects() { return providerOperations.refreshProjects() }
-  function refreshRateLimits() { return providerOperations.refreshRateLimits() }
-  function refreshModels() { return providerOperations.refreshModels() }
-  function refreshConfig() { return providerOperations.refreshConfig() }
-  function createProject(threadId, name, path) { return providerOperations.createProject(threadId, name, path) }
-  function moveThread(threadId, projectId) { return providerOperations.moveThread(threadId, projectId) }
-  function clearMoveRequests() { return providerOperations.clearMoveRequests() }
-  function archiveLocalCodexRpc(threadId) { return providerOperations.archiveLocalCodexRpc(threadId) }
-  function renameLocalCodexRpc(threadId, name) { return providerOperations.renameLocalCodexRpc(threadId, name) }
-  function pinLocalCodexRpc(threadId, pinned, sectionId) { return providerOperations.pinLocalCodexRpc(threadId, pinned, sectionId) }
-  function clearPendingLocalCodexThread() { return providerOperations.clearPendingLocalCodexThread() }
-  function resolvePendingLocalCodexThread() { return providerOperations.resolvePendingLocalCodexThread() }
-  function refreshActiveThread() { return providerOperations.refreshActiveThread() }
-  function snapshotLocalProviders() { return providerOperations.snapshotLocalProviders() }
-  function restoreLocalProviders(snapshots) { return providerOperations.restoreLocalProviders(snapshots) }
-  function restoreRemoteHosts(snapshots) { return providerOperations.restoreRemoteHosts(snapshots) }
-  function addRemote(label, type, address, home, tokenFile, providerType) { return providerOperations.addRemote(label, type, address, home, tokenFile, providerType) }
-  function updateRemote(hostId, label, type, address, home, tokenFile, providerType) { return providerOperations.updateRemote(hostId, label, type, address, home, tokenFile, providerType) }
-  function removeRemote(hostId) { return providerOperations.removeRemote(hostId) }
-  function testRemote(hostId) { return providerOperations.testRemote(hostId) }
-  function loginRemoteClaude(hostId) { return providerOperations.loginRemoteClaude(hostId) }
-  function sshHostEnabled(alias, providerType) { return providerOperations.sshHostEnabled(alias, providerType) }
-  function remoteIdForSshHost(alias, providerType) { return providerOperations.remoteIdForSshHost(alias, providerType) }
-  function refreshSshHosts() { return providerOperations.refreshSshHosts() }
+  function moveThread(threadId, projectId) {
+    return appServerClient.moveThread(threadId, projectId)
+  }
+  function clearMoveRequests() { appServerClient.clearMoveRequests() }
+  function archiveLocalCodexRpc(threadId) { return appServerClient.archiveThread(threadId) }
+  function renameLocalCodexRpc(threadId, name) {
+    return appServerClient.renameThread(threadId, name)
+  }
+  function pinLocalCodexRpc(threadId, pinned, sectionId) {
+    return appServerClient.setThreadPinned(threadId, pinned, sectionId)
+  }
+  function clearPendingLocalCodexThread() { localCodexProvider.clearPendingNew() }
+  function resolvePendingLocalCodexThread() { localCodexProvider.resolvePendingNew() }
+  function refreshActiveThread() { localCodexProvider.refreshActiveThread() }
+  function snapshotLocalProviders() { return localRegistry.snapshotHosts() }
+  function restoreLocalProviders(snapshots) { localRegistry.restoreSnapshots(snapshots) }
+  function restoreRemoteHosts(snapshots) { remoteProvider.restoreSnapshots(snapshots) }
+  function addRemote(label, type, address, home, tokenFile, providerType) {
+    return remoteProvider.add(label, type, address, home, tokenFile, providerType)
+  }
+  function updateRemote(hostId, label, type, address, home, tokenFile, providerType) {
+    return remoteProvider.updateRemote(
+      hostId, label, type, address, home, tokenFile, providerType)
+  }
+  function removeRemote(hostId) { return remoteProvider.removeRemote(hostId) }
+  function testRemote(hostId) { return remoteProvider.testRemote(hostId) }
+  function loginRemoteClaude(hostId) { return remoteProvider.loginClaude(hostId) }
+  function sshHostEnabled(alias, providerType) {
+    return remoteProvider.sshHostEnabled(alias, providerType)
+  }
+  function remoteIdForSshHost(alias, providerType) {
+    return remoteProvider.remoteIdForSshHost(alias, providerType)
+  }
+  function refreshSshHosts() { remoteProvider.refreshSshHosts() }
 
 
 

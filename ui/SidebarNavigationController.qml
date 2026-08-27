@@ -2,14 +2,14 @@ import QtQuick
 
 Item {
   required property var controller
-  required property var panel
-  required property var listView
-  readonly property var service: panel.service
+  readonly property var panel: controller.panel
+  readonly property var listView: controller.listView
+  readonly property var service: controller.service
 
   function togglePinSelected() {
     if (panel.selectedIndex < 0 || panel.selectedIndex >= panel.viewRows.length) return
     var row = panel.viewRows[panel.selectedIndex]
-    if (row.kind === "thread") controller.togglePin(row.remoteId, row.thread)
+    if (row.kind === "thread") controller.actions.togglePin(row.remoteId, row.thread)
     else if (row.kind === "remote")
       panel.listActions.toggleSectionPin("remote", "", row.remoteId)
     else if (row.kind === "project")
@@ -22,7 +22,7 @@ Item {
       for (var i = 0; i < service.threads.length; i++)
         if (service.threads[i] && service.threads[i].isPinned === true) count++
     }
-    var hosts = service.remoteHosts || []
+    var hosts = service.providers.remoteHosts || []
     for (var hostIndex = 0; hostIndex < hosts.length; hostIndex++) {
       var hostProvider = String(hosts[hostIndex].providerType || "")
       if (panel.activeProvider === "codex" ? hostProvider !== ""
@@ -41,7 +41,7 @@ Item {
     for (var i = 0; i < service.threads.length; i++) {
       if (String(service.threads[i].id || "") === wanted) return service.threads[i]
     }
-    var configuredRemoteHosts = service.remoteHosts || []
+    var configuredRemoteHosts = service.providers.remoteHosts || []
     for (var hostIndex = 0; hostIndex < configuredRemoteHosts.length; hostIndex++) {
       var host = configuredRemoteHosts[hostIndex]
       var hostThreads = host.threads || []
@@ -59,7 +59,7 @@ Item {
     for (var localIndex = 0; localIndex < service.threads.length; localIndex++) {
       if (String(service.threads[localIndex].id || "") === wanted) return ""
     }
-    var configuredRemoteHosts = service.remoteHosts || []
+    var configuredRemoteHosts = service.providers.remoteHosts || []
     for (var hostIndex = 0; hostIndex < configuredRemoteHosts.length; hostIndex++) {
       var host = configuredRemoteHosts[hostIndex]
       var hostThreads = host.threads || []
@@ -79,15 +79,15 @@ Item {
       if (row.kind === "thread") {
         if (row.grouped !== true) return
         panel.selectedIndex = row.depth > 1
-          ? controller.projectHeaderIndex(row.path, row.remoteId)
-          : controller.remoteHeaderIndex(row.remoteId)
+          ? controller.actions.projectHeaderIndex(row.path, row.remoteId)
+          : controller.actions.remoteHeaderIndex(row.remoteId)
         listView.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
       } else if (row.kind === "remote") {
         if (!panel.listActions.remoteCollapsed(row.remoteId)) panel.listActions.toggleRemote(row.remoteId)
       } else if (!panel.listActions.projectCollapsed(row.path, row.remoteId)) {
         panel.listActions.setProjectCollapsed(row.path, true, true, row.remoteId)
       } else if (row.remoteId) {
-        panel.selectedIndex = controller.remoteHeaderIndex(row.remoteId)
+        panel.selectedIndex = controller.actions.remoteHeaderIndex(row.remoteId)
         listView.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
       }
       return
@@ -112,7 +112,7 @@ Item {
   
   function followActiveThread(force) {
     // Refreshes must not overwrite a selection made while the sidebar is focused.
-    var activeId = followTargetThreadId()
+    var activeId = controller.actions.followTargetThreadId()
     if (activeId === "") {
       controller.followedActiveThreadId = ""
       return
@@ -130,7 +130,7 @@ Item {
   
     // The common focus path already has the active row in view. Select it
     // directly instead of rebuilding the complete grouped model again.
-    var visibleIndex = controller.rowIndexForThread(activeId)
+    var visibleIndex = controller.actions.rowIndexForThread(activeId)
     if (visibleIndex >= 0) {
       controller.followedActiveThreadId = activeId
       panel.selectedIndex = visibleIndex
@@ -155,7 +155,7 @@ Item {
     }
     panel.listActions.rebuildRows("thread:" + String(activeRemoteId || "local") + ":" + activeId)
   
-    var index = controller.rowIndexForThread(activeId)
+    var index = controller.actions.rowIndexForThread(activeId)
     if (index < 0) return
     if (!force && controller.followedActiveThreadId === activeId && panel.selectedIndex === index) return
     controller.followedActiveThreadId = activeId
@@ -166,12 +166,12 @@ Item {
   }
   
   function activeThreadCursorPoint() {
-    var targetThreadId = followTargetThreadId()
+    var targetThreadId = controller.actions.followTargetThreadId()
     var activeThread = threadForId(targetThreadId)
     if (!activeThread) return visibleListCursorPoint()
     followActiveThread(true)
   
-    var index = controller.rowIndexForThread(targetThreadId)
+    var index = controller.actions.rowIndexForThread(targetThreadId)
     if (index < 0) return visibleListCursorPoint()
   
     controller.followedActiveThreadId = targetThreadId

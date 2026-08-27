@@ -52,11 +52,11 @@ Item {
     anchors.topMargin: -Style.space(6)
     width: visible ? implicitWidth : 0
     size: Style.space(24)
-    iconText: panel.service.sidebarScope === "global" ? "󰖟" : "󰍹"
-    tooltipText: panel.service.sidebarScope === "global"
+    iconText: panel.service.settings.scope === "global" ? "󰖟" : "󰍹"
+    tooltipText: panel.service.settings.scope === "global"
       ? "Sidebar scope: all workspaces"
       : "Sidebar scope: this workspace"
-    foreground: panel.service.sidebarScope === "global" ? Color.accent : panel.appearance.dim
+    foreground: panel.service.settings.scope === "global" ? Color.accent : panel.appearance.dim
     hoverColor: Color.accent
     fontFamily: panel.appearance.fontFamily
     fontSize: Style.font.body
@@ -91,7 +91,7 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: panel.sidebarActions.newSelectedThread()
+      onClicked: panel.sidebarActions.actions.newSelectedThread()
     }
   }
 
@@ -137,7 +137,7 @@ Item {
 
     Text {
       anchors.centerIn: parent
-      text: panel.service.notificationsEnabled ? "󰂚" : "󰂛"
+      text: panel.service.settings.notificationsEnabled ? "󰂚" : "󰂛"
       color: notificationMouse.containsMouse
         ? Color.accent
         : panel.appearance.dim
@@ -154,7 +154,7 @@ Item {
     }
 
     ToolTip.visible: notificationMouse.containsMouse
-    ToolTip.text: panel.service.notificationsEnabled
+    ToolTip.text: panel.service.settings.notificationsEnabled
       ? "Thread notifications: on · click to turn off"
       : "Thread notifications: off · click to turn on"
   }

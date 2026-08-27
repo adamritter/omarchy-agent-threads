@@ -114,11 +114,12 @@ Item {
   }
   
   function refreshVisibleProvider() {
-    if (!provider.controller.sidebarOpen) {
+    if (!provider.controller.settings.sidebarOpen) {
       refresh()
       return
     }
-    var selected = String(provider.controller.selectedProvider || "codex").toLowerCase()
+    var selected = String(
+      provider.controller.settings.selectedProvider || "codex").toLowerCase()
     for (var i = 0; i < provider.remoteHosts.length; i++) {
       var hostProvider = providerTypeForEntry(provider.remoteHosts[i]) || "codex"
       if (hostProvider === selected) refresh(provider.remoteHosts[i].id)

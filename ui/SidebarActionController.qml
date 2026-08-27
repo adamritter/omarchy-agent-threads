@@ -5,15 +5,15 @@ Item {
   id: root
 
   required property var controller
-  required property var panel
-  required property var listView
-  readonly property var service: panel.service
+  readonly property var panel: controller.panel
+  readonly property var listView: controller.listView
+  readonly property var service: controller.service
   readonly property var environment: panel.environment || panel
 
   function rowIndexForThread(threadId, remoteId) {
     var scope = remoteId !== undefined
       ? String(remoteId || "local")
-      : String(controller.threadScopeForId(threadId) || "local")
+      : String(controller.navigation.threadScopeForId(threadId) || "local")
     return panel.listActions.rowIndexForKey("thread:" + scope + ":" + String(threadId || ""))
   }
   
@@ -29,8 +29,6 @@ Item {
   SidebarRowPresentation {
     id: rowPresenter
     controller: root.controller
-    panel: root.panel
-    service: root.service
   }
 
   function rowPresentation(row, index, hovered) {
@@ -177,7 +175,7 @@ Item {
   }
   
   function followTargetThreadId() {
-    var intent = String(activationIntentThreadId || "")
+    var intent = String(controller.activationIntentThreadId || "")
     var active = String(service.activeThreadId || "")
     var launching = String(service.launchingThreadId || "")
     var failed = String(service.failedLaunchThreadId || "")

@@ -9,7 +9,8 @@ Item {
   required property var controller
   required property string providerType
   required property string label
-  readonly property bool enabled: String(controller.selectedProvider || "codex") === providerType
+  readonly property bool enabled:
+    String(controller.settings.selectedProvider || "codex") === providerType
   property string serverUrl: "http://127.0.0.1:43962"
   readonly property string hostId: "provider-" + providerType
   property var host: ({

@@ -17,11 +17,11 @@ Popup {
   focus: false
   closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-  readonly property bool testingThis: panel.service.remoteTestRunning
-    && panel.service.remoteTestHostId === String(rowItem.modelData.remoteId || "")
-  readonly property bool hasTestResult: panel.service.remoteTestHostId
+  readonly property bool testingThis: panel.service.providers.remoteTestRunning
+    && panel.service.providers.remoteTestHostId === String(rowItem.modelData.remoteId || "")
+  readonly property bool hasTestResult: panel.service.providers.remoteTestHostId
       === String(rowItem.modelData.remoteId || "")
-    && String(panel.service.remoteTestMessage || "") !== ""
+    && String(panel.service.providers.remoteTestMessage || "") !== ""
 
   background: BorderSurface {
     color: Color.background
@@ -69,16 +69,16 @@ Popup {
           onClicked: {
             var action = String(remoteMenuChoice.modelData.action || "")
             if (action === "test") {
-              panel.sidebarActions.testRemoteForRow(rowItem.modelData)
+              panel.sidebarActions.actions.testRemoteForRow(rowItem.modelData)
               return
             }
             remoteMenu.close()
             if (action === "terminal")
-              panel.sidebarActions.openSelectedTerminal()
+              panel.sidebarActions.actions.openSelectedTerminal()
             else if (action === "edit")
-              panel.sidebarActions.manageRemoteForRow(rowItem.modelData)
+              panel.sidebarActions.actions.manageRemoteForRow(rowItem.modelData)
             else if (action === "disable")
-              panel.sidebarActions.disableRemoteForRow(rowItem.modelData)
+              panel.sidebarActions.actions.disableRemoteForRow(rowItem.modelData)
           }
         }
       }
@@ -91,10 +91,10 @@ Popup {
       leftPadding: Style.space(10)
       rightPadding: Style.space(10)
       bottomPadding: Style.space(7)
-      text: panel.service.remoteTestMessage
+      text: panel.service.providers.remoteTestMessage
       textFormat: Text.PlainText
       color: remoteMenu.testingThis ? panel.appearance.dim
-        : (panel.service.remoteTestSucceeded ? Color.accent : Color.urgent)
+        : (panel.service.providers.remoteTestSucceeded ? Color.accent : Color.urgent)
       font.family: panel.appearance.fontFamily
       font.pixelSize: Style.font.caption
       wrapMode: Text.Wrap

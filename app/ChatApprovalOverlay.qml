@@ -5,6 +5,7 @@ import QtQuick.Layouts
 Rectangle {
   required property var window
   required property var client
+  property bool rememberApproval: false
   anchors.fill: parent
   visible: client.approvalRequest !== null
   color: "#99000000"
@@ -56,8 +57,8 @@ Rectangle {
         visible: client.approvalRequest
           && client.approvalRequest.kind !== "unknown"
         text: "Remember for this session"
-        checked: window.rememberApproval
-        onToggled: window.rememberApproval = checked
+        checked: rememberApproval
+        onToggled: rememberApproval = checked
         palette.text: window.foreground
       }
 
@@ -67,15 +68,15 @@ Rectangle {
           text: "Decline"
           onClicked: {
             client.answerApproval(false, false)
-            window.rememberApproval = false
+            rememberApproval = false
           }
         }
         Button {
           text: "Approve"
           highlighted: true
           onClicked: {
-            client.answerApproval(true, window.rememberApproval)
-            window.rememberApproval = false
+            client.answerApproval(true, rememberApproval)
+            rememberApproval = false
           }
         }
       }

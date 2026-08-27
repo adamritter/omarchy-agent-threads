@@ -11,7 +11,8 @@ QtObject {
     panel.session.searchText = next
     panel.selectedIndex = 0
     panel.listActions.rebuildRows("")
-    if (panel.viewRows.length > 0) panel.threadList.positionViewAtIndex(0, ListView.Beginning)
+    if (panel.viewRows.length > 0)
+      panel.sidebarView.threadList.positionViewAtIndex(0, ListView.Beginning)
   }
   
   function startSearch() {
@@ -19,23 +20,23 @@ QtObject {
     panel.session.keyboardFocusRequested = true
     panel.session.helpOpen = false
     panel.session.internalFocusTransfer = true
-    panel.searchField.forceActiveFocus()
-    panel.searchField.selectAll()
+    panel.sidebarView.searchField.forceActiveFocus()
+    panel.sidebarView.searchField.selectAll()
     Qt.callLater(function() { panel.session.internalFocusTransfer = false })
   }
   
   function leaveSearch() {
     panel.session.internalFocusTransfer = true
-    panel.searchField.focus = false
+    panel.sidebarView.searchField.focus = false
     if (panel.session.searchText === "") panel.session.searchOpen = false
-    panel.keyCatcher.forceActiveFocus()
+    panel.sidebarView.forceActiveFocus()
     Qt.callLater(function() { panel.session.internalFocusTransfer = false })
   }
   
   function cancelSearch() {
     setSearchText("")
     panel.session.searchOpen = false
-    if (panel.searchField.activeFocus) leaveSearch()
+    if (panel.sidebarView.searchField.activeFocus) leaveSearch()
   }
   
   function startRename(remoteId, thread) {
@@ -48,16 +49,16 @@ QtObject {
       targetThread = row.thread
     }
     if (!targetThread || !targetThread.id || panel.service.renamingThreadId !== "") return
-    panel.providerMenu.close()
+    panel.sidebarView.providerMenu.close()
     panel.session.helpOpen = false
     panel.session.renameTargetThread = targetThread
     panel.session.renameTargetRemoteId = targetRemoteId
     panel.session.renameOpen = true
     panel.session.keyboardFocusRequested = true
     panel.session.internalFocusTransfer = true
-    panel.renameField.text = panel.providerActions.threadTitle(targetThread)
-    panel.renameField.forceActiveFocus()
-    panel.renameField.selectAll()
+    panel.sidebarView.renameField.text = panel.providerActions.threadTitle(targetThread)
+    panel.sidebarView.renameField.forceActiveFocus()
+    panel.sidebarView.renameField.selectAll()
     Qt.callLater(function() { panel.session.internalFocusTransfer = false })
   }
   
@@ -66,13 +67,14 @@ QtObject {
     panel.session.renameTargetThread = null
     panel.session.renameTargetRemoteId = ""
     panel.session.internalFocusTransfer = true
-    panel.renameField.focus = false
-    panel.keyCatcher.forceActiveFocus()
+    panel.sidebarView.renameField.focus = false
+    panel.sidebarView.forceActiveFocus()
     Qt.callLater(function() { panel.session.internalFocusTransfer = false })
   }
   
   function submitRename() {
-    var name = panel.providerActions.cleanText(panel.renameField.text).slice(0, 200)
+    var name = panel.providerActions.cleanText(
+      panel.sidebarView.renameField.text).slice(0, 200)
     if (!panel.session.renameTargetThread || name === "") return
     var remoteId = panel.session.renameTargetRemoteId
     var thread = panel.session.renameTargetThread
@@ -87,7 +89,7 @@ QtObject {
     var state = RemoteSetupLogic.setupState(
       id, host, panel.activeProvider, panel.session.remoteSetupType)
     if (!state.accepted) return
-    panel.providerMenu.close()
+    panel.sidebarView.providerMenu.close()
     if (panel.session.renameOpen) cancelRename()
     panel.session.helpOpen = false
     panel.session.searchOpen = false
@@ -96,7 +98,7 @@ QtObject {
     panel.session.remoteSetupOpen = true
     panel.session.remoteSetupType = state.type
     panel.session.keyboardFocusRequested = true
-    panel.service.remoteAddError = ""
+    panel.service.providers.clearRemoteError()
     if (host) panel.remoteSetup.loadHost(host)
     else {
       panel.remoteSetup.resetFields()
@@ -107,11 +109,11 @@ QtObject {
   
   function closeRemoteSetup() {
     panel.session.remoteSetupOpen = false
-    panel.service.remoteAddError = ""
+    panel.service.providers.clearRemoteError()
     panel.session.editingRemoteId = ""
     panel.session.internalFocusTransfer = true
     panel.remoteSetup.blurFields()
-    panel.keyCatcher.forceActiveFocus()
+    panel.sidebarView.forceActiveFocus()
     Qt.callLater(function() { panel.session.internalFocusTransfer = false })
   }
   
@@ -134,7 +136,7 @@ QtObject {
           panel.session.remoteSetupProvider)
     if (id === "") return
     panel.service.settings.setCollapsedRemotes(
-      RemoteSetupLogic.expandedRemotes(panel.service.collapsedRemotes, id))
+      RemoteSetupLogic.expandedRemotes(panel.service.settings.collapsedRemotes, id))
     panel.session.editingRemoteId = id
     if (closeAfterSave !== false) closeRemoteSetup()
     panel.listActions.rebuildRows("remote:" + id)
@@ -156,8 +158,8 @@ QtObject {
     if (id === "" || !panel.service.providers.removeRemote(id)) return
   
     var preferences = RemoteSetupLogic.preferencesAfterRemoval(
-      id, panel.service.collapsedRemotes, panel.service.collapsedProjects,
-      panel.service.pinnedSections)
+      id, panel.service.settings.collapsedRemotes,
+      panel.service.settings.collapsedProjects, panel.service.settings.pinnedSections)
     panel.service.settings.setCollapsedRemotes(preferences.collapsedRemotes)
     panel.service.settings.setCollapsedProjects(preferences.collapsedProjects)
     panel.service.settings.setPinnedSections(preferences.pinnedSections)
@@ -176,7 +178,7 @@ QtObject {
     var id = panel.service.providers.addRemote(host, "ssh", host, "", "", panel.session.remoteSetupProvider)
     if (id === "") return
     panel.service.settings.setCollapsedRemotes(
-      RemoteSetupLogic.expandedRemotes(panel.service.collapsedRemotes, id))
+      RemoteSetupLogic.expandedRemotes(panel.service.settings.collapsedRemotes, id))
     panel.listActions.rebuildRows("remote:" + id)
   }
 

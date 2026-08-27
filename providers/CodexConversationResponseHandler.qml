@@ -166,7 +166,7 @@ QtObject {
     if (structureError !== "") {
       client.errorText = "Codex App Server " + structureError
       client.protocolViolation = true
-      if (client.transportRunning) client.transportRunning = false
+      client.stopTransport()
       return
     }
     if (message.id !== undefined && message.id !== null && message.method) {

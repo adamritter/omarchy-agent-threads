@@ -199,8 +199,6 @@ Item {
     }
   }
 
-  property alias transportRunning: appServer.running
-
   CodexConversationOperations { id: operationApi; client: root }
   CodexConversationResponseHandler {
     id: responseApi
@@ -211,19 +209,12 @@ Item {
   function modelState(modelId, modelSelection, effortSelection) {
     return operationApi.modelState(modelId, modelSelection, effortSelection)
   }
-  function refreshModels() { return operationApi.refreshModels() }
-  function refreshConfig() { return operationApi.refreshConfig() }
-  function resetConversation() { return operationApi.resetConversation() }
   function newChat(cwd, model, effort) { return operationApi.newChat(cwd, model, effort) }
-  function openThread(threadId) { return operationApi.openThread(threadId) }
   function sendPrompt(prompt, cwd, model, effort) {
     return operationApi.sendPrompt(prompt, cwd, model, effort)
   }
-  function startTurn(prompt, cwd, model, effort) {
-    return operationApi.startTurn(prompt, cwd, model, effort)
-  }
   function interrupt() { return operationApi.interrupt() }
-  function handleLine(line) { return responseApi.handleLine(line) }
+  function stopTransport() { appServer.running = false }
 
   function answerApproval(accepted, remember) {
     if (!approvalRequest) return
@@ -276,7 +267,7 @@ Item {
         restartTimer.restart()
       }
     }
-    stdout: SplitParser { onRead: function(line) { root.handleLine(line) } }
+    stdout: SplitParser { onRead: function(line) { responseApi.handleLine(line) } }
     stderr: SplitParser {
       onRead: function(line) {
         var value = String(line || "").trim()

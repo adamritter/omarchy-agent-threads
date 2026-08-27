@@ -10,7 +10,7 @@ SidebarControllerTestBase {
       { kind: "thread", path: "/work/a", thread: { id: "alpha" } }
     ]
 
-    compare(controller.activateRow(1), "thread:alpha")
+    compare(controller.actions.activateRow(1), "thread:alpha")
     compare(selectedIndex, 1)
     compare(openedThreadCount, 1)
     compare(openedThreadId, "alpha")
@@ -20,7 +20,7 @@ SidebarControllerTestBase {
   function test_derivesRowPresentationAtControllerBoundary() {
     service.activeThreadId = "busy"
     service.threads = [{ id: "busy", name: "Busy", cwd: "/work" }]
-    var state = controller.rowPresentation({
+    var state = controller.actions.rowPresentation({
       kind: "thread", path: "/work", thread: service.threads[0]
     }, 0, false)
     verify(state.threadRow)
@@ -33,11 +33,11 @@ SidebarControllerTestBase {
     var threadRow = {
       kind: "thread", path: "/work/app", thread: { id: "thread-1" }
     }
-    verify(controller.archiveRow(threadRow))
+    verify(controller.actions.archiveRow(threadRow))
     compare(archiveCount, 1)
-    verify(controller.renameRow(threadRow))
+    verify(controller.actions.renameRow(threadRow))
     compare(renamedThreadId, "thread-1")
-    verify(controller.createThreadForRow({ kind: "project", path: "/work/new" }))
+    verify(controller.actions.createThreadForRow({ kind: "project", path: "/work/new" }))
     compare(createdPath, "/work/new")
   }
 
@@ -51,23 +51,23 @@ SidebarControllerTestBase {
       { kind: "thread", id: "beta" }
     ]
     selectedIndex = 0
-    compare(controller.selectAdjacentThread(1), "thread:alpha")
+    compare(controller.actions.selectAdjacentThread(1), "thread:alpha")
     compare(selectedIndex, 2)
     compare(listView.positionedIndex, 2)
-    compare(controller.selectAdjacentThread(1), "thread:beta")
+    compare(controller.actions.selectAdjacentThread(1), "thread:beta")
     compare(selectedIndex, 5)
-    compare(controller.selectAdjacentThread(1), "thread:alpha")
+    compare(controller.actions.selectAdjacentThread(1), "thread:alpha")
     compare(selectedIndex, 2)
-    compare(controller.selectAdjacentThread(-1), "thread:beta")
+    compare(controller.actions.selectAdjacentThread(-1), "thread:beta")
     compare(selectedIndex, 5)
   }
 
   function test_selectAdjacentThreadHandlesEmptyAndUnselectedLists() {
-    compare(controller.selectAdjacentThread(1), "")
+    compare(controller.actions.selectAdjacentThread(1), "")
     viewRows = [{ kind: "project", path: "/work" }, { kind: "thread", id: "only" }]
-    compare(controller.selectAdjacentThread(1), "thread:only")
+    compare(controller.actions.selectAdjacentThread(1), "thread:only")
     selectedIndex = -1
-    compare(controller.selectAdjacentThread(-1), "thread:only")
+    compare(controller.actions.selectAdjacentThread(-1), "thread:only")
   }
 
   function test_activatesFromActiveThreadInsteadOfUiSelection() {
@@ -80,16 +80,16 @@ SidebarControllerTestBase {
     service.activeThreadId = "alpha"
     selectedIndex = 3
 
-    compare(controller.activateAdjacentThread(1), "thread:beta")
+    compare(controller.actions.activateAdjacentThread(1), "thread:beta")
     compare(selectedIndex, 3)
     compare(openedThreadCount, 1)
     compare(openedThreadId, "beta")
-    compare(controller.followTargetThreadId(), "beta")
+    compare(controller.actions.followTargetThreadId(), "beta")
     compare(releaseCount, 1)
 
     service.activeThreadId = "beta"
     service.launchingThreadId = ""
-    compare(controller.activateAdjacentThread(-1), "thread:alpha")
+    compare(controller.actions.activateAdjacentThread(-1), "thread:alpha")
     compare(selectedIndex, 1)
     compare(openedThreadCount, 2)
     compare(openedThreadId, "alpha")
@@ -105,7 +105,7 @@ SidebarControllerTestBase {
     service.activeThreadId = "alpha"
     selectedIndex = 1
 
-    compare(controller.activateAdjacentThread(-1), "")
+    compare(controller.actions.activateAdjacentThread(-1), "")
     compare(selectedIndex, 1)
     compare(openedThreadCount, 0)
     compare(openedRemoteThreadCount, 0)

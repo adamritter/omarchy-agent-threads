@@ -12,24 +12,24 @@ QtObject {
   
   function schedulePanelReloadStateCapture() {
     if (panel.session.reloadStateLoaded && !panel.session.applyingReloadState)
-      panel.reloadStateCaptureTimer.restart()
+      panel.runtime.reloadStateCaptureTimer.restart()
   }
   
   function capturePanelReloadState() {
     if (panel.reloadStatePath === "") return
-    panel.reloadStateCaptureTimer.stop()
+    panel.runtime.reloadStateCaptureTimer.stop()
     var encoded = PanelReloadStateLogic.encode({
       workspaceKey: panel.session.activeWorkspaceKey,
       selectedRowKey: panel.listActions.rowKey(panel.viewRows[panel.selectedIndex]),
       keyboardFocusRequested: panel.session.keyboardFocusRequested,
-      focusTarget: panel.searchField.activeFocus ? "search" : "list",
+      focusTarget: panel.sidebarView.searchField.activeFocus ? "search" : "list",
       searchText: panel.session.searchText,
       searchOpen: panel.session.searchOpen,
       expandedGroups: panel.session.expandedGroups,
       cursorReturnX: panel.session.cursorReturnX,
       cursorReturnY: panel.session.cursorReturnY
     }, Quickshell.processId, Quickshell.instanceId, Date.now())
-    if (encoded !== "") panel.reloadStateFile.setText(encoded)
+    if (encoded !== "") panel.runtime.reloadStateFile.setText(encoded)
   }
   
   function loadPanelReloadState(raw) {
@@ -44,7 +44,8 @@ QtObject {
     panel.session.searchOpen = state.searchOpen || panel.session.searchText !== ""
     panel.session.pendingReloadRowKey = state.selectedRowKey
     panel.session.reloadSelectionGuard = panel.session.pendingReloadRowKey !== ""
-    if (panel.session.reloadSelectionGuard) panel.reloadSelectionGuardTimer.restart()
+    if (panel.session.reloadSelectionGuard)
+      panel.runtime.reloadSelectionGuardTimer.restart()
     panel.session.pendingReloadFocus = state.keyboardFocusRequested
     panel.session.pendingReloadFocusTarget = state.focusTarget
     panel.session.pendingReloadWorkspaceKey = state.workspaceKey
@@ -54,7 +55,8 @@ QtObject {
     panel.session.applyingReloadState = false
   
     if (panel.viewRows.length > 0) Qt.callLater(function() {
-      panel.threadList.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
+      panel.sidebarView.threadList.positionViewAtIndex(
+        panel.selectedIndex, ListView.Contain)
     })
     Qt.callLater(tryRestorePanelReloadFocus)
   }
@@ -68,11 +70,11 @@ QtObject {
       return
     }
     panel.focusActions.requestOpen()
-    panel.reloadFocusRestoreTimer.restart()
+    panel.runtime.reloadFocusRestoreTimer.restart()
   }
 
   function cancelPanelReloadFocus() {
     panel.session.pendingReloadFocus = false
-    panel.reloadFocusRestoreTimer.stop()
+    panel.runtime.reloadFocusRestoreTimer.stop()
   }
 }

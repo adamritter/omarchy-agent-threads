@@ -11,10 +11,10 @@ SidebarControllerTestBase {
       { id: "requested", cwd: "/work/b" }
     ]
     service.launchingThreadId = "requested"
-    compare(controller.followTargetThreadId(), "requested")
+    compare(controller.actions.followTargetThreadId(), "requested")
 
     service.launchingThreadId = ""
-    compare(controller.followTargetThreadId(), "old")
+    compare(controller.actions.followTargetThreadId(), "old")
   }
 
   function test_failedActivationDoesNotSnapSelectionBackToActiveThread() {
@@ -24,12 +24,12 @@ SidebarControllerTestBase {
     ]
     service.activeThreadId = "old"
 
-    compare(controller.activateRow(1, "pointer"), "thread:requested")
+    compare(controller.actions.activateRow(1, "pointer"), "thread:requested")
     service.launchingThreadId = ""
     service.failedLaunchThreadId = "requested"
 
-    compare(controller.followTargetThreadId(), "requested")
-    controller.followActiveThread(true)
+    compare(controller.actions.followTargetThreadId(), "requested")
+    controller.navigation.followActiveThread(true)
     compare(selectedIndex, 1)
   }
 
@@ -39,7 +39,7 @@ SidebarControllerTestBase {
     }]
     service.acceptLaunch = false
 
-    compare(controller.activateRow(0, "keyboard"), "")
+    compare(controller.actions.activateRow(0, "keyboard"), "")
     compare(controller.activationIntentThreadId, "")
     compare(service.launchingThreadId, "")
   }
@@ -54,7 +54,7 @@ SidebarControllerTestBase {
     ]
     service.activeThreadId = "local"
 
-    compare(controller.activateAdjacentThread(1), "thread:remote")
+    compare(controller.actions.activateAdjacentThread(1), "thread:remote")
     compare(openedRemoteThreadCount, 1)
     compare(openedRemoteId, "dev")
     compare(openedThreadId, "remote")
@@ -63,7 +63,7 @@ SidebarControllerTestBase {
   function test_opensLocalProjectTerminal() {
     viewRows = [{ kind: "project", path: "/work/app" }]
     selectedIndex = 0
-    verify(controller.openSelectedTerminal())
+    verify(controller.actions.openSelectedTerminal())
     compare(terminalMode, "local")
     compare(terminalPath, "/work/app")
     compare(releaseCount, 1)
@@ -77,7 +77,7 @@ SidebarControllerTestBase {
       kind: "remote", remoteId: "dev", path: "/home/dev", host: host
     }]
     selectedIndex = 0
-    verify(controller.openSelectedTerminal())
+    verify(controller.actions.openSelectedTerminal())
     compare(terminalMode, "ssh")
     compare(terminalEndpoint, "devbox")
     compare(terminalPath, "/home/dev")
@@ -86,7 +86,7 @@ SidebarControllerTestBase {
       kind: "project", remoteId: "dev", path: "/srv/app", host: host
     }]
     terminalCount = 0
-    verify(controller.openSelectedTerminal())
+    verify(controller.actions.openSelectedTerminal())
     compare(terminalCount, 1)
     compare(terminalPath, "/srv/app")
   }
@@ -96,7 +96,7 @@ SidebarControllerTestBase {
     activeProviderHost = {
       id: "provider-claude", type: "provider", home: "/home/test"
     }
-    verify(controller.openSelectedTerminal())
+    verify(controller.actions.openSelectedTerminal())
     compare(terminalMode, "local")
     compare(terminalPath, "/home/test")
   }
@@ -107,7 +107,7 @@ SidebarControllerTestBase {
       host: { id: "server", type: "app-server", home: "/srv" }
     }]
     selectedIndex = 0
-    verify(!controller.openSelectedTerminal())
+    verify(!controller.actions.openSelectedTerminal())
     compare(terminalCount, 0)
     compare(releaseCount, 0)
     verify(service.launchError.indexOf("requires an SSH connection") >= 0)

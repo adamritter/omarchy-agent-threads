@@ -3,6 +3,24 @@ import QtQuick
 QtObject {
   required property var preferences
 
+  readonly property bool loaded: preferences.loaded
+  readonly property bool hydrating: preferences.hydrating
+  readonly property bool sidebarOpen: preferences.sidebarOpen
+  readonly property string scope: preferences.scope
+  readonly property bool globalOpen: preferences.globalOpen
+  readonly property var openWorkspaces: preferences.openWorkspaces
+  readonly property var collapsedProjects: preferences.collapsedProjects
+  readonly property var collapsedRemotes: preferences.collapsedRemotes
+  readonly property var pinnedSections: preferences.pinnedSections
+  readonly property string selectedProvider: preferences.selectedProvider
+  readonly property string selectedModel: preferences.selectedModel
+  readonly property string selectedEffort: preferences.selectedEffort
+  readonly property string threadFrontend: preferences.threadFrontend
+  readonly property string threadFrontendChangedBy: preferences.threadFrontendChangedBy
+  readonly property double threadFrontendChangedAt: preferences.threadFrontendChangedAt
+  readonly property bool fastMode: preferences.fastMode
+  readonly property bool notificationsEnabled: preferences.notificationsEnabled
+
   function sidebarOpenOnWorkspace(workspaceId) {
     return preferences.sidebarOpenOnWorkspace(workspaceId)
   }

@@ -27,7 +27,7 @@ onMoveRequested: function(dx, dy) {
   if (panel.viewRows.length === 0) return
   if (dx !== 0) {
     panel.reloadActions.clearNavigationPrefix()
-    panel.sidebarActions.handleHorizontalNavigation(dx)
+    panel.sidebarActions.navigation.handleHorizontalNavigation(dx)
     return
   }
   if (dy !== 0) {
@@ -66,12 +66,12 @@ onActivateRequested: {
   panel.reloadActions.clearNavigationPrefix()
   if (content.providerMenu.opened) content.providerMenu.activateSelection()
   else if (panel.session.helpOpen) panel.session.helpOpen = false
-  else panel.sidebarActions.openSelected()
+  else panel.sidebarActions.actions.openSelected()
 }
 onTerminalRequested: {
   panel.reloadActions.clearNavigationPrefix()
   if (!panel.session.helpOpen && !content.providerMenu.opened)
-    panel.sidebarActions.openSelectedTerminal()
+    panel.sidebarActions.actions.openSelectedTerminal()
 }
 onFastToggleRequested: {
   panel.reloadActions.clearNavigationPrefix()
@@ -168,19 +168,19 @@ onTextKey: function(text) {
     return
   }
   if (text === "o" || text === "O") {
-    panel.sidebarActions.openSelected()
+    panel.sidebarActions.actions.openSelected()
     return
   }
   if (text === "t") {
-    panel.sidebarActions.openSelectedTerminal()
+    panel.sidebarActions.actions.openSelectedTerminal()
     return
   }
   if (text === "y" || text === "Y") {
-    panel.sidebarActions.archiveSelected()
+    panel.sidebarActions.actions.archiveSelected()
     return
   }
   if (text === "p") {
-    panel.sidebarActions.togglePinSelected()
+    panel.sidebarActions.navigation.togglePinSelected()
     return
   }
   if (text === "r") {
@@ -191,7 +191,8 @@ onTextKey: function(text) {
     panel.focusActions.toggleSidebarScope()
     return
   }
-  if (text === "n" || text === "N") panel.sidebarActions.newSelectedThread()
+  if (text === "n" || text === "N")
+    panel.sidebarActions.actions.newSelectedThread()
 }
 
 

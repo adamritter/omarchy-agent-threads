@@ -60,12 +60,15 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'Ui.CodexThreadList' "$body_source"
   grep -q 'Components.ThreadListRow' "$list_source"
   grep -q 'ThreadListRowActions.qml' "$row_source"
-  grep -q 'rowPresentation(' "$plugin_root/ui/SidebarController.qml"
-  grep -q 'panel.sidebarActions.activateRow(row.index, "pointer")' "$row_source"
+  grep -q 'readonly property alias actions: actionApi' \
+    "$plugin_root/ui/SidebarController.qml"
+  grep -q 'rowPresentation(' "$plugin_root/ui/SidebarActionController.qml"
+  grep -q 'panel.sidebarActions.actions.activateRow(row.index, "pointer")' "$row_source"
   grep -q 'id: searchButton' "$header_source"
   grep -q 'onClicked: panel.overlayActions.startSearch()' "$header_source"
   grep -q 'id: notificationButton' "$header_source"
-  grep -q 'text: panel.service.notificationsEnabled ? "󰂚" : "󰂛"' "$header_source"
+  grep -q 'text: panel.service.settings.notificationsEnabled ? "󰂚" : "󰂛"' \
+    "$header_source"
   grep -q 'onClicked: panel.service.settings.toggleNotifications()' "$header_source"
   grep -q 'function notifications(mode: string): string' "$ipc_source"
   notification_source="$(sed -n '/id: notificationButton/,/id: remoteButton/p' "$header_source")"
@@ -124,11 +127,12 @@ if [[ "$live_wayland" != "1" ]]; then
     "$plugin_root/ui/SidebarNavigationController.qml"
   grep -q 'Components.ProjectContextMenu' "$row_actions_source"
   grep -q 'Components.ThreadContextMenu' "$row_actions_source"
-  grep -q 'panel.sidebarActions.openSelected("context-menu")' \
+  grep -q 'panel.sidebarActions.actions.openSelected("context-menu")' \
     "$plugin_root/ui/ThreadContextMenu.qml"
   grep -q 'Components.RemoteContextMenu' "$row_actions_source"
   grep -q 'id: projectMenu' "$project_menu_source"
-  grep -q 'panel.sidebarActions.openSelectedTerminal()' "$project_menu_source"
+  grep -q 'panel.sidebarActions.actions.openSelectedTerminal()' \
+    "$project_menu_source"
   if grep -q 'installRemoteClaude\|INSTALLING…\|"INSTALL"' "$remote_menu_source"; then
     printf '%s\n' 'Remote Claude still exposes automatic installation' >&2
     exit 1

@@ -70,11 +70,12 @@ Popup {
           onClicked: {
             var action = String(projectMenuChoice.modelData.action || "")
             projectMenu.close()
-            if (action === "terminal") panel.sidebarActions.openSelectedTerminal()
+            if (action === "terminal")
+              panel.sidebarActions.actions.openSelectedTerminal()
             else if (action === "new")
-              panel.sidebarActions.createThreadForRow(rowItem.modelData)
+              panel.sidebarActions.actions.createThreadForRow(rowItem.modelData)
             else if (action === "pin")
-              panel.sidebarActions.toggleSectionPinForRow(rowItem.modelData)
+              panel.sidebarActions.actions.toggleSectionPinForRow(rowItem.modelData)
           }
         }
       }

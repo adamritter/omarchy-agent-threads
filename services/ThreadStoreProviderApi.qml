@@ -8,6 +8,34 @@ QtObject {
   required property var preferences
   required property var snapshots
 
+  readonly property bool ready: providerLibrary.ready
+  readonly property bool loading: providerLibrary.loading
+  readonly property bool refreshQueued: providerLibrary.refreshQueued
+  readonly property double lastRefreshMs: providerLibrary.lastRefreshMs
+  readonly property bool remoteConfigLoaded: providerLibrary.remoteConfigLoaded
+  readonly property var remoteConfig: providerLibrary.remoteConfig
+  readonly property var remoteHosts: providerLibrary.supplementalHosts
+  readonly property string remoteQueryHostId: providerLibrary.remoteQueryHostId
+  readonly property string remoteActionHostId: providerLibrary.actionHostId
+  readonly property string remoteAddError: providerLibrary.remoteAddError
+  readonly property string remoteTestHostId: providerLibrary.remoteTestHostId
+  readonly property bool remoteTestRunning: providerLibrary.remoteTestRunning
+  readonly property bool remoteTestSucceeded: providerLibrary.remoteTestSucceeded
+  readonly property string remoteTestMessage: providerLibrary.remoteTestMessage
+  readonly property string remoteClaudeLoginHostId: providerLibrary.remoteClaudeLoginHostId
+  readonly property bool remoteClaudeLoginRunning: providerLibrary.remoteClaudeLoginRunning
+  readonly property var sshHosts: providerLibrary.sshHosts
+  readonly property bool sshHostsLoading: providerLibrary.sshHostsLoading
+  readonly property string sshHostsError: providerLibrary.sshHostsError
+  readonly property bool snapshotLoaded: snapshots.loaded
+  readonly property bool snapshotRestored: snapshots.restored
+  readonly property bool snapshotHydrating: snapshots.hydrating
+  readonly property string snapshot: snapshots.encoded
+
+  function clearRemoteError() {
+    providerLibrary.remoteAddError = ""
+  }
+
   function providerSnapshotObject() {
     return {
       codex: {

@@ -70,7 +70,7 @@ Item {
 
     Item {
       id: fastModeButton
-      readonly property bool fastEnabled: panel.service.fastMode
+      readonly property bool fastEnabled: panel.service.settings.fastMode
       anchors.right: parent.right
       anchors.rightMargin: Style.space(12)
       anchors.verticalCenter: parent.verticalCenter

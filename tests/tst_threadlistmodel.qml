@@ -18,7 +18,13 @@ TestCase {
 
   ThreadListModel {
     id: listModel
-    controller: testCase
+    service: testCase.service
+    session: testCase
+    activeProvider: testCase.activeProvider
+    groupPreviewLimit: testCase.groupPreviewLimit
+    homePath: testCase.homePath
+    workPath: testCase.workPath
+    codexScratchRoot: testCase.codexScratchRoot
   }
 
   function init() {
@@ -33,10 +39,14 @@ TestCase {
         { id: "beta", name: "Beta", cwd: "/work/project", updatedAt: 10 }
       ],
       projects: [],
-      remoteHosts: [],
-      collapsedProjects: ({ "local:/work/project": false }),
-      collapsedRemotes: ({}),
-      pinnedSections: ({}),
+      providers: {
+        remoteHosts: []
+      },
+      settings: {
+        collapsedProjects: ({ "local:/work/project": false }),
+        collapsedRemotes: ({}),
+        pinnedSections: ({})
+      },
       remotePathForThread: function(host, thread) { return thread.cwd }
     }
   }
@@ -54,7 +64,7 @@ TestCase {
 
   function test_switchesProviderWithoutLeakingCodexRows() {
     activeProvider = "claude"
-    service.remoteHosts = [{
+    service.providers.remoteHosts = [{
       id: "provider-claude",
       providerType: "claude",
       home: "/home/test",
@@ -153,7 +163,7 @@ TestCase {
 
   function test_expandedPinnedProjectShowsThreadsUnderCollapsedRemote() {
     service.threads = []
-    service.remoteHosts = [{
+    service.providers.remoteHosts = [{
       id: "remote-one",
       label: "Remote one",
       providerType: "codex",
@@ -163,14 +173,14 @@ TestCase {
         { id: "remote-beta", name: "Beta", cwd: "/srv/app", updatedAt: 10 }
       ]
     }]
-    service.pinnedSections = ({
+    service.settings.pinnedSections = ({
       "project:remote-one:/srv/app": true
     })
-    service.collapsedRemotes = ({
+    service.settings.collapsedRemotes = ({
       "remote-one": true
     })
 
-    service.collapsedProjects = ({
+    service.settings.collapsedProjects = ({
       "remote-one:/srv/app": true
     })
     listModel.rebuildRows("")
@@ -178,7 +188,7 @@ TestCase {
     compare(listModel.viewRows[0].kind, "remote")
     compare(listModel.viewRows[1].kind, "project")
 
-    service.collapsedProjects = ({
+    service.settings.collapsedProjects = ({
       "remote-one:/srv/app": false
     })
     listModel.rebuildRows("")

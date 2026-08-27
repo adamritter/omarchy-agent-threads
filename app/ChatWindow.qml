@@ -30,7 +30,6 @@ FloatingWindow {
   property string remoteAddress: initialOptions.remote
   property string pendingLaunchPrompt: initialOptions.prompt
   property bool startupConfigured: false
-  property bool rememberApproval: false
 
   readonly property color background: "#171717"
   readonly property color raised: "#222222"

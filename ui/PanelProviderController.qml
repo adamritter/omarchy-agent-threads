@@ -10,7 +10,8 @@ QtObject {
 
   function cycleEffort() {
     var current = panel.service.providers.selectedEffortForProvider(panel.activeProvider)
-    var next = ActionLogic.nextChoiceId(current, panel.modelEffortSelector.effortChoices())
+    var next = ActionLogic.nextChoiceId(
+      current, panel.sidebarView.modelEffortSelector.effortChoices())
     panel.service.providers.setEffortForProvider(panel.activeProvider, next)
     return next || "default"
   }
@@ -31,10 +32,12 @@ QtObject {
   
   function visibleRowIndex(first) {
     if (panel.viewRows.length === 0) return -1
-    var edgeY = panel.threadList.contentY + (first ? 1 : panel.threadList.height - 1)
+    var edgeY = panel.sidebarView.threadList.contentY
+      + (first ? 1 : panel.sidebarView.threadList.height - 1)
     var direction = first ? 1 : -1
     for (var offset = 0; offset <= 48; offset += 2) {
-      var index = panel.threadList.indexAt(panel.threadList.width / 2,
+      var index = panel.sidebarView.threadList.indexAt(
+        panel.sidebarView.threadList.width / 2,
         edgeY + direction * offset)
       if (index >= 0) return index
     }
@@ -46,7 +49,7 @@ QtObject {
   }
   
   function providerHost(providerId) {
-    return ThreadListLogic.providerHost(panel.service.remoteHosts, providerId)
+    return ThreadListLogic.providerHost(panel.service.providers.remoteHosts, providerId)
   }
   
   function providerLabel(providerId) {
@@ -71,12 +74,15 @@ QtObject {
     panel.session.searchOpen = state.searchOpen === true || panel.session.searchText !== ""
     panel.listActions.rebuildRows(String(state.selectedRowKey || ""))
     if (panel.viewRows.length > 0)
-      Qt.callLater(function() { panel.threadList.positionViewAtIndex(panel.selectedIndex, ListView.Contain) })
+      Qt.callLater(function() {
+        panel.sidebarView.threadList.positionViewAtIndex(
+          panel.selectedIndex, ListView.Contain)
+      })
   }
   
   function selectProvider(providerId) {
     var next = String(providerId || "").toLowerCase()
-    panel.providerMenu.close()
+    panel.sidebarView.providerMenu.close()
     if (next === panel.activeProvider) return
     saveProviderViewState(panel.activeProvider)
     panel.session.helpOpen = false
@@ -93,7 +99,8 @@ QtObject {
   }
   
   function providerLoading() {
-    if (panel.activeProvider === "codex") return !panel.service.ready || panel.service.loading
+    if (panel.activeProvider === "codex")
+      return !panel.service.providers.ready || panel.service.providers.loading
     return !panel.activeProviderHost || panel.activeProviderHost.loading === true
   }
   
@@ -101,7 +108,7 @@ QtObject {
     return PresentationLogic.statusText({
       providerError: providerErrorText(),
       activeProvider: panel.activeProvider,
-      providerReady: panel.service.ready,
+      providerReady: panel.service.providers.ready,
       providerLoading: providerLoading(),
       providerLabel: providerLabel(),
       totalThreadCount: panel.listActions.totalThreadCount(),
@@ -147,11 +154,11 @@ QtObject {
   function notificationStateSnapshot() {
     return ThreadNotificationLogic.notificationStateSnapshot(
       panel.service.threads, panel.service.threadStatuses,
-      panel.service.unreadThreads, panel.service.remoteHosts)
+      panel.service.unreadThreads, panel.service.providers.remoteHosts)
   }
   
   function sendThreadNotification(event) {
-    if (!panel.service.notificationsEnabled
+    if (!panel.service.settings.notificationsEnabled
         || Quickshell.env("AGENT_THREADS_PANEL_TEST") === "1") return
     var commands = ThreadNotificationLogic.notificationCommands(event)
     Quickshell.execDetached(commands.desktop)

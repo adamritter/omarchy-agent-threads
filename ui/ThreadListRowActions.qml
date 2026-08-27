@@ -83,7 +83,7 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onClicked: {
         panel.selectedIndex = rowItem.index
-        panel.sidebarActions.togglePin(
+        panel.sidebarActions.actions.togglePin(
           rowItem.modelData.remoteId, rowItem.threadData)
       }
     }
@@ -120,7 +120,7 @@ Item {
       cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
       onClicked: {
         panel.selectedIndex = rowItem.index
-        panel.sidebarActions.loginRemoteForRow(rowItem.modelData)
+        panel.sidebarActions.actions.loginRemoteForRow(rowItem.modelData)
       }
     }
   }
@@ -194,7 +194,7 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onClicked: {
         panel.selectedIndex = rowItem.index
-        panel.sidebarActions.toggleSectionPinForRow(rowItem.modelData)
+        panel.sidebarActions.actions.toggleSectionPinForRow(rowItem.modelData)
       }
     }
   }
@@ -224,7 +224,7 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onClicked: {
         panel.selectedIndex = rowItem.index
-        panel.sidebarActions.createThreadForRow(rowItem.modelData)
+        panel.sidebarActions.actions.createThreadForRow(rowItem.modelData)
       }
     }
   }

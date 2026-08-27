@@ -162,7 +162,7 @@ Item {
   }
 
   Timer {
-    interval: root.controller.sidebarOpen ? 2000 : 30000
+    interval: root.controller.settings.sidebarOpen ? 2000 : 30000
     running: Array.isArray(root.remoteHosts) && root.remoteHosts.length > 0
     repeat: true
     onTriggered: root.refreshVisibleProvider()
