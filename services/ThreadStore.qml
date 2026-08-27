@@ -55,9 +55,6 @@ Item {
   readonly property alias remoteTestRunning: agentProviders.remoteTestRunning
   readonly property alias remoteTestSucceeded: agentProviders.remoteTestSucceeded
   readonly property alias remoteTestMessage: agentProviders.remoteTestMessage
-  readonly property alias remoteClaudeInstallHostId: agentProviders.remoteClaudeInstallHostId
-  readonly property alias remoteClaudeInstallRunning: agentProviders.remoteClaudeInstallRunning
-  readonly property alias remoteClaudeInstallMessage: agentProviders.remoteClaudeInstallMessage
   readonly property alias remoteClaudeLoginHostId: agentProviders.remoteClaudeLoginHostId
   readonly property alias remoteClaudeLoginRunning: agentProviders.remoteClaudeLoginRunning
   readonly property alias sshHosts: agentProviders.sshHosts
@@ -298,10 +295,6 @@ Item {
 
   function testRemote(hostId) {
     return agentProviders.testRemote(hostId)
-  }
-
-  function installRemoteClaude(hostId) {
-    return agentProviders.installRemoteClaude(hostId)
   }
 
   function loginRemoteClaude(hostId) {

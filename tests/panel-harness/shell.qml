@@ -44,8 +44,6 @@ ShellRoot {
     property string remoteActionHostId: ""
     property string activeThreadId: "beta"
     property string remoteAddError: ""
-    property string remoteClaudeInstallHostId: ""
-    property bool remoteClaudeInstallRunning: false
     property string remoteClaudeLoginHostId: ""
     property bool remoteClaudeLoginRunning: false
     property string remoteTestHostId: ""

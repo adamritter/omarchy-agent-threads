@@ -56,7 +56,7 @@ node "$plugin_root/tests/fixtures/websocket-flood-test.mjs" \
 
 grep -F -- 'appServer.command = [controller.streamGuardPath, "--", "codex", "app-server"]' \
   "$plugin_root/providers/CodexAppServerClient.qml" >/dev/null
-grep -F -- 'installProcess.command = [controller.streamGuardPath, "--",' \
+grep -F -- 'loginProcess.command = [controller.streamGuardPath, "--",' \
   "$plugin_root/providers/RemoteClaudeManager.qml" >/dev/null
 if grep -F -- 'StdioCollector' \
     "$plugin_root/providers/RemoteClaudeManager.qml" >/dev/null; then

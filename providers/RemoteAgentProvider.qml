@@ -26,9 +26,6 @@ Item {
   property bool managementTestRunning: false
   property bool managementTestSucceeded: false
   property string managementTestMessage: ""
-  readonly property alias installHostId: claudeManager.installHostId
-  readonly property alias installRunning: claudeManager.installRunning
-  readonly property alias installMessage: claudeManager.installMessage
   readonly property alias loginHostId: claudeManager.loginHostId
   readonly property alias loginRunning: claudeManager.loginRunning
   property var sshHosts: []
@@ -253,7 +250,6 @@ Item {
       loading: false,
       error: String(snapshot.error || "")
     })
-    claudeManager.verificationComplete(hostId)
     if (hostId === archiveConfirmationHostId) {
       archiveConfirmationHostId = ""
       archiveConfirmationThreadId = ""
@@ -308,10 +304,6 @@ Item {
       addError = "Wait for the remote operation to finish"
       return false
     }
-    if (installRunning && installHostId === id) {
-      addError = "Wait for the Claude installation to finish"
-      return false
-    }
     if (loginRunning && loginHostId === id) {
       addError = "Wait for the Claude sign-in terminal to open"
       return false
@@ -347,10 +339,6 @@ Item {
     managementTestProcess.command = [queryHelperPath, configPath, id, "snapshot"]
     managementTestProcess.running = true
     return true
-  }
-
-  function installClaude(hostId) {
-    return claudeManager.install(hostId)
   }
 
   function loginClaude(hostId) {
@@ -594,9 +582,6 @@ Item {
           error: queryStderr.text.trim()
             || "Could not load remote " + root.providerLabel(failedHost) + " threads"
         })
-        if (hostId === root.installHostId) {
-          claudeManager.verificationComplete(hostId)
-        }
       } else {
         try {
           root.applySnapshot(JSON.parse(String(queryStdout.text || "{}").trim()))

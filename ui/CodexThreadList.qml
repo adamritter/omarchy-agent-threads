@@ -45,11 +45,6 @@ ListView {
     readonly property bool sectionRow: remoteRow || projectRow
     readonly property bool threadRow: !sectionRow && !moreRow
     readonly property var threadData: threadRow ? modelData.thread : null
-    readonly property bool installableRemoteClaude: remoteRow
-      && String(modelData.host && modelData.host.providerType || "") === "claude"
-      && modelData.host.available === false
-    readonly property bool installingRemoteClaude: installableRemoteClaude
-      && panel.service.remoteClaudeInstallHostId === String(modelData.remoteId || "")
     readonly property bool loginableRemoteClaude: remoteRow
       && String(modelData.host && modelData.host.providerType || "") === "claude"
       && modelData.host.available !== false
@@ -57,8 +52,7 @@ ListView {
     readonly property bool loggingInRemoteClaude: loginableRemoteClaude
       && panel.service.remoteClaudeLoginHostId === String(modelData.remoteId || "")
       && panel.service.remoteClaudeLoginRunning
-    readonly property bool needsRemoteClaudeAction: installableRemoteClaude
-      || loginableRemoteClaude
+    readonly property bool needsRemoteClaudeAction: loginableRemoteClaude
     readonly property bool groupedThread: threadRow && modelData.grouped === true
     readonly property bool activeThread: threadRow
       && panel.service.activeThreadId !== ""
@@ -728,9 +722,7 @@ ListView {
 
       Text {
         anchors.centerIn: parent
-        text: row.installingRemoteClaude ? "INSTALLING…"
-          : (row.loggingInRemoteClaude ? "OPENING…"
-            : (row.installableRemoteClaude ? "INSTALL" : "LOGIN"))
+        text: row.loggingInRemoteClaude ? "OPENING…" : "LOGIN"
         color: Color.accent
         font.family: panel.fontFamily
         font.pixelSize: Math.max(8, Style.font.caption - 1)
@@ -740,16 +732,12 @@ ListView {
       MouseArea {
         id: remoteClaudeActionMouse
         anchors.fill: parent
-        enabled: row.installableRemoteClaude
-          ? !panel.service.remoteClaudeInstallRunning
-          : !panel.service.remoteClaudeLoginRunning
+        enabled: !panel.service.remoteClaudeLoginRunning
         hoverEnabled: enabled
         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         onClicked: {
           panel.selectedIndex = row.index
-          if (row.installableRemoteClaude)
-            panel.service.installRemoteClaude(row.modelData.remoteId)
-          else panel.service.loginRemoteClaude(row.modelData.remoteId)
+          panel.service.loginRemoteClaude(row.modelData.remoteId)
         }
       }
     }

@@ -48,6 +48,10 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'root.service.flushProviderSnapshot()' "$panel_source"
   grep -q 'id: projectMenu' "$list_source"
   grep -q 'panel.sidebarActions.openSelectedTerminal()' "$list_source"
+  if grep -q 'installRemoteClaude\|INSTALLING…\|"INSTALL"' "$list_source"; then
+    printf '%s\n' 'Remote Claude still exposes automatic installation' >&2
+    exit 1
+  fi
   [[ "$(grep -c 'controller.effectiveModel()' "$local_codex_source")" == "2" ]]
   [[ "$(grep -c 'controller.effectiveEffort()' "$local_codex_source")" == "2" ]]
 

@@ -314,12 +314,16 @@ async function runRemoteClaude(host) {
   if (!result || typeof result !== "object" || Array.isArray(result))
     throw new Error("invalid remote Claude response")
   if (action === "snapshot") {
+    const error = result.available === false
+      ? "Install Claude Code on the remote machine, then test the connection again"
+      : String(result.error || "")
     process.stdout.write(JSON.stringify({
       ...result,
       hostId,
       label: String(host.label || host.id || "Remote"),
       providerType: "claude",
-      type: "ssh"
+      type: "ssh",
+      error
     }) + "\n")
   } else {
     process.stdout.write(JSON.stringify({ ...result, hostId, action }) + "\n")

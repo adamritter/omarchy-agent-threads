@@ -32,6 +32,7 @@ printf '%s\n' \
   'case "${REMOTE_QUERY_OUTPUT:-}" in' \
   '  oversized-stdout) head -c $((17 * 1024 * 1024)) /dev/zero | tr '\''\0'\'' x; exit 0 ;;' \
   '  oversized-stderr) head -c $((300 * 1024)) /dev/zero | tr '\''\0'\'' x >&2; exit 1 ;;' \
+  '  missing-claude) printf "%s\n" '\''{"available":false,"authenticated":false,"error":"Claude CLI is not installed on this host","threads":[]}'\''; exit 0 ;;' \
   'esac' \
   'if [[ "$remote_command" == *" '\''archive'\'' "* ]]; then' \
   '  touch "$REMOTE_FIXTURE_HOME/archived"' \
@@ -74,6 +75,12 @@ jq -e --arg id "$session_id" '
   and (.threads[] | select(.id == $id)
     | .lifecycle == "done" and .completionToken == "remote-complete")' \
   <<<"$snapshot" >/dev/null
+
+REMOTE_QUERY_OUTPUT=missing-claude \
+  $plugin_root/bin/omarchy-codex-remote-query "$config" remote-claude snapshot \
+  | jq -e '.available == false
+    and .error == "Install Claude Code on the remote machine, then test the connection again"' \
+    >/dev/null
 
 $plugin_root/bin/omarchy-codex-remote-query \
   "$config" remote-claude pin "$session_id" true | jq -e '.ok == true' >/dev/null

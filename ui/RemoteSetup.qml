@@ -294,7 +294,7 @@ Rectangle {
         width: parent.width
         text: panel.remoteSetupType === "ssh"
           ? (panel.remoteSetupProvider === "claude"
-            ? "The status bridge is installed automatically. Passwordless SSH plus an installed and authenticated remote Claude CLI are required (claude auth login)."
+            ? "Install Claude Code and run claude auth login on the remote machine first. Passwordless SSH is required; the status bridge is installed automatically."
             : (panel.remoteSetupProvider === "opencode"
               ? "The headless OpenCode API starts automatically on the remote machine. Passwordless SSH, Node.js, curl, and an installed and authenticated OpenCode CLI are required. The first launch can take up to 30 seconds."
               : "Your SSH config manages keys, ports, and jump hosts. Passwordless key authentication and a remote Codex CLI are required."))

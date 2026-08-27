@@ -229,16 +229,16 @@ ports, jump hosts, and other connection options.
 
 Remote Codex supports SSH and direct App Server connections. Remote Claude uses
 SSH and installs a small per-user status bridge on the remote host so active
-sessions can be tracked. If Claude Code is missing, the remote row offers a
-**INSTALL** button that installs Anthropic's official npm package over SSH and
-then retests the host automatically. If Claude is installed but signed out, a
+sessions can be tracked. Claude Code must be installed on the remote machine
+before the connection is added. If it is missing, the remote row tells you to
+install it and retest the connection. If Claude is installed but signed out, a
 **LOGIN** button opens `claude auth login` on that machine in a terminal; the
 OAuth page opens automatically in the local browser, and the remote updates
-automatically after sign-in. Remote OpenCode uses SSH and maintains a localhost-only
-headless OpenCode API on the remote machine for discovery, status, capabilities,
-session creation, and archive operations. Codex and OpenCode must already be
-installed on the remote machine, and every provider must be authenticated;
-remote Claude requires npm, while remote OpenCode additionally requires Node.js
+automatically after sign-in. Remote OpenCode uses SSH and maintains a
+localhost-only headless OpenCode API on the remote machine for discovery,
+status, capabilities, session creation, and archive operations. Codex, Claude
+Code, and OpenCode must already be installed on the remote machine, and every
+provider must be authenticated; remote OpenCode additionally requires Node.js
 and curl.
 
 Use the `…` button on a remote row (or right-click the row) for the compact

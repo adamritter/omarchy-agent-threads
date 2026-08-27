@@ -25,9 +25,6 @@ Item {
   readonly property alias remoteTestRunning: remoteProvider.managementTestRunning
   readonly property alias remoteTestSucceeded: remoteProvider.managementTestSucceeded
   readonly property alias remoteTestMessage: remoteProvider.managementTestMessage
-  readonly property alias remoteClaudeInstallHostId: remoteProvider.installHostId
-  readonly property alias remoteClaudeInstallRunning: remoteProvider.installRunning
-  readonly property alias remoteClaudeInstallMessage: remoteProvider.installMessage
   readonly property alias remoteClaudeLoginHostId: remoteProvider.loginHostId
   readonly property alias remoteClaudeLoginRunning: remoteProvider.loginRunning
   readonly property alias sshHosts: remoteProvider.sshHosts
@@ -216,7 +213,6 @@ Item {
   }
   function removeRemote(hostId) { return remoteProvider.removeRemote(hostId) }
   function testRemote(hostId) { return remoteProvider.testRemote(hostId) }
-  function installRemoteClaude(hostId) { return remoteProvider.installClaude(hostId) }
   function loginRemoteClaude(hostId) { return remoteProvider.loginClaude(hostId) }
   function sshHostEnabled(alias, providerType) {
     return remoteProvider.sshHostEnabled(alias, providerType)
