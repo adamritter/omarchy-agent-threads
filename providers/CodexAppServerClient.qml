@@ -41,12 +41,11 @@ Item {
     controller.codexConfig = ({})
     controller.threadStatuses = ({})
     controller.unreadThreads = ({})
-    controller.activeThreadId = ""
+    controller.observeActiveThread("", "app-server-reset")
     controller.errorText = ""
     controller.movingThreadId = ""
-    controller.renamingThreadId = ""
-    controller.pinningThreadId = ""
-    controller.pendingPinValue = false
+    controller.finishThreadMutation("rename")
+    controller.finishThreadMutation("pin")
     controller.pendingMovePath = ""
     controller.pendingMoveName = ""
   }
@@ -301,34 +300,32 @@ Item {
     if (message.id === archiveRequestId && archiveRequestId !== 0) {
       archiveRequestId = 0
       if (message.error) {
-        controller.restoreArchivedThread()
-        controller.errorText = String(message.error.message || "Could not archive the Codex thread")
+        controller.failThreadArchive(message.error.message)
       } else {
         controller.archiveConfirmationId = controller.archivingThreadId
         controller.archivedThreadSnapshot = null
         controller.archivedThreadIndex = -1
-        controller.archivingThreadId = ""
+        controller.finishThreadMutation("archive")
         controller.scheduleEventRefresh()
       }
       return
     }
     if (message.id === renameRequestId && renameRequestId !== 0) {
       renameRequestId = 0
-      controller.renamingThreadId = ""
       if (message.error)
-        controller.errorText = String(message.error.message || "Could not rename the Codex thread")
-      else controller.scheduleEventRefresh()
+        controller.failThreadMutation("rename", message.error.message)
+      else controller.finishThreadMutation("rename")
+      if (!message.error) controller.scheduleEventRefresh()
       return
     }
     if (message.id === pinRequestId && pinRequestId !== 0) {
       var pinnedThreadId = controller.pinningThreadId
       var pinnedValue = controller.pendingPinValue
       pinRequestId = 0
-      controller.pinningThreadId = ""
-      controller.pendingPinValue = false
       if (message.error) {
-        controller.errorText = String(message.error.message || "Could not update the Codex pin")
+        controller.failThreadMutation("pin", message.error.message)
       } else {
+        controller.finishThreadMutation("pin")
         var returnedThread = message.result ? message.result.thread : null
         controller.threads = controller.applyThreadPin(
           controller.threads, pinnedThreadId, pinnedValue, returnedThread)
@@ -383,11 +380,12 @@ Item {
       root.loading = false
       if (root.archiveRequestId !== 0) root.controller.restoreArchivedThread()
       root.archiveRequestId = 0
+      if (root.renameRequestId !== 0)
+        root.controller.failThreadMutation("rename", "The Codex App Server stopped")
       root.renameRequestId = 0
-      root.controller.renamingThreadId = ""
+      if (root.pinRequestId !== 0)
+        root.controller.failThreadMutation("pin", "The Codex App Server stopped")
       root.pinRequestId = 0
-      root.controller.pinningThreadId = ""
-      root.controller.pendingPinValue = false
       root.projectListRequestId = 0
       root.rateLimitsRequestId = 0
       root.modelListRequestId = 0

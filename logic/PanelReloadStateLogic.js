@@ -1,6 +1,6 @@
 .pragma library
 
-var snapshotVersion = 1
+var snapshotVersion = 2
 
 function focusTarget(value) {
   return String(value || "") === "search" ? "search" : "list"
@@ -24,6 +24,7 @@ function encode(state, processId, instanceId, nowMs) {
       processId: Number(processId || 0),
       instanceId: String(instanceId || ""),
       savedAt: Number(nowMs || Date.now()),
+      workspaceKey: String(source.workspaceKey || ""),
       selectedRowKey: String(source.selectedRowKey || ""),
       keyboardFocusRequested: source.keyboardFocusRequested === true,
       focusTarget: focusTarget(source.focusTarget),
@@ -52,6 +53,7 @@ function decode(raw, processId, instanceId, nowMs, maxAgeMs) {
   if (savedAt <= 0 || age < -1000 || age > Number(maxAgeMs || 0)) return null
 
   return {
+    workspaceKey: String(parsed.workspaceKey || ""),
     selectedRowKey: String(parsed.selectedRowKey || ""),
     keyboardFocusRequested: parsed.keyboardFocusRequested === true,
     focusTarget: focusTarget(parsed.focusTarget),
@@ -61,4 +63,10 @@ function decode(raw, processId, instanceId, nowMs, maxAgeMs) {
     cursorReturnX: coordinate(parsed.cursorReturnX),
     cursorReturnY: coordinate(parsed.cursorReturnY)
   }
+}
+
+function workspaceMatches(savedWorkspaceKey, activeWorkspaceKey) {
+  var saved = String(savedWorkspaceKey || "")
+  var active = String(activeWorkspaceKey || "")
+  return saved !== "" && active !== "" && saved === active
 }

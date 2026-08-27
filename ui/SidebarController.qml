@@ -8,6 +8,7 @@ Item {
   required property var listView
   readonly property var service: panel.service
   property string followedActiveThreadId: ""
+  property string activationIntentThreadId: ""
 
   function rowIndexForThread(threadId, remoteId) {
     var scope = remoteId !== undefined
@@ -25,20 +26,38 @@ Item {
     return panel.rowIndexForKey("remote:" + String(remoteId || ""))
   }
 
-  function openSelected() {
-    if (panel.selectedIndex < 0 || panel.selectedIndex >= panel.viewRows.length) return
+  function openSelected(source) {
+    if (panel.selectedIndex < 0 || panel.selectedIndex >= panel.viewRows.length)
+      return ""
     var row = panel.viewRows[panel.selectedIndex]
-    if (row.kind === "more")
+    var key = panel.rowKey(row)
+    if (row.kind === "more") {
       panel.showAllGroup(row.groupKind, row.path, row.remoteId)
-    else if (row.kind === "remote") panel.toggleRemote(row.remoteId)
-    else if (row.kind === "project") panel.toggleProject(row.path, row.remoteId)
-    else if (row.remoteId) {
-      panel.releaseSidebarFocus(true)
-      service.openRemoteThread(row.remoteId, row.thread, row.path)
-    } else {
-      panel.releaseSidebarFocus(true)
-      service.openThread(row.thread, row.path)
+      return key
     }
+    if (row.kind === "remote") {
+      panel.toggleRemote(row.remoteId)
+      return key
+    }
+    if (row.kind === "project") {
+      panel.toggleProject(row.path, row.remoteId)
+      return key
+    }
+
+    panel.releaseSidebarFocus(true)
+    var started = row.remoteId
+      ? service.openRemoteThread(
+          row.remoteId, row.thread, row.path, source || "keyboard")
+      : service.openThread(row.thread, row.path, source || "keyboard")
+    if (started !== true) return ""
+    activationIntentThreadId = String(row.thread && row.thread.id || "")
+    return key
+  }
+
+  function activateRow(index, source) {
+    var key = selectThreadIndex(index)
+    if (key === "") return ""
+    return openSelected(source || "pointer")
   }
 
   function adjacentThreadIndex(startIndex, direction, wrap) {
@@ -82,7 +101,16 @@ Item {
   }
 
   function followTargetThreadId() {
-    return String(service.launchingThreadId || service.activeThreadId || "")
+    var intent = String(activationIntentThreadId || "")
+    var active = String(service.activeThreadId || "")
+    var launching = String(service.launchingThreadId || "")
+    var failed = String(service.failedLaunchThreadId || "")
+    if (intent !== "") {
+      if (active === intent) activationIntentThreadId = ""
+      else if (launching === intent || failed === intent) return intent
+      else activationIntentThreadId = ""
+    }
+    return launching || active
   }
 
   function activateAdjacentThread(direction) {
@@ -90,13 +118,8 @@ Item {
     if (activeIndex < 0) return ""
     var index = adjacentThreadIndex(activeIndex, direction, Number(direction) >= 0)
     if (index < 0) return ""
-    var row = panel.viewRows[index]
-    var key = selectThreadIndex(index)
-    panel.releaseSidebarFocus(true)
-    if (row.remoteId)
-      service.openRemoteThread(row.remoteId, row.thread, row.path)
-    else service.openThread(row.thread, row.path)
-    return key
+    if (selectThreadIndex(index) === "") return ""
+    return openSelected("cycle")
   }
 
   function newSelectedThread() {

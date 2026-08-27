@@ -42,4 +42,21 @@ if grep -q 'function threadById' \
   exit 1
 fi
 
+if rg -n 'service\.open(Remote)?Thread\(' "$plugin_dir/ui" \
+    --glob '!SidebarController.qml'; then
+  printf '%s\n' 'A UI component bypasses the sidebar activation controller.' >&2
+  exit 1
+fi
+
+if rg -n 'controller\.launchingThreadId[[:space:]]*=' \
+    "$plugin_dir/providers" "$plugin_dir/services"; then
+  printf '%s\n' 'A provider bypasses the thread launch state machine.' >&2
+  exit 1
+fi
+
+if rg -n 'controller\.activeThreadId[[:space:]]*=' "$plugin_dir/providers"; then
+  printf '%s\n' 'A provider bypasses confirmed active-thread observation.' >&2
+  exit 1
+fi
+
 printf 'Static checks passed.\n'

@@ -33,6 +33,10 @@ function promptCharacterLimit() {
   return maxPromptCharacters
 }
 
+function boundedPromptInput(value) {
+  return text(value).slice(0, maxPromptCharacters)
+}
+
 function promptValidationError(value) {
   return text(value).length > maxPromptCharacters
     ? "Prompt exceeds the 200,000 character limit" : ""

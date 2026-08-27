@@ -32,3 +32,59 @@ forwarded host properties.
 New QML component files require a fresh shell import scan. Use
 `scripts/reload-plugin` first; a complete shell restart is reserved for the
 documented Qt directory-cache exception.
+
+## Behavioral invariants
+
+Folder boundaries do not replace runtime state contracts. Changes must preserve
+the following invariants.
+
+### Thread activation
+
+- Pointer, keyboard, cycling, and IPC activation route through
+  `ui/SidebarController.qml`.
+- Row components select and delegate; they never call provider launch methods.
+- Selection, pending launch, and confirmed active thread are separate states.
+- A failed launch preserves the user's selected thread and reports an error.
+
+### Launch lifecycle
+
+`services/ThreadStore.qml` is the single writer for the thread launch state:
+
+```text
+idle -> launching(requestId, target, source) -> confirmed(target)
+                                           \-> failed(target, error)
+```
+
+- Providers request a launch token before starting a process.
+- Success or failure must present the same token; stale completions are ignored.
+- `activeThreadId` changes only after a provider observes its launch
+  postcondition. Helper exit code zero therefore means the target window was
+  observed, not merely that a process was spawned.
+
+### Thread mutations
+
+- Archive, rename, and pin operations acquire the shared mutation boundary
+  before changing UI state or starting provider work.
+- Archive validates active-writer ownership before applying a tombstone.
+- Every optimistic mutation has a provider-owned rollback and a normalized
+  user-facing failure.
+
+### Persistence and reload state
+
+- Durable user preferences and ephemeral panel reload state remain separate.
+- Reload selection and focus are scoped to the workspace that created the
+  snapshot and are discarded after a real workspace change.
+- Persistent frontend changes record their source and timestamp. The interactive
+  shortcut requires `Super+Ctrl+A`; unmodified text input cannot change it.
+
+## Required behavioral contracts
+
+Static source checks supplement, but do not replace, executable contracts. New
+changes to these paths must cover the outcome, including failure:
+
+- row activation parity between pointer and keyboard;
+- launch success, timeout, stale completion, and unchanged active state on
+  failure;
+- workspace changes during hot reload restoration;
+- active-writer archive rejection before optimistic removal;
+- Quickshell-native component loading for top-level windows.

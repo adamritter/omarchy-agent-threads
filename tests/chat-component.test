@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+output_file="$(mktemp -t agent-chat-component-XXXXXX.log)"
+trap 'rm -f -- "$output_file"' EXIT
+
+set +e
+AGENT_CHAT_COMPONENT_PATH="$plugin_root/app/ChatWindow.qml" \
+  timeout 10s quickshell --no-duplicate \
+    --path "$plugin_root/tests/chat-component-harness.qml" \
+    >"$output_file" 2>&1
+exit_code=$?
+set -e
+
+if (( exit_code != 0 )) || ! grep -F -- 'CHAT_COMPONENT_PASS' "$output_file" >/dev/null; then
+  cat "$output_file" >&2
+  printf 'Agent Chat component contract failed with code %d.\n' "$exit_code" >&2
+  exit 1
+fi
+if grep -F -- 'CHAT_COMPONENT_FAIL:' "$output_file" >/dev/null; then
+  cat "$output_file" >&2
+  exit 1
+fi
+
+printf 'Agent Chat component contract passed.\n'

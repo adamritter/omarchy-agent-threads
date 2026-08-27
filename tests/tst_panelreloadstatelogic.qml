@@ -7,6 +7,7 @@ TestCase {
 
   function sampleState() {
     return {
+      workspaceKey: "3",
       selectedRowKey: "thread:local:abc",
       keyboardFocusRequested: true,
       focusTarget: "search",
@@ -23,6 +24,7 @@ TestCase {
     var decoded = PanelReloadStateLogic.decode(encoded, 42, "shell-a", 1200, 5000)
 
     verify(decoded !== null)
+    compare(decoded.workspaceKey, "3")
     compare(decoded.selectedRowKey, "thread:local:abc")
     compare(decoded.keyboardFocusRequested, true)
     compare(decoded.focusTarget, "search")
@@ -50,6 +52,14 @@ TestCase {
 
     verify(decoded !== null)
     compare(decoded.focusTarget, "list")
+    compare(decoded.workspaceKey, "")
     compare(JSON.stringify(decoded.expandedGroups), "{}")
+  }
+
+  function test_restoresFocusOnlyOnCapturedWorkspace() {
+    verify(PanelReloadStateLogic.workspaceMatches("3", "3"))
+    verify(!PanelReloadStateLogic.workspaceMatches("3", "4"))
+    verify(!PanelReloadStateLogic.workspaceMatches("", "3"))
+    verify(!PanelReloadStateLogic.workspaceMatches("3", ""))
   }
 }

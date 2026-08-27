@@ -11,6 +11,7 @@ Item {
   signal activateRequested()
   signal terminalRequested()
   signal fastToggleRequested()
+  signal frontendToggleRequested()
   signal returnRequested()
   signal closeRequested()
   signal deleteRequested()
@@ -26,6 +27,11 @@ Item {
     var meta = event.modifiers & Qt.MetaModifier
     if (control && meta && event.key === Qt.Key_F) {
       fastToggleRequested()
+      event.accepted = true
+      return
+    }
+    if (control && meta && event.key === Qt.Key_A) {
+      frontendToggleRequested()
       event.accepted = true
       return
     }

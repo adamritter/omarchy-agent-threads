@@ -150,4 +150,66 @@ TestCase {
     compare(visible.length, 1)
     compare(visible[0].id, "two")
   }
+
+  function test_explainsWriterOwnedArchiveFailures() {
+    var message = "Close the Codex session that is using this thread before archiving it"
+
+    compare(ThreadStateLogic.archiveBlockedMessage("active", "active"), message)
+    compare(ThreadStateLogic.archiveBlockedMessage("other", "active"), "")
+    compare(ThreadStateLogic.archiveErrorMessage(
+      "thread already has an active writer (code -32600)"), message)
+    compare(ThreadStateLogic.archiveErrorMessage("permission denied"), "permission denied")
+    compare(ThreadStateLogic.archiveErrorMessage(""), "Could not archive the Codex thread")
+  }
+
+  function test_normalizesMutationConflictsAndErrors() {
+    compare(ThreadStateLogic.mutationBusyMessage("archive"),
+      "Wait for the current thread action to finish before starting archive")
+    compare(ThreadStateLogic.mutationErrorMessage("rename", ""),
+      "Could not rename the thread")
+    compare(ThreadStateLogic.mutationErrorMessage("pin", "permission denied"),
+      "permission denied")
+  }
+
+  function test_threadLaunchStateAcceptsOneRequestAndConfirmsIt() {
+    var idle = ThreadStateLogic.idleThreadLaunchState()
+    var started = ThreadStateLogic.beginThreadLaunch(idle, "thread-a", "pointer")
+    verify(started.accepted)
+    compare(started.requestId, 1)
+    compare(started.state.phase, "launching")
+    compare(started.state.targetThreadId, "thread-a")
+    compare(started.state.source, "pointer")
+
+    var overlapping = ThreadStateLogic.beginThreadLaunch(
+      started.state, "thread-b", "keyboard")
+    verify(!overlapping.accepted)
+    compare(overlapping.state.targetThreadId, "thread-a")
+
+    var confirmed = ThreadStateLogic.confirmThreadLaunch(
+      started.state, started.requestId, "thread-a")
+    verify(confirmed.applied)
+    compare(confirmed.threadId, "thread-a")
+    compare(confirmed.state.phase, "idle")
+    compare(confirmed.state.sequence, 1)
+    compare(confirmed.state.failedThreadId, "")
+  }
+
+  function test_threadLaunchStateRejectsStaleCompletionAndRetainsFailure() {
+    var started = ThreadStateLogic.beginThreadLaunch(
+      ThreadStateLogic.idleThreadLaunchState(4), "thread-b", "cycle")
+    compare(started.requestId, 5)
+
+    var stale = ThreadStateLogic.confirmThreadLaunch(started.state, 4, "thread-old")
+    verify(!stale.applied)
+    compare(stale.state.phase, "launching")
+    compare(stale.state.targetThreadId, "thread-b")
+
+    var failed = ThreadStateLogic.failThreadLaunch(
+      started.state, started.requestId, "window was not created")
+    verify(failed.applied)
+    compare(failed.threadId, "thread-b")
+    compare(failed.state.phase, "idle")
+    compare(failed.state.failedThreadId, "thread-b")
+    compare(failed.state.error, "window was not created")
+  }
 }

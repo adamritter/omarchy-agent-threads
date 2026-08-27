@@ -37,6 +37,7 @@ Item {
   property int pendingAttempts: 0
   property int serverRestartAttempts: 0
   property string lastSnapshotSignature: ""
+  property int openRequestId: 0
 
   readonly property string queryHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-agent-provider-query").toString().replace(/^file:\/\//, "")
@@ -164,24 +165,23 @@ Item {
 
   function archiveThread(thread) {
     var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running) return
+    if (id === "" || actionProcess.running
+        || !controller.beginThreadMutation("archive", id)) return false
     actionKind = "archive"
     actionThreadId = id
     actionHostId = hostId
-    controller.archivingThreadId = id
-    controller.launchError = ""
     actionProcess.command = [queryHelperPath, providerType, "archive", id, pathForThread(thread)]
     actionProcess.running = true
+    return true
   }
 
   function renameThread(thread, name) {
     var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running) return false
+    if (id === "" || actionProcess.running
+        || !controller.beginThreadMutation("rename", id)) return false
     actionKind = "rename"
     actionThreadId = id
     actionHostId = hostId
-    controller.renamingThreadId = id
-    controller.launchError = ""
     actionProcess.command = [
       queryHelperPath, providerType, "rename", id, pathForThread(thread), name
     ]
@@ -191,13 +191,12 @@ Item {
 
   function toggleThreadPin(thread) {
     var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running) return
+    if (id === "" || actionProcess.running
+        || !controller.beginThreadMutation("pin", id)) return false
     actionKind = "pin"
     actionThreadId = id
     actionPinValue = !(thread && thread.isPinned === true)
     actionHostId = hostId
-    controller.pinningThreadId = id
-    controller.launchError = ""
     controller.pendingPinValue = actionPinValue
     actionProcess.command = [
       queryHelperPath,
@@ -208,25 +207,29 @@ Item {
       actionPinValue ? "true" : "false"
     ]
     actionProcess.running = true
+    return true
   }
 
-  function openThread(thread, directory) {
-    if (!thread || !thread.id || openProcess.running) return
+  function openThread(thread, directory, source) {
+    if (!thread || !thread.id || openProcess.running) return false
+    var threadId = String(thread.id)
+    var requestId = controller.beginThreadLaunch(
+      threadId, source || (providerType + "-local"))
+    if (requestId === 0) return false
     openIsNew = false
-    controller.launchingThreadId = String(thread.id)
-    controller.launchError = ""
+    openRequestId = requestId
     openProcess.command = [
       openHelperPath,
       providerType,
       String(directory || pathForThread(thread)),
-      controller.launchingThreadId,
+      threadId,
       serverUrl,
       controller.selectedModelForProvider(providerType),
       controller.selectedEffortForProvider(providerType),
       controller.selectedAgentForProvider(providerType)
     ]
     openProcess.running = true
-    controller.threadLaunchRequested(controller.launchingThreadId)
+    return true
   }
 
   function newThread(directory) {
@@ -277,7 +280,7 @@ Item {
       if (id === "" || pendingKnownIds[id] === true) continue
       if (pathForThread(thread) !== pendingPath) continue
       launchCoordinator.map(id, pendingWindowAddress, hostId, pendingServerUrl)
-      controller.activeThreadId = id
+      controller.observeActiveThread(id, "new-local-provider-thread")
       clearPendingNew()
       return
     }
@@ -311,14 +314,10 @@ Item {
     running: false
 
     onExited: function(exitCode) {
-      if (exitCode !== 0)
-        root.controller.launchError = actionStderr.text.trim() || root.label + " action failed"
-      if (root.actionKind === "archive") root.controller.archivingThreadId = ""
-      if (root.actionKind === "rename") root.controller.renamingThreadId = ""
-      if (root.actionKind === "pin") {
-        root.controller.pinningThreadId = ""
-        root.controller.pendingPinValue = false
-      }
+      var kind = root.actionKind
+      if (exitCode !== 0) root.controller.failThreadMutation(
+        kind, actionStderr.text.trim() || root.label + " action failed")
+      else root.controller.finishThreadMutation(kind)
       root.actionKind = ""
       root.actionThreadId = ""
       root.actionHostId = ""
@@ -334,8 +333,10 @@ Item {
 
     onExited: function(exitCode) {
       if (exitCode !== 0) {
-        root.controller.launchError = openStderr.text.trim() || "Could not open " + root.label
-        root.controller.launchingThreadId = ""
+        if (!root.openIsNew) root.controller.failThreadLaunch(
+          root.openRequestId,
+          openStderr.text.trim() || "Could not open " + root.label)
+        root.openRequestId = 0
         if (root.openIsNew) root.clearPendingNew()
         return
       }
@@ -346,7 +347,8 @@ Item {
       if (root.openIsNew) {
         if (runtimeSessionId !== "" && address !== "") {
           launchCoordinator.map(runtimeSessionId, address, root.hostId, runtimeServer)
-          root.controller.activeThreadId = runtimeSessionId
+          root.controller.observeActiveThread(
+            runtimeSessionId, "new-local-provider-thread")
           root.clearPendingNew()
         } else {
           root.pendingWindowAddress = address
@@ -354,8 +356,8 @@ Item {
           newResolveTimer.restart()
         }
       } else {
-        root.controller.activeThreadId = root.controller.launchingThreadId
-        root.controller.launchingThreadId = ""
+        root.controller.confirmThreadLaunch(root.openRequestId, "")
+        root.openRequestId = 0
       }
       root.controller.refreshActiveThread()
       root.refresh()

@@ -14,6 +14,7 @@ Item {
   property string pendingNewThreadId: ""
   property string pendingNewWindowAddress: ""
   property int pendingNewThreadAttempts: 0
+  property int openRequestId: 0
 
   readonly property string terminalHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-terminal-open").toString().replace(/^file:\/\//, "")
@@ -24,20 +25,23 @@ Item {
 
   ThreadLaunchCoordinator { id: launchCoordinator }
 
-  function openThread(thread, cwdOverride) {
-    if (!thread || !thread.id || openProcess.running) return
-    controller.launchingThreadId = String(thread.id)
-    controller.launchError = ""
+  function openThread(thread, cwdOverride, source) {
+    if (!thread || !thread.id || openProcess.running) return false
+    var threadId = String(thread.id)
+    var requestId = controller.beginThreadLaunch(
+      threadId, source || "local-terminal")
+    if (requestId === 0) return false
+    openRequestId = requestId
     openProcess.command = ActionLogic.localCodexTerminalCommand(
       terminalHelperPath,
-      controller.launchingThreadId,
+      threadId,
       String(cwdOverride || controller.projectPathForThread(thread)
         || controller.backendHomePath),
       controller.effectiveModel(),
       controller.effectiveEffort(),
       controller.codexServiceTier)
     openProcess.running = true
-    controller.threadLaunchRequested(controller.launchingThreadId)
+    return true
   }
 
   function newThread(projectPath) {
@@ -80,7 +84,7 @@ Item {
         if (id !== "" && newThreadKnownIds[id] !== true
             && String(thread.cwd || "") === pendingNewThreadPath) {
           pendingNewThreadId = id
-          controller.activeThreadId = id
+          controller.observeActiveThread(id, "new-local-codex-thread")
           break
         }
       }
@@ -103,9 +107,11 @@ Item {
     id: openProcess
     running: false
     onExited: function(exitCode) {
-      if (exitCode !== 0)
-        controller.launchError = openStderr.text.trim() || "Could not open the Codex thread"
-      controller.launchingThreadId = ""
+      var requestId = root.openRequestId
+      root.openRequestId = 0
+      if (exitCode !== 0) controller.failThreadLaunch(
+        requestId, openStderr.text.trim() || "Could not open the Codex thread")
+      else controller.confirmThreadLaunch(requestId, "")
       root.refreshActiveThread()
     }
     stderr: StdioCollector { id: openStderr; waitForEnd: true }
@@ -117,7 +123,8 @@ Item {
     running: false
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: controller.activeThreadId = String(text || "").trim()
+      onStreamFinished: controller.observeActiveThread(
+        String(text || "").trim(), "focused-terminal")
     }
     onExited: if (root.activeThreadRefreshQueued)
       Qt.callLater(root.refreshActiveThread)

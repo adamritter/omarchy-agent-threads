@@ -94,10 +94,7 @@ Popup {
             if (action === "pin") {
               panel.sidebarActions.togglePin(rowItem.modelData.remoteId, rowItem.threadData)
             } else if (action === "open") {
-              if (rowItem.modelData.remoteId)
-                panel.service.openRemoteThread(rowItem.modelData.remoteId,
-                  rowItem.threadData, rowItem.modelData.path)
-              else panel.service.openThread(rowItem.threadData, rowItem.modelData.path)
+              panel.sidebarActions.openSelected("context-menu")
             } else if (action === "terminal") {
               panel.sidebarActions.openSelectedTerminal()
             } else if (action === "rename") {

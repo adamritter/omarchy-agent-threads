@@ -320,7 +320,13 @@ FloatingWindow {
           placeholderText: conversation.ready ? "Message Codex" : "Connecting to Codex..."
           placeholderTextColor: root.muted
           wrapMode: TextEdit.Wrap
-          maximumLength: ConversationLogic.promptCharacterLimit()
+          onTextChanged: {
+            var bounded = ConversationLogic.boundedPromptInput(text)
+            if (bounded === text) return
+            var position = cursorPosition
+            text = bounded
+            cursorPosition = Math.min(position, text.length)
+          }
           enabled: conversation.ready && !conversation.loading
           background: Item {}
           font.pixelSize: 14

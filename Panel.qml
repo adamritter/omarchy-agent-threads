@@ -96,6 +96,7 @@ Panel {
   property bool reloadSelectionGuard: false
   property bool pendingReloadFocus: false
   property string pendingReloadFocusTarget: "list"
+  property string pendingReloadWorkspaceKey: ""
   readonly property bool reloadSelectionPending: pendingReloadRowKey !== ""
     || reloadSelectionGuard
   readonly property string reloadStatePath: service && service.runtimeDir
@@ -143,7 +144,7 @@ Panel {
     { keys: "y", description: "Archive selected thread" },
     { keys: "R", description: "Add remote host (SSH or App Server)" },
     { keys: "s", description: "Toggle this-workspace or global sidebar" },
-    { keys: "a", description: service.threadFrontend === "agent-chat"
+    { keys: "Super+Ctrl+A", description: service.threadFrontend === "agent-chat"
         ? "Toggle how Codex threads open · Agent Chat is on"
         : "Toggle how Codex threads open · Agent Chat is off (terminal)" },
     { keys: "Super+Ctrl+F", description: service.fastMode
@@ -192,6 +193,7 @@ Panel {
     if (reloadStatePath === "") return
     reloadStateCaptureTimer.stop()
     var encoded = PanelReloadStateLogic.encode({
+      workspaceKey: activeWorkspaceKey,
       selectedRowKey: rowKey(viewRows[selectedIndex]),
       keyboardFocusRequested: keyboardFocusRequested,
       focusTarget: searchField.activeFocus ? "search" : "list",
@@ -219,6 +221,7 @@ Panel {
     if (reloadSelectionGuard) reloadSelectionGuardTimer.restart()
     pendingReloadFocus = state.keyboardFocusRequested
     pendingReloadFocusTarget = state.focusTarget
+    pendingReloadWorkspaceKey = state.workspaceKey
     cursorReturnX = state.cursorReturnX
     cursorReturnY = state.cursorReturnY
     rebuildRows(pendingReloadRowKey)
@@ -232,8 +235,19 @@ Panel {
 
   function tryRestorePanelReloadFocus() {
     if (!pendingReloadFocus || !bar || fullscreenSuppressed) return
+    if (activeWorkspaceKey === "") return
+    if (!PanelReloadStateLogic.workspaceMatches(
+          pendingReloadWorkspaceKey, activeWorkspaceKey)) {
+      cancelPanelReloadFocus()
+      return
+    }
     requestOpen()
     reloadFocusRestoreTimer.restart()
+  }
+
+  function cancelPanelReloadFocus() {
+    pendingReloadFocus = false
+    reloadFocusRestoreTimer.stop()
   }
 
   function cycleEffort() {
@@ -724,6 +738,7 @@ Panel {
     if (kind === "move") keyCatcher.moveRequested(Number(first), Number(second))
     else if (kind === "text") keyCatcher.textKey(String(first || ""))
     else if (kind === "activate") keyCatcher.activateRequested()
+    else if (kind === "frontend") keyCatcher.frontendToggleRequested()
     else if (kind === "close") keyCatcher.closeRequested()
     else return false
     return true
@@ -976,10 +991,15 @@ Panel {
     fullscreenInternalState = internalState
     fullscreenClientState = clientState
     if (workspaceKey !== "" && workspaceKey !== activeWorkspaceKey) {
+      if (activeWorkspaceKey !== ""
+          || !PanelReloadStateLogic.workspaceMatches(
+            pendingReloadWorkspaceKey, workspaceKey))
+        cancelPanelReloadFocus()
       releaseSidebarFocus(true)
       activeWorkspaceId = workspaceId
       activeWorkspaceKey = workspaceKey
       applySidebarOpenState()
+      Qt.callLater(tryRestorePanelReloadFocus)
     } else if (workspaceId !== 0) {
       activeWorkspaceId = workspaceId
     }
@@ -1132,6 +1152,11 @@ Panel {
     repeat: false
     onTriggered: {
       if (!root.pendingReloadFocus || !root.sidebarPresented) return
+      if (!PanelReloadStateLogic.workspaceMatches(
+            root.pendingReloadWorkspaceKey, root.activeWorkspaceKey)) {
+        root.cancelPanelReloadFocus()
+        return
+      }
       root.pendingReloadFocus = false
       root.focusSidebar()
       if (root.pendingReloadFocusTarget === "search" && root.searchOpen)
@@ -1277,9 +1302,9 @@ Panel {
     }
     function frontend(name: string): string {
       var wanted = String(name || "").toLowerCase()
-      if (wanted === "toggle") return root.service.toggleThreadFrontend()
+      if (wanted === "toggle") return root.service.toggleThreadFrontend("ipc")
       if (wanted === "terminal" || wanted === "agent-chat")
-        root.service.setThreadFrontend(wanted)
+        root.service.setThreadFrontend(wanted, "ipc")
       return root.service.threadFrontend
     }
     function fast(mode: string): string {
@@ -1314,9 +1339,8 @@ Panel {
     function followThread(id: string): string {
       var threadId = String(id || "").trim()
       if (threadId === "") return ""
-      root.service.activeThreadId = threadId
-      root.sidebarActions.followActiveThread(true)
-      return root.rowKey(root.viewRows[root.selectedIndex])
+      var index = root.sidebarActions.rowIndexForThread(threadId)
+      return index >= 0 ? root.sidebarActions.selectThreadIndex(index) : ""
     }
     function nextThread(): string {
       return root.sidebarActions.activateAdjacentThread(1)
@@ -1346,6 +1370,8 @@ Panel {
         instanceToken: root.instanceToken,
         activeProvider: root.activeProvider,
         threadFrontend: root.service.threadFrontend,
+        threadFrontendChangedBy: root.service.threadFrontendChangedBy,
+        threadFrontendChangedAt: root.service.threadFrontendChangedAt,
         notificationsEnabled: root.service.notificationsEnabled,
         providerLoading: root.providerLoading(),
         providerSnapshotRestored: root.service.providerSnapshotRestored,
@@ -1561,6 +1587,11 @@ Panel {
         root.clearNavigationPrefix()
         if (root.activeProvider === "codex") root.service.toggleFastMode()
       }
+      onFrontendToggleRequested: {
+        root.clearNavigationPrefix()
+        if (root.activeProvider === "codex")
+          root.service.toggleThreadFrontend("shortcut")
+      }
       onCloseRequested: {
         if (root.navigationCount !== "" || root.navigationFindDirection !== 0) {
           root.clearNavigationPrefix()
@@ -1668,10 +1699,6 @@ Panel {
         }
         if (text === "s") {
           root.toggleSidebarScope()
-          return
-        }
-        if (text === "a") {
-          root.service.toggleThreadFrontend()
           return
         }
         if (text === "n" || text === "N") root.sidebarActions.newSelectedThread()

@@ -162,22 +162,7 @@ Rectangle {
         if (!panel.pointerWarpActive)
           panel.pointerHoverSuppressed = false
       }
-      onClicked: function(event) {
-        panel.selectedIndex = row.index
-        if (row.moreRow) {
-          if (event.button === Qt.LeftButton)
-            panel.showAllGroup(row.modelData.groupKind, row.modelData.path,
-              row.modelData.remoteId)
-          return
-        }
-        if (row.remoteRow) panel.toggleRemote(row.modelData.remoteId)
-        else if (row.projectRow)
-          panel.toggleProject(row.modelData.path, row.modelData.remoteId)
-        else if (row.modelData.remoteId)
-          panel.service.openRemoteThread(row.modelData.remoteId,
-                                        row.threadData, row.modelData.path)
-        else panel.service.openThread(row.threadData, row.modelData.path)
-      }
+      onClicked: panel.sidebarActions.activateRow(row.index, "pointer")
     }
 
     TapHandler {

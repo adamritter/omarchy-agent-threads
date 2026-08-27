@@ -166,11 +166,12 @@ Item {
     return remoteProvider.toggleThreadPin(hostId, thread)
   }
 
-  function openThread(hostId, thread, path) {
-    if (isLocalCodex(hostId)) return localCodexProvider.openThread(thread, path)
+  function openThread(hostId, thread, path, source) {
+    if (isLocalCodex(hostId))
+      return localCodexProvider.openThread(thread, path, source)
     var local = localProviderForHost(hostId)
-    if (local) return local.openThread(thread, path)
-    return remoteProvider.openThread(hostId, thread, path)
+    if (local) return local.openThread(thread, path, source)
+    return remoteProvider.openThread(hostId, thread, path, source)
   }
 
   function createThread(hostId, path) {

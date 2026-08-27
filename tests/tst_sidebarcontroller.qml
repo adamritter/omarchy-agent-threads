@@ -20,23 +20,36 @@ TestCase {
   property int openedRemoteThreadCount: 0
   property string openedThreadId: ""
   property string openedRemoteId: ""
+  property var activationEvents: []
   property bool opened: true
+  property bool sidebarFocused: false
+  property bool reloadSelectionPending: false
 
   QtObject {
     id: fakeService
     property string launchError: ""
+    property var threads: []
+    property var remoteHosts: []
     property string activeThreadId: ""
     property string launchingThreadId: ""
-    function openThread(thread, path) {
+    property string failedLaunchThreadId: ""
+    property bool acceptLaunch: true
+    function openThread(thread, path, source) {
+      testCase.activationEvents.push("open:" + String(thread.id || ""))
       testCase.openedThreadCount++
       testCase.openedThreadId = String(thread.id || "")
+      if (!acceptLaunch) return false
       launchingThreadId = testCase.openedThreadId
+      return true
     }
-    function openRemoteThread(remoteId, thread, path) {
+    function openRemoteThread(remoteId, thread, path, source) {
+      testCase.activationEvents.push("open-remote:" + String(thread.id || ""))
       testCase.openedRemoteThreadCount++
       testCase.openedRemoteId = String(remoteId || "")
       testCase.openedThreadId = String(thread.id || "")
+      if (!acceptLaunch) return false
       launchingThreadId = testCase.openedThreadId
+      return true
     }
     function openTerminal(mode, endpoint, path) {
       testCase.terminalCount++
@@ -61,11 +74,25 @@ TestCase {
 
   property var service: fakeService
 
-  function releaseSidebarFocus(force) { releaseCount++ }
+  function releaseSidebarFocus(force) {
+    activationEvents.push("release")
+    releaseCount++
+  }
   function rowKey(row) {
     return String(row.kind) + ":"
       + String(row.id || (row.thread ? row.thread.id : "") || row.path || "")
   }
+  function rowIndexForKey(key) {
+    for (var index = 0; index < viewRows.length; index++) {
+      var row = viewRows[index]
+      if (rowKey(row) === key) return index
+      if (row.kind === "thread"
+          && String(key).endsWith(":" + String(row.thread && row.thread.id || row.id || "")))
+        return index
+    }
+    return -1
+  }
+  function projectPath(thread) { return String(thread && thread.cwd || "") }
 
   function init() {
     activeProvider = "codex"
@@ -81,10 +108,29 @@ TestCase {
     openedRemoteThreadCount = 0
     openedThreadId = ""
     openedRemoteId = ""
+    activationEvents = []
     fakeService.launchError = ""
+    fakeService.threads = []
+    fakeService.remoteHosts = []
     fakeService.activeThreadId = ""
     fakeService.launchingThreadId = ""
+    fakeService.failedLaunchThreadId = ""
+    fakeService.acceptLaunch = true
     fakeListView.positionedIndex = -1
+    controller.activationIntentThreadId = ""
+  }
+
+  function test_clickActivationReleasesFocusBeforeOpeningThread() {
+    viewRows = [
+      { kind: "project", path: "/work/a" },
+      { kind: "thread", path: "/work/a", thread: { id: "alpha" } }
+    ]
+
+    compare(controller.activateRow(1), "thread:alpha")
+    compare(selectedIndex, 1)
+    compare(openedThreadCount, 1)
+    compare(openedThreadId, "alpha")
+    compare(activationEvents.join(","), "release,open:alpha")
   }
 
   function test_selectsAdjacentThreadsAndSkipsStructuralRows() {
@@ -160,11 +206,42 @@ TestCase {
 
   function test_followTargetPrefersPendingActivation() {
     fakeService.activeThreadId = "old"
+    fakeService.threads = [
+      { id: "old", cwd: "/work/a" },
+      { id: "requested", cwd: "/work/b" }
+    ]
     fakeService.launchingThreadId = "requested"
     compare(controller.followTargetThreadId(), "requested")
 
     fakeService.launchingThreadId = ""
     compare(controller.followTargetThreadId(), "old")
+  }
+
+  function test_failedActivationDoesNotSnapSelectionBackToActiveThread() {
+    viewRows = [
+      { kind: "thread", path: "/work/a", thread: { id: "old" } },
+      { kind: "thread", path: "/work/b", thread: { id: "requested" } }
+    ]
+    fakeService.activeThreadId = "old"
+
+    compare(controller.activateRow(1, "pointer"), "thread:requested")
+    fakeService.launchingThreadId = ""
+    fakeService.failedLaunchThreadId = "requested"
+
+    compare(controller.followTargetThreadId(), "requested")
+    controller.followActiveThread(true)
+    compare(selectedIndex, 1)
+  }
+
+  function test_rejectedActivationDoesNotCreateAnIntent() {
+    viewRows = [{
+      kind: "thread", path: "/work/a", thread: { id: "requested" }
+    }]
+    fakeService.acceptLaunch = false
+
+    compare(controller.activateRow(0, "keyboard"), "")
+    compare(controller.activationIntentThreadId, "")
+    compare(fakeService.launchingThreadId, "")
   }
 
   function test_activatesRemoteThreadThroughRemoteProvider() {

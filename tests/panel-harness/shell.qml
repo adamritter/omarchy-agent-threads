@@ -43,6 +43,7 @@ ShellRoot {
     property string movingThreadId: ""
     property string remoteActionHostId: ""
     property string activeThreadId: "beta"
+    property string failedLaunchThreadId: ""
     property string remoteAddError: ""
     property string remoteClaudeLoginHostId: ""
     property bool remoteClaudeLoginRunning: false
@@ -56,6 +57,8 @@ ShellRoot {
     property bool sidebarOpen: false
     property string sidebarScope: "global"
     property string threadFrontend: "terminal"
+    property string threadFrontendChangedBy: ""
+    property double threadFrontendChangedAt: 0
     property bool fastMode: false
     property bool notificationsEnabled: false
     property int openedThreadCount: 0
@@ -95,11 +98,14 @@ ShellRoot {
     function setCollapsedRemotes(value) { collapsedRemotes = value }
     function setPinnedSections(value) { pinnedSections = value }
     function setSelectedProvider(value) { selectedProvider = value }
-    function setThreadFrontend(value) {
+    function setThreadFrontend(value, source) {
       threadFrontend = value === "agent-chat" ? "agent-chat" : "terminal"
+      threadFrontendChangedBy = String(source || "unknown")
+      threadFrontendChangedAt = Date.now()
     }
-    function toggleThreadFrontend() {
-      setThreadFrontend(threadFrontend === "agent-chat" ? "terminal" : "agent-chat")
+    function toggleThreadFrontend(source) {
+      setThreadFrontend(
+        threadFrontend === "agent-chat" ? "terminal" : "agent-chat", source)
       return threadFrontend
     }
     function setFastMode(value) { fastMode = value === true }
@@ -111,7 +117,11 @@ ShellRoot {
     }
     function setSidebarOpenOnWorkspace(workspaceId, opened) {}
     function setSidebarScope(scope, workspaceId, opened) { sidebarScope = scope }
-    function openThread(thread, path) { openedThreadCount++ }
+    function openThread(thread, path, source) {
+      openedThreadCount++
+      launchingThreadId = String(thread && thread.id || "")
+      return true
+    }
     function newProjectThread(path) { newProjectThreadCount++ }
     function toggleThreadPin(thread) { pinnedThreadCount++ }
     function archiveThread(thread) { archivedThreadCount++ }
@@ -297,15 +307,15 @@ ShellRoot {
         testRoot.panelInstance.dispatchTestInput("close")
         if (!testRoot.check(!testRoot.panelInstance.helpOpen,
           "close input did not close help")) return
-        testRoot.panelInstance.dispatchTestInput("text", "a")
+        testRoot.panelInstance.dispatchTestInput("frontend")
         if (!testRoot.check(fakeService.threadFrontend === "agent-chat",
-          "a did not enable the Agent Chat thread opener")) return
+          "the guarded shortcut did not enable the Agent Chat thread opener")) return
         if (!testRoot.check(testRoot.panelInstance.helpItems[13].description
             === "Toggle how Codex threads open · Agent Chat is on",
           "help did not show the enabled Agent Chat state")) return
-        testRoot.panelInstance.dispatchTestInput("text", "a")
+        testRoot.panelInstance.dispatchTestInput("frontend")
         if (!testRoot.check(fakeService.threadFrontend === "terminal",
-          "a did not restore the terminal thread opener")) return
+          "the guarded shortcut did not restore the terminal thread opener")) return
         if (!testRoot.check(testRoot.panelInstance.helpItems[13].description
             === "Toggle how Codex threads open · Agent Chat is off (terminal)",
           "help did not show the disabled Agent Chat state")) return

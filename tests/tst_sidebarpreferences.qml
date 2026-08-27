@@ -34,4 +34,19 @@ TestCase {
     verify(copied.project)
     compare(Object.keys(PreferencesLogic.map([])).length, 0)
   }
+
+  function test_frontendChangesCarryExplicitProvenance() {
+    var changed = PreferencesLogic.frontendPreference(
+      "terminal", "agent-chat", "shortcut", 1234)
+    verify(changed.changed)
+    compare(changed.frontend, "agent-chat")
+    compare(changed.changedBy, "shortcut")
+    compare(changed.changedAt, 1234)
+
+    var unchanged = PreferencesLogic.frontendPreference(
+      "agent-chat", "agent-chat", "ipc", 9999)
+    verify(!unchanged.changed)
+    compare(unchanged.changedBy, "")
+    compare(unchanged.changedAt, 0)
+  }
 }

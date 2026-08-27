@@ -26,7 +26,14 @@ Item {
   property bool shuttingDown: false
   property string errorText: ""
   property string launchError: ""
-  property string launchingThreadId: ""
+  property var threadLaunchState: ThreadStateLogic.idleThreadLaunchState()
+  readonly property string threadLaunchPhase: String(threadLaunchState.phase || "idle")
+  readonly property int threadLaunchRequestId: Number(threadLaunchState.requestId || 0)
+  readonly property string launchingThreadId:
+    String(threadLaunchState.targetThreadId || "")
+  readonly property string failedLaunchThreadId:
+    String(threadLaunchState.failedThreadId || "")
+  readonly property string threadLaunchSource: String(threadLaunchState.source || "")
   property string launchingProjectPath: ""
   property string archivingThreadId: ""
   property string renamingThreadId: ""
@@ -42,6 +49,7 @@ Item {
   property string activeThreadId: ""
   property string agentChatLaunchKind: ""
   property string agentChatPendingThreadId: ""
+  property int agentChatLaunchRequestId: 0
   property string agentChatErrorOutput: ""
   property string terminalErrorOutput: ""
   readonly property alias remoteConfigLoaded: agentProviders.remoteConfigLoaded
@@ -107,11 +115,97 @@ Item {
   readonly property alias selectedModel: sidebarPreferences.selectedModel
   readonly property alias selectedEffort: sidebarPreferences.selectedEffort
   readonly property alias threadFrontend: sidebarPreferences.threadFrontend
+  readonly property alias threadFrontendChangedBy:
+    sidebarPreferences.threadFrontendChangedBy
+  readonly property alias threadFrontendChangedAt:
+    sidebarPreferences.threadFrontendChangedAt
   readonly property alias fastMode: sidebarPreferences.fastMode
   readonly property alias notificationsEnabled: sidebarPreferences.notificationsEnabled
   readonly property string codexServiceTier: fastMode ? "fast" : "default"
 
   signal threadLaunchRequested(string threadId)
+
+  function beginThreadLaunch(threadId, source) {
+    var result = ThreadStateLogic.beginThreadLaunch(
+      threadLaunchState, threadId, source)
+    if (!result.accepted) {
+      launchError = result.error
+      return 0
+    }
+    threadLaunchState = result.state
+    launchError = ""
+    threadLaunchRequested(String(threadId || ""))
+    return result.requestId
+  }
+
+  function confirmThreadLaunch(requestId, threadId) {
+    var result = ThreadStateLogic.confirmThreadLaunch(
+      threadLaunchState, requestId, threadId)
+    if (!result.applied) return false
+    threadLaunchState = result.state
+    activeThreadId = result.threadId
+    launchError = ""
+    return true
+  }
+
+  function failThreadLaunch(requestId, message) {
+    var result = ThreadStateLogic.failThreadLaunch(
+      threadLaunchState, requestId, message)
+    if (!result.applied) return false
+    threadLaunchState = result.state
+    launchError = result.error
+    return true
+  }
+
+  function observeActiveThread(threadId, source) {
+    var id = String(threadId || "")
+    if (threadLaunchPhase === "launching" && id === launchingThreadId)
+      return confirmThreadLaunch(threadLaunchRequestId, id)
+    activeThreadId = id
+    return true
+  }
+
+  function threadMutationRunning() {
+    return archivingThreadId !== "" || renamingThreadId !== ""
+      || pinningThreadId !== "" || movingThreadId !== ""
+  }
+
+  function beginThreadMutation(kind, threadId) {
+    var action = String(kind || "")
+    var id = String(threadId || "")
+    if (id === "") return false
+    if (threadMutationRunning()) {
+      errorText = ThreadStateLogic.mutationBusyMessage(action)
+      return false
+    }
+    if (action === "archive") {
+      var blockedMessage = ThreadStateLogic.archiveBlockedMessage(id, activeThreadId)
+      if (blockedMessage !== "") {
+        errorText = blockedMessage
+        return false
+      }
+      archivingThreadId = id
+    } else if (action === "rename") renamingThreadId = id
+    else if (action === "pin") pinningThreadId = id
+    else return false
+    errorText = ""
+    return true
+  }
+
+  function finishThreadMutation(kind) {
+    var action = String(kind || "")
+    if (action === "archive") archivingThreadId = ""
+    else if (action === "rename") renamingThreadId = ""
+    else if (action === "pin") {
+      pinningThreadId = ""
+      pendingPinValue = false
+    }
+  }
+
+  function failThreadMutation(kind, message) {
+    finishThreadMutation(kind)
+    errorText = ThreadStateLogic.mutationErrorMessage(kind, message)
+  }
 
   Providers.AgentProviderLibrary {
     id: agentProviders
@@ -190,6 +284,8 @@ Item {
   }
 
   function resetBackendState() {
+    if (threadLaunchPhase === "launching")
+      failThreadLaunch(threadLaunchRequestId, "The provider stopped during thread launch")
     agentProviders.reset()
   }
 
@@ -257,23 +353,24 @@ Item {
   }
 
   function archiveRemoteThread(hostId, thread) {
-    agentProviders.archiveThread(hostId, thread)
+    return !!agentProviders.archiveThread(hostId, thread)
   }
 
   function renameRemoteThread(hostId, thread, name) {
     var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
-    if (normalized === "" || renamingThreadId !== "") return false
+    if (normalized === "") return false
     var started = agentProviders.renameThread(hostId, thread, normalized)
-    if (!started) launchError = "Could not start the thread rename"
+    if (!started && errorText === "")
+      errorText = "Could not start the thread rename"
     return !!started
   }
 
   function toggleRemoteThreadPin(hostId, thread) {
-    agentProviders.toggleThreadPin(hostId, thread)
+    return !!agentProviders.toggleThreadPin(hostId, thread)
   }
 
-  function openRemoteThread(hostId, thread, path) {
-    agentProviders.openThread(hostId, thread, path)
+  function openRemoteThread(hostId, thread, path, source) {
+    return !!agentProviders.openThread(hostId, thread, path, source)
   }
 
   function newRemoteThread(hostId, path) {
@@ -443,7 +540,11 @@ Item {
   function moveThreadToProject(thread, targetPath, targetName) {
     var threadId = String(thread && thread.id || "")
     var path = String(targetPath || "")
-    if (threadId === "" || path === "" || movingThreadId !== "") return
+    if (threadId === "" || path === "") return false
+    if (threadMutationRunning()) {
+      errorText = ThreadStateLogic.mutationBusyMessage("move")
+      return false
+    }
 
     movingThreadId = threadId
     pendingMovePath = path
@@ -453,10 +554,11 @@ Item {
     var project = projectForRoot(path)
     if (project) {
       assignMovingThreadToProject(String(project.id || ""))
-      return
+      return true
     }
 
     agentProviders.createProject(threadId, pendingMoveName, path)
+    return true
   }
 
   function assignMovingThreadToProject(projectId) {
@@ -546,9 +648,8 @@ Item {
   }
 
   function archiveLocalCodexThread(thread) {
-    if (!thread || !thread.id || archivingThreadId !== "") return
-
-    archivingThreadId = String(thread.id)
+    if (!thread || !thread.id
+        || !beginThreadMutation("archive", thread.id)) return false
     archivedThreadSnapshot = thread
     archivedThreadIndex = threadIndex(threads, archivingThreadId)
     setArchiveTombstone(archivingThreadId, true)
@@ -557,18 +658,18 @@ Item {
     if (!agentProviders.archiveLocalCodexRpc(archivingThreadId)) {
       restoreArchivedThread()
       errorText = "Could not reach the Codex App Server"
+      return false
     }
+    return true
   }
 
   function renameLocalCodexThread(thread, name) {
     var id = String(thread && thread.id || "")
     var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
-    if (id === "" || normalized === "" || renamingThreadId !== "") return false
-    renamingThreadId = id
-    errorText = ""
+    if (id === "" || normalized === ""
+        || !beginThreadMutation("rename", id)) return false
     if (!agentProviders.renameLocalCodexRpc(id, normalized)) {
-      renamingThreadId = ""
-      errorText = "Could not reach the Codex App Server"
+      failThreadMutation("rename", "Could not reach the Codex App Server")
       return false
     }
     return true
@@ -576,16 +677,13 @@ Item {
 
   function toggleLocalCodexThreadPin(thread) {
     var id = String(thread && thread.id || "")
-    if (id === "" || pinningThreadId !== "") return
-
-    pinningThreadId = id
+    if (id === "" || !beginThreadMutation("pin", id)) return false
     pendingPinValue = thread.isPinned !== true
-    errorText = ""
     if (!agentProviders.pinLocalCodexRpc(id, pendingPinValue, pinnedSectionId)) {
-      pinningThreadId = ""
-      pendingPinValue = false
-      errorText = "Could not reach the Codex App Server"
+      failThreadMutation("pin", "Could not reach the Codex App Server")
+      return false
     }
+    return true
   }
 
   function applyThreadPin(items, threadId, pinned, returnedThread) {
@@ -620,7 +718,12 @@ Item {
     }
     archivedThreadSnapshot = null
     archivedThreadIndex = -1
-    archivingThreadId = ""
+    finishThreadMutation("archive")
+  }
+
+  function failThreadArchive(message) {
+    restoreArchivedThread()
+    errorText = ThreadStateLogic.archiveErrorMessage(message)
   }
 
   function archiveThread(thread) {
@@ -635,12 +738,13 @@ Item {
     return agentProviders.toggleThreadPin("provider-codex", thread)
   }
 
-  function openThread(thread, cwdOverride) {
+  function openThread(thread, cwdOverride, source) {
     if (threadFrontend === "agent-chat") {
       var path = String(cwdOverride || projectPathForThread(thread) || backendHomePath)
-      return launchAgentChat(thread, path)
+      return launchAgentChat(thread, path, source)
     }
-    return agentProviders.openThread("provider-codex", thread, cwdOverride)
+    return !!agentProviders.openThread(
+      "provider-codex", thread, cwdOverride, source)
   }
 
   function newProjectThread(projectPath) {
@@ -649,20 +753,22 @@ Item {
     return agentProviders.createThread("provider-codex", projectPath)
   }
 
-  function launchAgentChat(thread, cwd) {
+  function launchAgentChat(thread, cwd, source) {
     if (agentChatProcess.running) return false
     var path = String(cwd || "")
     var threadId = String(thread && thread.id || "")
     if (path === "" || (thread && threadId === "")) return false
 
+    var requestId = threadId !== ""
+      ? beginThreadLaunch(threadId, source || "agent-chat") : 0
+    if (threadId !== "" && requestId === 0) return false
+
     launchError = ""
     agentChatErrorOutput = ""
     agentChatLaunchKind = threadId !== "" ? "thread" : "project"
     agentChatPendingThreadId = threadId
-    if (threadId !== "") {
-      launchingThreadId = threadId
-      threadLaunchRequested(threadId)
-    } else launchingProjectPath = path
+    agentChatLaunchRequestId = requestId
+    if (threadId === "") launchingProjectPath = path
 
     agentChatProcess.command = ActionLogic.agentChatCommand(
       streamGuardPath, agentChatHelperPath, threadId, path, selectedModel,
@@ -707,12 +813,12 @@ Item {
     sidebarPreferences.setSelectedProvider(value)
   }
 
-  function setThreadFrontend(value) {
-    sidebarPreferences.setThreadFrontend(value)
+  function setThreadFrontend(value, source) {
+    return sidebarPreferences.setThreadFrontend(value, source)
   }
 
-  function toggleThreadFrontend() {
-    return sidebarPreferences.toggleThreadFrontend()
+  function toggleThreadFrontend(source) {
+    return sidebarPreferences.toggleThreadFrontend(source)
   }
 
   function setFastMode(value) {
@@ -778,17 +884,21 @@ Item {
     onExited: function(exitCode) {
       var kind = root.agentChatLaunchKind
       var threadId = root.agentChatPendingThreadId
+      var requestId = root.agentChatLaunchRequestId
       if (exitCode !== 0) {
-        root.launchError = root.agentChatErrorOutput.trim()
+        var message = root.agentChatErrorOutput.trim()
           || (kind === "thread"
             ? "Could not open the thread in Agent Chat"
             : "Could not open Agent Chat in the project")
-      } else if (kind === "thread") root.activeThreadId = threadId
+        if (kind === "thread") root.failThreadLaunch(requestId, message)
+        else root.launchError = message
+      } else if (kind === "thread")
+        root.confirmThreadLaunch(requestId, threadId)
 
-      if (kind === "thread") root.launchingThreadId = ""
-      else if (kind === "project") root.launchingProjectPath = ""
+      if (kind === "project") root.launchingProjectPath = ""
       root.agentChatLaunchKind = ""
       root.agentChatPendingThreadId = ""
+      root.agentChatLaunchRequestId = 0
       root.scheduleEventRefresh()
     }
   }

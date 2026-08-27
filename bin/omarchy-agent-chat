@@ -68,7 +68,10 @@ for _ in {1..40}; do
   new_address="$(agent_chat_address)"
   if [[ "$new_address" =~ ^0x[0-9a-fA-F]+$ ]]; then
     place_and_focus "$new_address"
-    break
+    exit 0
   fi
   sleep 0.05
 done
+
+printf 'Agent Chat did not create a window. Check the Quickshell log for startup errors.\n' >&2
+exit 1

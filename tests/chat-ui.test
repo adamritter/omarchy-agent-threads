@@ -29,6 +29,11 @@ grep -F -- 'settings.localStorageEnabled: false' \
   "$plugin_root/app/WebTranscript.qml" >/dev/null
 grep -F -- 'id: composerToolbar' "$window" >/dev/null
 grep -F -- 'height: Math.max(88, Math.min(204, composer.implicitHeight + 54))' "$window" >/dev/null
+grep -F -- 'ConversationLogic.boundedPromptInput(text)' "$window" >/dev/null
+if grep -F -- 'maximumLength:' "$window" >/dev/null; then
+  printf 'chat composer uses a property unsupported by TextArea\n' >&2
+  exit 1
+fi
 grep -F -- 'id: fastButton' "$window" >/dev/null
 grep -F -- 'text: "⚡︎"' "$window" >/dev/null
 grep -F -- 'id: approveForMeButton' "$window" >/dev/null

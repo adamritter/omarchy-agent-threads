@@ -20,6 +20,7 @@ TestCase {
   SignalSpy { id: activateSpy; target: catcher; signalName: "activateRequested" }
   SignalSpy { id: terminalSpy; target: catcher; signalName: "terminalRequested" }
   SignalSpy { id: fastSpy; target: catcher; signalName: "fastToggleRequested" }
+  SignalSpy { id: frontendSpy; target: catcher; signalName: "frontendToggleRequested" }
 
   function init() {
     moveSpy.clear()
@@ -29,6 +30,7 @@ TestCase {
     activateSpy.clear()
     terminalSpy.clear()
     fastSpy.clear()
+    frontendSpy.clear()
     catcher.forceActiveFocus()
     verify(catcher.activeFocus)
   }
@@ -41,6 +43,16 @@ TestCase {
     keyClick(Qt.Key_F, Qt.ControlModifier)
     compare(fastSpy.count, 1)
     compare(pageSpy.count, 1)
+  }
+
+  function test_frontendToggleRequiresSuperCtrlA() {
+    keyClick(Qt.Key_A)
+    compare(frontendSpy.count, 0)
+    compare(textSpy.count, 1)
+
+    keyClick(Qt.Key_A, Qt.ControlModifier | Qt.MetaModifier)
+    compare(frontendSpy.count, 1)
+    compare(textSpy.count, 1)
   }
 
   function test_shiftEnterRequestsTerminalWithoutActivation() {

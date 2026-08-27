@@ -24,6 +24,8 @@ Item {
   readonly property alias selectedModel: persisted.selectedModel
   readonly property alias selectedEffort: persisted.selectedEffort
   readonly property alias threadFrontend: persisted.threadFrontend
+  readonly property alias threadFrontendChangedBy: persisted.threadFrontendChangedBy
+  readonly property alias threadFrontendChangedAt: persisted.threadFrontendChangedAt
   readonly property alias fastMode: persisted.fastMode
   readonly property alias notificationsEnabled: persisted.notificationsEnabled
   readonly property bool sidebarOpen: {
@@ -43,6 +45,8 @@ Item {
     property string selectedModel: ""
     property string selectedEffort: ""
     property string threadFrontend: "terminal"
+    property string threadFrontendChangedBy: ""
+    property double threadFrontendChangedAt: 0
     property bool fastMode: false
     property bool notificationsEnabled: false
 
@@ -51,6 +55,8 @@ Item {
     onSelectedModelChanged: root.scheduleSave()
     onSelectedEffortChanged: root.scheduleSave()
     onThreadFrontendChanged: root.scheduleSave()
+    onThreadFrontendChangedByChanged: root.scheduleSave()
+    onThreadFrontendChangedAtChanged: root.scheduleSave()
     onFastModeChanged: root.scheduleSave()
     onNotificationsEnabledChanged: root.scheduleSave()
   }
@@ -109,12 +115,19 @@ Item {
     persisted.selectedEffort = String(value || "")
   }
 
-  function setThreadFrontend(value) {
-    persisted.threadFrontend = ActionLogic.normalizeThreadFrontend(value)
+  function setThreadFrontend(value, source) {
+    var result = PreferencesLogic.frontendPreference(
+      threadFrontend, ActionLogic.normalizeThreadFrontend(value), source, Date.now())
+    if (!result.changed) return false
+    persisted.threadFrontend = result.frontend
+    persisted.threadFrontendChangedBy = result.changedBy
+    persisted.threadFrontendChangedAt = result.changedAt
+    return true
   }
 
-  function toggleThreadFrontend() {
-    setThreadFrontend(threadFrontend === "agent-chat" ? "terminal" : "agent-chat")
+  function toggleThreadFrontend(source) {
+    setThreadFrontend(
+      threadFrontend === "agent-chat" ? "terminal" : "agent-chat", source)
     return threadFrontend
   }
 
@@ -168,6 +181,9 @@ Item {
       persisted.selectedModel = String(parsed.model || "")
       persisted.selectedEffort = String(parsed.effort || "")
       persisted.threadFrontend = ActionLogic.normalizeThreadFrontend(parsed.threadFrontend)
+      persisted.threadFrontendChangedBy = String(parsed.threadFrontendChangedBy || "")
+      persisted.threadFrontendChangedAt = Math.max(
+        0, Number(parsed.threadFrontendChangedAt || 0))
       persisted.fastMode = parsed.fastMode === true
       persisted.notificationsEnabled = parsed.notificationsEnabled === true
       providerSettings.loadSettings(parsed.providerSettings || ({}))
@@ -187,14 +203,14 @@ Item {
     }
 
     loaded = true
-    if (!parsed || Number(parsed.version || 0) < 14) saveTimer.restart()
+    if (!parsed || Number(parsed.version || 0) < 15) saveTimer.restart()
     ready()
   }
 
   function flush() {
     if (!loaded) return
     settingsFile.setText(JSON.stringify({
-      version: 14,
+      version: 15,
       open: sidebarOpen,
       scope: scope,
       globalOpen: globalOpen,
@@ -203,6 +219,8 @@ Item {
       model: selectedModel,
       effort: selectedEffort,
       threadFrontend: threadFrontend,
+      threadFrontendChangedBy: threadFrontendChangedBy,
+      threadFrontendChangedAt: threadFrontendChangedAt,
       fastMode: fastMode,
       notificationsEnabled: notificationsEnabled,
       collapsedProjects: collapsedProjects,

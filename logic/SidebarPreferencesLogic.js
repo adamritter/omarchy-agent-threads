@@ -11,6 +11,17 @@ function provider(value, fallback) {
     ? next : String(fallback || "codex")
 }
 
+function frontendPreference(current, requested, source, nowMs) {
+  var previous = String(current || "") === "agent-chat" ? "agent-chat" : "terminal"
+  var next = String(requested || "") === "agent-chat" ? "agent-chat" : "terminal"
+  return {
+    changed: previous !== next,
+    frontend: next,
+    changedBy: previous !== next ? String(source || "unknown") : "",
+    changedAt: previous !== next ? Math.max(0, Number(nowMs || 0)) : 0
+  }
+}
+
 function workspaceOpen(scope, globalOpen, openWorkspaces, workspaceId) {
   if (scope === "global") return globalOpen === true
   var id = String(workspaceId || "")

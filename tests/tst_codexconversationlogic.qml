@@ -62,6 +62,9 @@ TestCase {
   function test_rejectsOversizedPromptsBeforeRetention() {
     var limit = ConversationLogic.promptCharacterLimit()
     compare(limit, 200000)
+    compare(ConversationLogic.boundedPromptInput("short"), "short")
+    compare(ConversationLogic.boundedPromptInput(
+      new Array(limit + 2).join("x")).length, limit)
     compare(ConversationLogic.promptValidationError(new Array(limit + 1).join("x")), "")
     verify(ConversationLogic.promptValidationError(
       new Array(limit + 2).join("x")).indexOf("200,000") >= 0)

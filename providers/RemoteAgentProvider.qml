@@ -40,6 +40,7 @@ Item {
   property var pendingKnownIds: ({})
   property string pendingWindowAddress: ""
   property int pendingAttempts: 0
+  property int openRequestId: 0
 
   readonly property string queryHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-remote-query").toString().replace(/^file:\/\//, "")
@@ -358,13 +359,15 @@ Item {
 
   function archiveThread(hostId, thread) {
     var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running) return
-    controller.archivingThreadId = id
-    controller.launchError = ""
     actionHostId = String(hostId || "")
+    var host = hostById(actionHostId)
+    if (id === "" || !host || actionProcess.running
+        || !controller.beginThreadMutation("archive", id)) {
+      actionHostId = ""
+      return false
+    }
     actionKind = "archive"
     actionThreadId = id
-    var host = hostById(actionHostId)
     archivedThreadId = id
     archivedThreadSnapshot = thread
     archivedThreadIndex = host ? threadIndex(host.threads, id) : -1
@@ -374,24 +377,20 @@ Item {
       pathForThread(host, thread)
     ]
     actionProcess.running = true
+    return true
   }
 
   function renameThread(hostId, thread, name) {
     var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running) return false
     actionHostId = String(hostId || "")
-    actionKind = "rename"
-    actionThreadId = id
-    controller.renamingThreadId = id
-    controller.launchError = ""
     var host = hostById(actionHostId)
-    if (!host) {
+    if (id === "" || !host || actionProcess.running
+        || !controller.beginThreadMutation("rename", id)) {
       actionHostId = ""
-      actionKind = ""
-      actionThreadId = ""
-      controller.renamingThreadId = ""
       return false
     }
+    actionKind = "rename"
+    actionThreadId = id
     actionProcess.command = [
       queryHelperPath, configPath, actionHostId, "rename", id,
       pathForThread(host, thread), name
@@ -402,13 +401,16 @@ Item {
 
   function toggleThreadPin(hostId, thread) {
     var id = String(thread && thread.id || "")
-    if (id === "" || actionProcess.running || controller.pinningThreadId !== "") return
     actionHostId = String(hostId || "")
+    if (id === "" || !hostById(actionHostId) || actionProcess.running
+        || !controller.beginThreadMutation("pin", id)) {
+      actionHostId = ""
+      return false
+    }
     actionKind = "pin"
     actionThreadId = id
     actionPinValue = thread.isPinned !== true
-    controller.pinningThreadId = id
-    controller.launchError = ""
+    controller.pendingPinValue = actionPinValue
     actionProcess.command = [
       queryHelperPath,
       configPath,
@@ -418,6 +420,7 @@ Item {
       actionPinValue ? "true" : "false"
     ]
     actionProcess.running = true
+    return true
   }
 
   function applyThreadPin(hostId, threadId, pinned, returnedThread) {
@@ -446,31 +449,34 @@ Item {
     archivedThreadIndex = -1
   }
 
-  function openThread(hostId, thread, path) {
-    if (!thread || !thread.id || openProcess.running) return
+  function openThread(hostId, thread, path, source) {
+    if (!thread || !thread.id || openProcess.running) return false
     var host = hostById(hostId)
-    if (!host) return
+    if (!host) return false
     if (providerTypeForEntry(host) !== "" && host.available === false) {
       controller.launchError = host.error || providerLabel(host) + " is unavailable on this remote"
-      return
+      return false
     }
     var providerType = providerTypeForEntry(host) || "codex"
+    var threadId = String(thread.id)
+    var requestId = controller.beginThreadLaunch(
+      threadId, source || (providerType + "-remote"))
+    if (requestId === 0) return false
     openIsNew = false
     openHostId = String(hostId || "")
-    controller.launchingThreadId = String(thread.id)
-    controller.launchError = ""
+    openRequestId = requestId
     openProcess.command = ActionLogic.remoteAgentOpenCommand(
       openHelperPath,
       configPath,
       String(hostId || ""),
       String(path || thread.cwd || ""),
-      controller.launchingThreadId,
+      threadId,
       controller.selectedModelForProvider(providerType),
       controller.selectedEffortForProvider(providerType),
       controller.selectedAgentForProvider(providerType),
       providerType === "codex" ? controller.codexServiceTier : "")
     openProcess.running = true
-    controller.threadLaunchRequested(controller.launchingThreadId)
+    return true
   }
 
   function newThread(hostId, path) {
@@ -537,7 +543,7 @@ Item {
       if (pathForThread(host, thread) !== pendingPath
           && String(thread.cwd || "") !== pendingPath) continue
       launchCoordinator.map(id, pendingWindowAddress, pendingHostId, "")
-      controller.activeThreadId = id
+      controller.observeActiveThread(id, "new-remote-thread")
       clearPendingNew()
       return
     }
@@ -580,9 +586,10 @@ Item {
       var kind = root.actionKind
       if (exitCode !== 0) {
         var failedHost = root.hostById(hostId)
-        root.controller.launchError = actionStderr.text.trim()
+        var message = actionStderr.text.trim()
           || "Remote " + root.providerLabel(failedHost) + " action failed"
         if (kind === "archive") root.restoreArchivedThread(hostId)
+        root.controller.failThreadMutation(kind, message)
       } else if (kind === "archive") {
         root.archiveConfirmationHostId = hostId
         root.archiveConfirmationThreadId = root.archivedThreadId
@@ -599,9 +606,7 @@ Item {
         root.applyThreadPin(hostId, root.actionThreadId, root.actionPinValue,
           response ? response.thread : null)
       }
-      if (kind === "archive") root.controller.archivingThreadId = ""
-      if (kind === "pin") root.controller.pinningThreadId = ""
-      if (kind === "rename") root.controller.renamingThreadId = ""
+      if (exitCode === 0) root.controller.finishThreadMutation(kind)
       root.actionHostId = ""
       root.actionKind = ""
       root.actionThreadId = ""
@@ -664,9 +669,12 @@ Item {
     onExited: function(exitCode) {
       if (exitCode !== 0) {
         var failedHost = root.hostById(root.openHostId)
-        root.controller.launchError = openStderr.text.trim()
+        var message = openStderr.text.trim()
           || "Could not open remote " + root.providerLabel(failedHost)
-        root.controller.launchingThreadId = ""
+        if (!root.openIsNew)
+          root.controller.failThreadLaunch(root.openRequestId, message)
+        else root.controller.launchError = message
+        root.openRequestId = 0
         if (root.openIsNew) root.clearPendingNew()
         else root.openHostId = ""
         return
@@ -677,7 +685,7 @@ Item {
       if (root.openIsNew) {
         if (runtimeSessionId !== "" && address !== "") {
           launchCoordinator.map(runtimeSessionId, address, root.pendingHostId, "")
-          root.controller.activeThreadId = runtimeSessionId
+          root.controller.observeActiveThread(runtimeSessionId, "new-remote-thread")
           root.clearPendingNew()
         } else {
           root.pendingWindowAddress = address
@@ -685,8 +693,8 @@ Item {
           newResolveTimer.restart()
         }
       } else {
-        root.controller.activeThreadId = root.controller.launchingThreadId
-        root.controller.launchingThreadId = ""
+        root.controller.confirmThreadLaunch(root.openRequestId, "")
+        root.openRequestId = 0
         root.openHostId = ""
       }
       root.controller.refreshActiveThread()
