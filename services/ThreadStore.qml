@@ -5,7 +5,6 @@ import Quickshell
 import Quickshell.Io
 import "../providers" as Providers
 import "../logic/ActionLogic.js" as ActionLogic
-import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Item {
@@ -60,19 +59,18 @@ Item {
   readonly property alias sshHosts: agentProviders.sshHosts
   readonly property alias sshHostsLoading: agentProviders.sshHostsLoading
   readonly property alias sshHostsError: agentProviders.sshHostsError
-  property bool sidebarSettingsLoaded: false
-  property bool hydratingSidebarSettings: false
-  property bool providerSnapshotLoaded: false
-  property bool providerSnapshotRestored: false
-  property bool hydratingProviderSnapshot: false
-  property string providerSnapshot: ""
-  property bool migrateOpenSidebarToActiveWorkspace: false
-  property string sidebarScope: "workspace"
-  property bool globalSidebarOpen: false
-  property var sidebarOpenWorkspaces: ({})
-  property var collapsedProjects: ({})
-  property var collapsedRemotes: ({})
-  property var pinnedSections: ({})
+  readonly property alias sidebarSettingsLoaded: sidebarPreferences.loaded
+  readonly property alias hydratingSidebarSettings: sidebarPreferences.hydrating
+  readonly property alias providerSnapshotLoaded: providerSnapshotStore.loaded
+  readonly property alias providerSnapshotRestored: providerSnapshotStore.restored
+  readonly property alias hydratingProviderSnapshot: providerSnapshotStore.hydrating
+  readonly property alias providerSnapshot: providerSnapshotStore.encoded
+  property alias sidebarScope: sidebarPreferences.scope
+  property alias globalSidebarOpen: sidebarPreferences.globalOpen
+  property alias sidebarOpenWorkspaces: sidebarPreferences.openWorkspaces
+  property alias collapsedProjects: sidebarPreferences.collapsedProjects
+  property alias collapsedRemotes: sidebarPreferences.collapsedRemotes
+  property alias pinnedSections: sidebarPreferences.pinnedSections
   readonly property alias lastRefreshMs: agentProviders.lastRefreshMs
 
   onThreadsChanged: scheduleProviderSnapshot()
@@ -104,83 +102,37 @@ Item {
   readonly property string providerSnapshotPath:
     runtimeDir + "/omarchy-agent-threads-provider-snapshot.json"
   readonly property string sidebarSettingsPath: stateHome + "/omarchy/codex-threads.json"
-  readonly property bool sidebarOpen: {
-    if (sidebarScope === "global") return globalSidebarOpen
-    var states = sidebarOpenWorkspaces
-    for (var workspaceId in states)
-      if (states[workspaceId] === true) return true
-    return false
-  }
-  readonly property alias selectedProvider: persisted.selectedProvider
-  readonly property alias selectedModel: persisted.selectedModel
-  readonly property alias selectedEffort: persisted.selectedEffort
-  readonly property alias threadFrontend: persisted.threadFrontend
-  readonly property alias fastMode: persisted.fastMode
-  readonly property alias notificationsEnabled: persisted.notificationsEnabled
+  readonly property alias sidebarOpen: sidebarPreferences.sidebarOpen
+  readonly property alias selectedProvider: sidebarPreferences.selectedProvider
+  readonly property alias selectedModel: sidebarPreferences.selectedModel
+  readonly property alias selectedEffort: sidebarPreferences.selectedEffort
+  readonly property alias threadFrontend: sidebarPreferences.threadFrontend
+  readonly property alias fastMode: sidebarPreferences.fastMode
+  readonly property alias notificationsEnabled: sidebarPreferences.notificationsEnabled
   readonly property string codexServiceTier: fastMode ? "fast" : "default"
-
-  PersistentProperties {
-    id: persisted
-    reloadableId: "adam-codex-threads"
-    property bool sidebarOpen: false
-    property string selectedProvider: "codex"
-    property string selectedModel: ""
-    property string selectedEffort: ""
-    // Agent Chat is deliberately opt-in; existing behavior remains the default.
-    property string threadFrontend: "terminal"
-    property bool fastMode: false
-    property bool notificationsEnabled: false
-    onSidebarOpenChanged: {
-      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
-    }
-    onSelectedProviderChanged: {
-      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
-    }
-    onSelectedModelChanged: {
-      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
-    }
-    onSelectedEffortChanged: {
-      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
-    }
-    onThreadFrontendChanged: {
-      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
-    }
-    onFastModeChanged: {
-      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
-    }
-    onNotificationsEnabledChanged: {
-      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
-    }
-  }
-
-  onCollapsedProjectsChanged: {
-    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
-  }
-  onCollapsedRemotesChanged: {
-    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
-  }
-  onPinnedSectionsChanged: {
-    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
-  }
-  onSidebarOpenWorkspacesChanged: {
-    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
-  }
-  onSidebarScopeChanged: {
-    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
-  }
-  onGlobalSidebarOpenChanged: {
-    if (sidebarSettingsLoaded && !hydratingSidebarSettings) sidebarSaveTimer.restart()
-  }
 
   signal threadLaunchRequested(string threadId)
 
   Providers.AgentProviderLibrary {
     id: agentProviders
     controller: root
-    onSettingsChanged: {
-      if (!root.hydratingSidebarSettings) sidebarSaveTimer.restart()
-    }
+    onSettingsChanged: sidebarPreferences.scheduleSave()
     onSnapshotsChanged: root.scheduleProviderSnapshot()
+  }
+
+  SidebarPreferences {
+    id: sidebarPreferences
+    path: root.sidebarSettingsPath
+    providerSettings: agentProviders
+    onReady: root.startAppServer()
+  }
+
+  ProviderSnapshotStore {
+    id: providerSnapshotStore
+    path: root.providerSnapshotPath
+    onRestoreRequested: function(snapshot) {
+      root.restoreProviderSnapshot(snapshot)
+    }
   }
 
   function providerSnapshotObject() {
@@ -202,34 +154,22 @@ Item {
   }
 
   function scheduleProviderSnapshot() {
-    if (!providerSnapshotLoaded || hydratingProviderSnapshot || shuttingDown) return
-    providerSnapshotTimer.restart()
+    if (shuttingDown) return
+    providerSnapshotStore.schedule(providerSnapshotObject())
   }
 
   function flushProviderSnapshot() {
-    if (!providerSnapshotLoaded || hydratingProviderSnapshot) return
-    providerSnapshotTimer.stop()
-    var encoded = ProviderSnapshotLogic.encode(providerSnapshotObject())
-    if (encoded !== "" && encoded !== providerSnapshot) {
-      providerSnapshot = encoded
-      providerSnapshotFile.setText(encoded)
-    }
+    providerSnapshotStore.flush(providerSnapshotObject())
   }
 
   function attachProviderSnapshot(snapshot) {
-    if (providerSnapshotLoaded) return
-    providerSnapshot = String(snapshot || "")
-    providerSnapshotRestored = restoreProviderSnapshot()
-    providerSnapshotLoaded = true
-    scheduleProviderSnapshot()
+    providerSnapshotStore.attach(snapshot)
   }
 
-  function restoreProviderSnapshot() {
-    var snapshot = ProviderSnapshotLogic.decode(providerSnapshot)
-    if (!snapshot) return false
+  function restoreProviderSnapshot(snapshot) {
+    if (!snapshot) return
     var codex = snapshot.codex && typeof snapshot.codex === "object"
       ? snapshot.codex : ({})
-    hydratingProviderSnapshot = true
     threads = Array.isArray(codex.threads) ? codex.threads : []
     projects = Array.isArray(codex.projects) ? codex.projects : []
     rateLimits = codex.rateLimits && typeof codex.rateLimits === "object"
@@ -247,8 +187,6 @@ Item {
     activeThreadId = String(codex.activeThreadId || "")
     agentProviders.restoreRemoteHosts(snapshot.remoteHosts)
     agentProviders.restoreLocalProviders(snapshot.localProviders)
-    hydratingProviderSnapshot = false
-    return true
   }
 
   function resetBackendState() {
@@ -387,15 +325,11 @@ Item {
   }
 
   function setSelectedModel(value) {
-    persisted.selectedModel = String(value || "")
-    if (persisted.selectedEffort === "") return
-    var supported = agentProviders.modelEfforts("codex", persisted.selectedModel)
-    if (supported.indexOf(persisted.selectedEffort) < 0)
-      persisted.selectedEffort = ""
+    sidebarPreferences.setSelectedModel(value)
   }
 
   function setSelectedEffort(value) {
-    persisted.selectedEffort = String(value || "")
+    sidebarPreferences.setSelectedEffort(value)
   }
 
   function selectedModelInfo() {
@@ -702,7 +636,7 @@ Item {
   }
 
   function openThread(thread, cwdOverride) {
-    if (persisted.threadFrontend === "agent-chat") {
+    if (threadFrontend === "agent-chat") {
       var path = String(cwdOverride || projectPathForThread(thread) || backendHomePath)
       return launchAgentChat(thread, path)
     }
@@ -710,7 +644,7 @@ Item {
   }
 
   function newProjectThread(projectPath) {
-    if (persisted.threadFrontend === "agent-chat")
+    if (threadFrontend === "agent-chat")
       return launchAgentChat(null, projectPath)
     return agentProviders.createThread("provider-codex", projectPath)
   }
@@ -754,168 +688,67 @@ Item {
   }
 
   function sidebarOpenOnWorkspace(workspaceId) {
-    if (sidebarScope === "global") return globalSidebarOpen
-    var id = String(workspaceId || "")
-    return id !== "" && sidebarOpenWorkspaces[id] === true
+    return sidebarPreferences.sidebarOpenOnWorkspace(workspaceId)
   }
 
   function setSidebarOpenOnWorkspace(workspaceId, value) {
-    if (sidebarScope === "global") {
-      globalSidebarOpen = !!value
-      return
-    }
-    var id = String(workspaceId || "")
-    if (id === "" || id === "0") return
-    var next = Object.assign({}, sidebarOpenWorkspaces)
-    if (value) next[id] = true
-    else delete next[id]
-    sidebarOpenWorkspaces = next
+    sidebarPreferences.setSidebarOpenOnWorkspace(workspaceId, value)
   }
 
   function setSidebarScope(value, workspaceId, visibleNow) {
-    var nextScope = value === "global" ? "global" : "workspace"
-    if (nextScope === sidebarScope) return
-    var id = String(workspaceId || "")
-    if (id === "" || id === "0") return
-    var currentlyOpen = visibleNow === undefined
-      ? sidebarOpenOnWorkspace(id) : !!visibleNow
-    if (nextScope === "global") {
-      globalSidebarOpen = currentlyOpen
-    } else if (id !== "" && id !== "0") {
-      var next = Object.assign({}, sidebarOpenWorkspaces)
-      if (currentlyOpen) next[id] = true
-      else delete next[id]
-      sidebarOpenWorkspaces = next
-    }
-    sidebarScope = nextScope
+    sidebarPreferences.setScope(value, workspaceId, visibleNow)
   }
 
   function migrateSidebarOpenState(workspaceId) {
-    if (!migrateOpenSidebarToActiveWorkspace) return
-    migrateOpenSidebarToActiveWorkspace = false
-    setSidebarOpenOnWorkspace(workspaceId, true)
+    sidebarPreferences.migrateOpenState(workspaceId)
   }
 
   function setSelectedProvider(value) {
-    var provider = String(value || "").toLowerCase()
-    if (provider !== "codex" && provider !== "claude" && provider !== "opencode")
-      return
-    persisted.selectedProvider = provider
+    sidebarPreferences.setSelectedProvider(value)
   }
 
   function setThreadFrontend(value) {
-    persisted.threadFrontend = ActionLogic.normalizeThreadFrontend(value)
+    sidebarPreferences.setThreadFrontend(value)
   }
 
   function toggleThreadFrontend() {
-    setThreadFrontend(persisted.threadFrontend === "agent-chat"
-      ? "terminal" : "agent-chat")
-    return persisted.threadFrontend
+    return sidebarPreferences.toggleThreadFrontend()
   }
 
   function setFastMode(value) {
-    persisted.fastMode = value === true
+    sidebarPreferences.setFastMode(value)
   }
 
   function toggleFastMode() {
-    setFastMode(!persisted.fastMode)
-    return persisted.fastMode
+    return sidebarPreferences.toggleFastMode()
   }
 
   function setNotificationsEnabled(value) {
-    persisted.notificationsEnabled = value === true
+    sidebarPreferences.setNotificationsEnabled(value)
   }
 
   function toggleNotifications() {
-    setNotificationsEnabled(!persisted.notificationsEnabled)
-    return persisted.notificationsEnabled
+    return sidebarPreferences.toggleNotifications()
   }
 
   function setCollapsedProjects(value) {
-    collapsedProjects = Object.assign({}, value || ({}))
+    sidebarPreferences.setCollapsedProjects(value)
   }
 
   function setCollapsedRemotes(value) {
-    collapsedRemotes = Object.assign({}, value || ({}))
+    sidebarPreferences.setCollapsedRemotes(value)
   }
 
   function setPinnedSections(value) {
-    pinnedSections = Object.assign({}, value || ({}))
+    sidebarPreferences.setPinnedSections(value)
   }
 
   function loadSidebarSettings(raw) {
-    if (sidebarSettingsLoaded) return
-
-    var parsed = null
-    try {
-      parsed = String(raw || "").trim() === "" ? null : JSON.parse(raw)
-    } catch (error) {
-      console.warn("Codex Threads: invalid sidebar state:", error)
-    }
-
-    if (parsed) {
-      hydratingSidebarSettings = true
-      var parsedOpenWorkspaces = parsed.openWorkspaces
-        && typeof parsed.openWorkspaces === "object"
-        && !Array.isArray(parsed.openWorkspaces)
-        ? Object.assign({}, parsed.openWorkspaces) : ({})
-      sidebarOpenWorkspaces = parsedOpenWorkspaces
-      sidebarScope = parsed.scope === "global" ? "global" : "workspace"
-      globalSidebarOpen = typeof parsed.globalOpen === "boolean"
-        ? parsed.globalOpen : parsed.open === true
-      migrateOpenSidebarToActiveWorkspace = Object.keys(parsedOpenWorkspaces).length === 0
-        && parsed.open === true
-      persisted.sidebarOpen = parsed.open === true
-      if (parsed.provider === "codex" || parsed.provider === "claude"
-          || parsed.provider === "opencode")
-        persisted.selectedProvider = parsed.provider
-      persisted.selectedModel = String(parsed.model || "")
-      persisted.selectedEffort = String(parsed.effort || "")
-      persisted.threadFrontend = ActionLogic.normalizeThreadFrontend(parsed.threadFrontend)
-      persisted.fastMode = parsed.fastMode === true
-      persisted.notificationsEnabled = parsed.notificationsEnabled === true
-      var providerSettings = parsed.providerSettings && typeof parsed.providerSettings === "object"
-        ? parsed.providerSettings : ({})
-      agentProviders.loadSettings(providerSettings)
-      collapsedProjects = parsed.collapsedProjects
-        && typeof parsed.collapsedProjects === "object"
-        && !Array.isArray(parsed.collapsedProjects)
-        ? Object.assign({}, parsed.collapsedProjects) : ({})
-      collapsedRemotes = parsed.collapsedRemotes
-        && typeof parsed.collapsedRemotes === "object"
-        && !Array.isArray(parsed.collapsedRemotes)
-        ? Object.assign({}, parsed.collapsedRemotes) : ({})
-      pinnedSections = parsed.pinnedSections
-        && typeof parsed.pinnedSections === "object"
-        && !Array.isArray(parsed.pinnedSections)
-        ? Object.assign({}, parsed.pinnedSections) : ({})
-      hydratingSidebarSettings = false
-    }
-
-    sidebarSettingsLoaded = true
-    if (!parsed || Number(parsed.version || 0) < 14) sidebarSaveTimer.restart()
-    startAppServer()
+    sidebarPreferences.load(raw)
   }
 
   function flushSidebarSettings() {
-    if (!sidebarSettingsLoaded) return
-    sidebarSettingsFile.setText(JSON.stringify({
-      version: 14,
-      open: sidebarOpen,
-      scope: sidebarScope,
-      globalOpen: globalSidebarOpen,
-      openWorkspaces: sidebarOpenWorkspaces,
-      provider: persisted.selectedProvider,
-      model: persisted.selectedModel,
-      effort: persisted.selectedEffort,
-      threadFrontend: persisted.threadFrontend,
-      fastMode: persisted.fastMode,
-      notificationsEnabled: persisted.notificationsEnabled,
-      collapsedProjects: collapsedProjects,
-      collapsedRemotes: collapsedRemotes,
-      pinnedSections: pinnedSections,
-      providerSettings: agentProviders.settingsObject()
-    }, null, 2) + "\n")
+    sidebarPreferences.flush()
   }
 
   Process {
@@ -1002,40 +835,6 @@ Item {
   onActiveThreadIdChanged: {
     markThreadSeen(activeThreadId)
     scheduleProviderSnapshot()
-  }
-
-  FileView {
-    id: providerSnapshotFile
-    path: root.providerSnapshotPath
-    watchChanges: false
-    atomicWrites: true
-    printErrors: false
-    onLoaded: root.attachProviderSnapshot(text())
-    onLoadFailed: root.attachProviderSnapshot("")
-  }
-
-  FileView {
-    id: sidebarSettingsFile
-    path: root.sidebarSettingsPath
-    watchChanges: false
-    atomicWrites: true
-    printErrors: false
-    onLoaded: root.loadSidebarSettings(text())
-    onLoadFailed: root.loadSidebarSettings("")
-  }
-
-  Timer {
-    id: providerSnapshotTimer
-    interval: 100
-    repeat: false
-    onTriggered: root.flushProviderSnapshot()
-  }
-
-  Timer {
-    id: sidebarSaveTimer
-    interval: 100
-    repeat: false
-    onTriggered: root.flushSidebarSettings()
   }
 
   Timer {

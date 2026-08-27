@@ -116,6 +116,26 @@ TestCase {
     }), "blocked")
   }
 
+  function test_mergesProviderUnreadTransitionsWithoutMutatingSnapshots() {
+    var previous = [
+      { id: "finished", status: { type: "active" }, unread: false },
+      { id: "token", status: { type: "idle" }, completionToken: "old" },
+      { id: "active", status: { type: "active" }, unread: true }
+    ]
+    var incoming = [
+      { id: "finished", status: { type: "idle" } },
+      { id: "token", status: { type: "idle" }, completionToken: "new" },
+      { id: "active", status: { type: "idle" } },
+      { id: "attention", status: { type: "idle" }, attention: true }
+    ]
+    var merged = ThreadStateLogic.mergeProviderUnread(previous, incoming, "active")
+    verify(merged[0].unread)
+    verify(merged[1].unread)
+    verify(!merged[2].unread)
+    verify(merged[3].unread)
+    verify(incoming[0].unread === undefined)
+  }
+
   function test_appliesPinsAndArchiveTombstones() {
     var source = [{ id: "one", name: "Old" }, { id: "two" }]
     var pinned = ThreadStateLogic.applyThreadPin(

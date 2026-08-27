@@ -11,6 +11,7 @@ import "ui" as Ui
 import "logic/ActionLogic.js" as ActionLogic
 import "logic/NavigationLogic.js" as NavigationLogic
 import "logic/PointerFocusLogic.js" as PointerFocusLogic
+import "logic/ThreadListLogic.js" as ThreadListLogic
 import "logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Panel {
@@ -195,19 +196,11 @@ Panel {
   }
 
   function cleanText(value) {
-    return String(value || "").replace(/\s+/g, " ").trim()
+    return ThreadListLogic.cleanText(value)
   }
 
   function providerHost(providerId) {
-    var wanted = String(providerId || "").toLowerCase()
-    var hosts = service.remoteHosts || []
-    var fallback = null
-    for (var i = 0; i < hosts.length; i++) {
-      if (String(hosts[i].providerType || "").toLowerCase() !== wanted) continue
-      if (String(hosts[i].id || "") === "provider-" + wanted) return hosts[i]
-      if (!fallback) fallback = hosts[i]
-    }
-    return fallback
+    return ThreadListLogic.providerHost(service.remoteHosts, providerId)
   }
 
   function providerLabel(providerId) {
@@ -389,10 +382,7 @@ Panel {
   }
 
   function directoryName(path) {
-    var value = String(path || "")
-    if (value === "") return "Unknown folder"
-    var parts = value.replace(/\/$/, "").split("/")
-    return parts.length > 0 && parts[parts.length - 1] !== "" ? parts[parts.length - 1] : value
+    return ThreadListLogic.directoryName(path)
   }
 
   function projectPath(thread) {
@@ -625,20 +615,12 @@ Panel {
   }
 
   function isProjectPath(path) {
-    var value = String(path || "")
-    return value !== "" && value !== homePath
-      && value !== workPath
-      && value.indexOf(codexScratchRoot) !== 0
+    return ThreadListLogic.isProjectPath(
+      path, homePath, workPath, codexScratchRoot)
   }
 
   function rowKey(row) {
-    if (!row) return ""
-    if (row.kind === "remote") return "remote:" + String(row.remoteId || "")
-    if (row.kind === "project")
-      return "project:" + String(row.remoteId || "local") + ":" + String(row.path || "")
-    if (row.kind === "more") return "more:" + String(row.groupKey || "")
-    return "thread:" + String(row.remoteId || "local") + ":"
-      + String(row.thread ? row.thread.id || "" : "")
+    return ThreadListLogic.rowKey(row)
   }
 
   function renderSnapshot() {
@@ -674,17 +656,11 @@ Panel {
   }
 
   function rowIndexForKey(key) {
-    var wanted = String(key || "")
-    for (var i = 0; i < viewRows.length; i++) {
-      if (rowKey(viewRows[i]) === wanted) return i
-    }
-    return -1
+    return ThreadListLogic.rowIndexForKey(viewRows, key)
   }
 
   function groupPreviewKey(kind, path, remoteId) {
-    return kind === "remote"
-      ? "remote:" + String(remoteId || "")
-      : "project:" + String(remoteId || "local") + ":" + String(path || "")
+    return ThreadListLogic.groupPreviewKey(kind, path, remoteId)
   }
 
   function groupShowsAll(kind, path, remoteId) {
@@ -711,13 +687,11 @@ Panel {
     threadListModel.rebuildRows(preferredKey)
   }
   function projectCollapseKey(path, remoteId) {
-    return String(remoteId || "local") + ":" + String(path || "")
+    return ThreadListLogic.projectCollapseKey(path, remoteId)
   }
 
   function sectionPinKey(kind, path, remoteId) {
-    return kind === "remote"
-      ? "remote:" + String(remoteId || "")
-      : "project:" + projectCollapseKey(path, remoteId)
+    return ThreadListLogic.sectionPinKey(kind, path, remoteId)
   }
 
   function sectionPinned(kind, path, remoteId) {

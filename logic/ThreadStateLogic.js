@@ -129,6 +129,38 @@ function remoteStatusValue(status) {
   return type === "active" ? "busy" : "done"
 }
 
+function mergeProviderUnread(previousThreads, nextThreads, activeThreadId) {
+  var previous = Array.isArray(previousThreads) ? previousThreads : []
+  var incoming = Array.isArray(nextThreads) ? nextThreads : []
+  var byId = ({})
+  for (var previousIndex = 0; previousIndex < previous.length; previousIndex++) {
+    var previousThread = previous[previousIndex]
+    var previousId = String(previousThread && previousThread.id || "")
+    if (previousId !== "") byId[previousId] = previousThread
+  }
+
+  var activeId = String(activeThreadId || "")
+  var merged = []
+  for (var nextIndex = 0; nextIndex < incoming.length; nextIndex++) {
+    var next = incoming[nextIndex]
+    var id = String(next && next.id || "")
+    var old = byId[id]
+    var wasActive = old && remoteStatusValue(old.status) !== "done"
+    var nowActive = remoteStatusValue(next && next.status) !== "done"
+    var unread = next && next.attention === true || (old && old.unread === true)
+    if (wasActive && !nowActive && id !== activeId) unread = true
+    if (old && String(next && next.completionToken || "") !== ""
+        && String(next.completionToken) !== String(old.completionToken || "")
+        && id !== activeId) unread = true
+    if (old && String(next && next.attentionToken || "") !== ""
+        && String(next.attentionToken) !== String(old.attentionToken || "")
+        && id !== activeId) unread = true
+    if (id === activeId) unread = false
+    merged.push(Object.assign({}, next, { unread: unread === true }))
+  }
+  return merged
+}
+
 function applyThreadPin(items, threadId, pinned, returnedThread) {
   var wanted = String(threadId || "")
   var next = []

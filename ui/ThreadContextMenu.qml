@@ -1,0 +1,226 @@
+import QtQuick
+import QtQuick.Controls
+import qs.Commons
+import qs.Ui
+
+Popup {
+  id: threadMenu
+
+  required property var panel
+  required property var rowItem
+  x: parent ? parent.width - width : 0
+  y: parent ? parent.height + Style.space(4) : 0
+  width: Style.space(240)
+  padding: Style.space(4)
+  property bool choosingProject: false
+  // A modal, non-dimming overlay reliably observes clicks
+  // outside the menu and uses them only to dismiss it.
+  modal: true
+  dim: false
+  focus: false
+  closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+  onClosed: choosingProject = false
+
+  background: BorderSurface {
+    color: Color.background
+    borderSpec: Border.flat(panel.dim, 1)
+    radius: Style.cornerRadius
+  }
+
+  contentItem: Column {
+    spacing: 0
+
+    Repeater {
+      visible: !threadMenu.choosingProject
+      model: rowItem.modelData.remoteId ? [
+        { label: rowItem.pinned ? "Unpin thread" : "Pin thread", hint: "p", action: "pin" },
+        { label: "Open thread", hint: "Enter / o", action: "open" },
+        { label: "Open terminal", hint: "t / Shift+Enter", action: "terminal" },
+        { label: "Rename…", hint: "r", action: "rename" },
+        { label: "New thread here", hint: "n", action: "new" },
+        { label: "Archive", hint: "y", action: "archive" }
+      ] : [
+        { label: rowItem.pinned ? "Unpin thread" : "Pin thread", hint: "p", action: "pin" },
+        { label: "Open thread", hint: "Enter / o", action: "open" },
+        { label: "Open terminal", hint: "t / Shift+Enter", action: "terminal" },
+        { label: "Rename…", hint: "r", action: "rename" },
+        { label: "New thread here", hint: "n", action: "new" },
+        { label: "Move to…", hint: "›", action: "move" },
+        { label: "Archive", hint: "y", action: "archive" }
+      ]
+
+      delegate: Rectangle {
+        id: menuChoice
+        required property var modelData
+        visible: !threadMenu.choosingProject
+        width: parent.width
+        height: visible ? Style.space(38) : 0
+        radius: Style.cornerRadius
+        color: menuChoiceMouse.containsMouse ? panel.faint : "transparent"
+
+        Text {
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          text: menuChoice.modelData.label
+          color: menuChoice.modelData.action === "archive"
+            ? Color.urgent : panel.foreground
+          font.family: panel.fontFamily
+          font.pixelSize: Style.font.body
+        }
+
+        Text {
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          text: menuChoice.modelData.hint
+          color: panel.dim
+          font.family: panel.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        MouseArea {
+          id: menuChoiceMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: {
+            var action = String(menuChoice.modelData.action || "")
+            if (action === "move") {
+              threadMenu.choosingProject = true
+              return
+            }
+            threadMenu.close()
+            if (action === "pin") {
+              panel.sidebarActions.togglePin(rowItem.modelData.remoteId, rowItem.threadData)
+            } else if (action === "open") {
+              if (rowItem.modelData.remoteId)
+                panel.service.openRemoteThread(rowItem.modelData.remoteId,
+                  rowItem.threadData, rowItem.modelData.path)
+              else panel.service.openThread(rowItem.threadData, rowItem.modelData.path)
+            } else if (action === "terminal") {
+              panel.sidebarActions.openSelectedTerminal()
+            } else if (action === "rename") {
+              panel.startRename(rowItem.modelData.remoteId, rowItem.threadData)
+            } else if (action === "new") {
+              if (rowItem.modelData.remoteId)
+                panel.service.newRemoteThread(rowItem.modelData.remoteId, rowItem.modelData.path)
+              else panel.service.newProjectThread(rowItem.modelData.path)
+            } else if (action === "archive") {
+              if (rowItem.modelData.remoteId)
+                panel.service.archiveRemoteThread(rowItem.modelData.remoteId, rowItem.threadData)
+              else panel.service.archiveThread(rowItem.threadData)
+            }
+          }
+        }
+      }
+    }
+
+    Column {
+      visible: threadMenu.choosingProject && !rowItem.modelData.remoteId
+      width: parent.width
+      spacing: 0
+
+      Rectangle {
+        width: parent.width
+        height: Style.space(38)
+        radius: Style.cornerRadius
+        color: moveBackMouse.containsMouse ? panel.faint : "transparent"
+
+        Text {
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "‹  Move to project"
+          color: panel.foreground
+          font.family: panel.fontFamily
+          font.pixelSize: Style.font.body
+          font.bold: true
+        }
+
+        MouseArea {
+          id: moveBackMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: threadMenu.choosingProject = false
+        }
+      }
+
+      Rectangle {
+        width: parent.width
+        height: 1
+        color: panel.faint
+      }
+
+      Repeater {
+        model: rowItem.modelData.remoteId ? [] : panel.projectMoveTargets(rowItem.threadData)
+
+        delegate: Rectangle {
+          id: projectChoice
+          required property var modelData
+          width: parent.width
+          height: Style.space(48)
+          radius: Style.cornerRadius
+          color: projectChoiceMouse.containsMouse ? panel.faint : "transparent"
+
+          Column {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: Style.space(10)
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(1)
+
+            Text {
+              width: parent.width
+              text: projectChoice.modelData.name
+              textFormat: Text.PlainText
+              color: panel.foreground
+              font.family: panel.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+              elide: Text.ElideRight
+            }
+
+            Text {
+              width: parent.width
+              text: projectChoice.modelData.path
+              textFormat: Text.PlainText
+              color: panel.dim
+              font.family: panel.fontFamily
+              font.pixelSize: Math.max(9, Style.font.caption - 1)
+              elide: Text.ElideMiddle
+            }
+          }
+
+          MouseArea {
+            id: projectChoiceMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              threadMenu.close()
+              panel.service.moveThreadToProject(
+                rowItem.threadData,
+                projectChoice.modelData.path,
+                projectChoice.modelData.name)
+            }
+          }
+        }
+      }
+
+      Text {
+        visible: panel.projectMoveTargets(rowItem.threadData).length === 0
+        width: parent.width
+        height: Style.space(42)
+        text: "No other projects"
+        color: panel.dim
+        font.family: panel.fontFamily
+        font.pixelSize: Style.font.body
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+      }
+    }
+  }
+}

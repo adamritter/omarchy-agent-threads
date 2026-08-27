@@ -26,4 +26,20 @@ while IFS= read -r file; do
   qmllint "$file"
 done < <(find "$plugin_dir/logic" -maxdepth 1 -type f -name '*.js' | sort)
 
+grep -q 'ThreadListLogic.buildRows' "$plugin_dir/ui/ThreadListModel.qml"
+grep -q 'Components.ThreadListRow' "$plugin_dir/ui/CodexThreadList.qml"
+grep -q 'SidebarPreferences {' "$plugin_dir/services/ThreadStore.qml"
+grep -q 'ProviderSnapshotStore {' "$plugin_dir/services/ThreadStore.qml"
+grep -q 'ThreadStateLogic.mergeProviderUnread' \
+  "$plugin_dir/providers/LocalAgentProvider.qml"
+grep -q 'ThreadStateLogic.mergeProviderUnread' \
+  "$plugin_dir/providers/RemoteAgentProvider.qml"
+
+if grep -q 'function threadById' \
+  "$plugin_dir/providers/LocalAgentProvider.qml" \
+  "$plugin_dir/providers/RemoteAgentProvider.qml"; then
+  printf '%s\n' 'Provider adapters duplicated shared thread lookup logic.' >&2
+  exit 1
+fi
+
 printf 'Static checks passed.\n'

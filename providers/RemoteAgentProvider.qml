@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
+import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 Item {
   id: root
@@ -126,35 +127,9 @@ Item {
     return type === "active" ? "busy" : "done"
   }
 
-  function threadById(items, threadId) {
-    var wanted = String(threadId || "")
-    for (var i = 0; i < items.length; i++) {
-      if (String(items[i] && items[i].id || "") === wanted) return items[i]
-    }
-    return null
-  }
-
   function mergeUnread(host, nextThreads) {
-    var previous = host && host.threads || []
-    var merged = []
-    for (var i = 0; i < nextThreads.length; i++) {
-      var next = nextThreads[i]
-      var id = String(next && next.id || "")
-      var old = threadById(previous, id)
-      var wasActive = old && threadStatus(old) !== "done"
-      var nowActive = threadStatus(next) !== "done"
-      var unread = next.attention === true || (old && old.unread === true)
-      if (wasActive && !nowActive && id !== controller.activeThreadId) unread = true
-      if (old && String(next.completionToken || "") !== ""
-          && String(next.completionToken) !== String(old.completionToken || "")
-          && id !== controller.activeThreadId) unread = true
-      if (old && String(next.attentionToken || "") !== ""
-          && String(next.attentionToken) !== String(old.attentionToken || "")
-          && id !== controller.activeThreadId) unread = true
-      if (id === controller.activeThreadId) unread = false
-      merged.push(Object.assign({}, next, { unread: unread }))
-    }
-    return merged
+    return ThreadStateLogic.mergeProviderUnread(
+      host && host.threads, nextThreads, controller.activeThreadId)
   }
 
   function markThreadSeen(threadId) {

@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import "../ui"
+import "../logic/ThreadListLogic.js" as ThreadListLogic
 
 TestCase {
   id: testCase
@@ -9,80 +10,33 @@ TestCase {
   property string activeProvider: "codex"
   property string searchText: ""
   property int groupPreviewLimit: 10
+  property string homePath: "/home/test"
+  property string workPath: "/home/test/Work"
+  property string codexScratchRoot: "/home/test/Documents/Codex/"
+  property var expandedGroups: ({})
   property var service: ({})
-  property var pinnedSectionState: ({})
-  property var collapsedProjectState: ({})
-  property var collapsedRemoteState: ({})
 
   ThreadListModel {
     id: listModel
     controller: testCase
   }
 
-  function cleanText(value) {
-    return String(value || "").replace(/\s+/g, " ").trim()
-  }
-
-  function providerHost(providerId) {
-    var hosts = service.remoteHosts || []
-    var wanted = String(providerId || "")
-    for (var i = 0; i < hosts.length; i++) {
-      if (String(hosts[i].id || "") === "provider-" + wanted) return hosts[i]
-    }
-    return null
-  }
-
-  function projectPath(thread) { return String(thread && thread.cwd || "/home/test") }
-  function isProjectPath(path) { return String(path || "") !== "/home/test" }
-  function directoryName(path) {
-    var parts = String(path || "").replace(/\/$/, "").split("/")
-    return parts[parts.length - 1]
-  }
-  function rowKey(row) {
-    if (!row) return ""
-    if (row.kind === "remote") return "remote:" + String(row.remoteId || "")
-    if (row.kind === "project")
-      return "project:" + String(row.remoteId || "local") + ":" + String(row.path || "")
-    return "thread:" + String(row.remoteId || "local") + ":"
-      + String(row.thread && row.thread.id || "")
-  }
-  function rowIndexForKey(key) {
-    for (var i = 0; i < listModel.viewRows.length; i++)
-      if (rowKey(listModel.viewRows[i]) === key) return i
-    return -1
-  }
-  function groupShowsAll(kind, path, remoteId) { return true }
-  function groupPreviewKey(kind, path, remoteId) { return kind + ":" + path + ":" + remoteId }
-  function sectionPinned(kind, path, remoteId) {
-    var key = kind === "remote"
-      ? "remote:" + String(remoteId || "")
-      : "project:" + String(remoteId || "local") + ":" + String(path || "")
-    return pinnedSectionState[key] === true
-  }
-  function projectCollapsed(path, remoteId) {
-    return collapsedProjectState[String(remoteId || "local") + ":"
-      + String(path || "")] !== false
-  }
-  function remoteCollapsed(remoteId) {
-    return collapsedRemoteState[String(remoteId || "")] !== false
-  }
-
   function init() {
     activeProvider = "codex"
     searchText = ""
     listModel.selectedIndex = 0
-    pinnedSectionState = ({})
-    collapsedProjectState = ({
-      "local:/work/project": false
-    })
-    collapsedRemoteState = ({})
+    expandedGroups = ({})
     service = {
       threads: [
         { id: "home", name: "Home thread", cwd: "/home/test", updatedAt: 30 },
         { id: "alpha", name: "Alpha", cwd: "/work/project", updatedAt: 20 },
         { id: "beta", name: "Beta", cwd: "/work/project", updatedAt: 10 }
       ],
+      projects: [],
       remoteHosts: [],
+      collapsedProjects: ({ "local:/work/project": false }),
+      collapsedRemotes: ({}),
+      pinnedSections: ({}),
       remotePathForThread: function(host, thread) { return thread.cwd }
     }
   }
@@ -110,6 +64,29 @@ TestCase {
     compare(listModel.visibleThreadCount, 1)
     compare(listModel.viewRows.length, 1)
     compare(listModel.viewRows[0].thread.id, "claude-1")
+  }
+
+  function test_buildsStableRowAndSectionKeys() {
+    compare(ThreadListLogic.rowKey({ kind: "remote", remoteId: "dev" }),
+      "remote:dev")
+    compare(ThreadListLogic.rowKey({
+      kind: "project", remoteId: "dev", path: "/srv/app"
+    }), "project:dev:/srv/app")
+    compare(ThreadListLogic.rowKey({
+      kind: "thread", thread: { id: "one" }
+    }), "thread:local:one")
+    compare(ThreadListLogic.sectionPinKey("project", "/srv/app", "dev"),
+      "project:dev:/srv/app")
+  }
+
+  function test_resolvesLocalAndRemoteThreadPaths() {
+    var projects = [{ id: "project", roots: [{ path: "/work/project" }] }]
+    compare(ThreadListLogic.pathForThread(
+      projects, { projectId: "project", cwd: "/fallback" }, "/home/test", false),
+      "/work/project")
+    compare(ThreadListLogic.pathForThread(
+      projects, { projectId: "project", cwd: "/runtime" }, "/home/test", true),
+      "/runtime")
   }
 
   function test_filtersRows() {
@@ -164,14 +141,14 @@ TestCase {
         { id: "remote-beta", name: "Beta", cwd: "/srv/app", updatedAt: 10 }
       ]
     }]
-    pinnedSectionState = ({
+    service.pinnedSections = ({
       "project:remote-one:/srv/app": true
     })
-    collapsedRemoteState = ({
+    service.collapsedRemotes = ({
       "remote-one": true
     })
 
-    collapsedProjectState = ({
+    service.collapsedProjects = ({
       "remote-one:/srv/app": true
     })
     listModel.rebuildRows("")
@@ -179,7 +156,7 @@ TestCase {
     compare(listModel.viewRows[0].kind, "remote")
     compare(listModel.viewRows[1].kind, "project")
 
-    collapsedProjectState = ({
+    service.collapsedProjects = ({
       "remote-one:/srv/app": false
     })
     listModel.rebuildRows("")

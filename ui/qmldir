@@ -2,7 +2,11 @@ CodexThreadList 1.0 CodexThreadList.qml
 FastScrollHandler 1.0 FastScrollHandler.qml
 HelpOverlay 1.0 HelpOverlay.qml
 ModelEffortSelector 1.0 ModelEffortSelector.qml
+ProjectContextMenu 1.0 ProjectContextMenu.qml
+RemoteContextMenu 1.0 RemoteContextMenu.qml
 RemoteSetup 1.0 RemoteSetup.qml
 SidebarController 1.0 SidebarController.qml
 SidebarKeyCatcher 1.0 SidebarKeyCatcher.qml
 ThreadListModel 1.0 ThreadListModel.qml
+ThreadListRow 1.0 ThreadListRow.qml
+ThreadContextMenu 1.0 ThreadContextMenu.qml

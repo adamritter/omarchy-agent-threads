@@ -8,6 +8,9 @@ live_wayland="${PANEL_TEST_LIVE_WAYLAND:-0}"
 if [[ "$live_wayland" != "1" ]]; then
   panel_source="$plugin_root/Panel.qml"
   list_source="$plugin_root/ui/CodexThreadList.qml"
+  row_source="$plugin_root/ui/ThreadListRow.qml"
+  project_menu_source="$plugin_root/ui/ProjectContextMenu.qml"
+  remote_menu_source="$plugin_root/ui/RemoteContextMenu.qml"
   help_source="$plugin_root/ui/HelpOverlay.qml"
   local_codex_source="$plugin_root/providers/LocalCodexProvider.qml"
 
@@ -33,6 +36,7 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'helpOverlay.scrollPage(direction, fraction)' "$panel_source"
   grep -q 'helpOverlay.scrollToEdge(edge)' "$panel_source"
   grep -q 'Ui.CodexThreadList' "$panel_source"
+  grep -q 'Components.ThreadListRow' "$list_source"
   grep -q 'id: searchButton' "$panel_source"
   grep -q 'onClicked: root.startSearch()' "$panel_source"
   grep -q 'id: notificationButton' "$panel_source"
@@ -78,9 +82,12 @@ if [[ "$live_wayland" != "1" ]]; then
   grep -q 'function nextThread(): string' "$panel_source"
   grep -q 'function previousThread(): string' "$panel_source"
   grep -q 'root.service.flushProviderSnapshot()' "$panel_source"
-  grep -q 'id: projectMenu' "$list_source"
-  grep -q 'panel.sidebarActions.openSelectedTerminal()' "$list_source"
-  if grep -q 'installRemoteClaude\|INSTALLING…\|"INSTALL"' "$list_source"; then
+  grep -q 'Components.ProjectContextMenu' "$row_source"
+  grep -q 'Components.ThreadContextMenu' "$row_source"
+  grep -q 'Components.RemoteContextMenu' "$row_source"
+  grep -q 'id: projectMenu' "$project_menu_source"
+  grep -q 'panel.sidebarActions.openSelectedTerminal()' "$project_menu_source"
+  if grep -q 'installRemoteClaude\|INSTALLING…\|"INSTALL"' "$remote_menu_source"; then
     printf '%s\n' 'Remote Claude still exposes automatic installation' >&2
     exit 1
   fi
