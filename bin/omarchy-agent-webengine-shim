@@ -21,19 +21,39 @@ if [[ ! "$qt_version" =~ ^[A-Za-z0-9._+-]+$ ]]; then
   exit 1
 fi
 cache_home="${XDG_CACHE_HOME:-${HOME:?HOME is not set}/.cache}"
+[[ "$cache_home" == /* ]] || {
+  printf 'Agent Chat requires an absolute cache directory path.\n' >&2
+  exit 1
+}
+mkdir -p -- "$cache_home"
+cache_owner="$(stat -Lc '%u' "$cache_home")"
+cache_mode="$(stat -Lc '%a' "$cache_home")"
+if [[ "$cache_owner" != "$(id -u)" ]] || (( (8#$cache_mode & 0022) != 0 )); then
+  printf 'Agent Chat requires a user-owned cache directory that is not group/world writable.\n' >&2
+  exit 1
+fi
 build_dir="$cache_home/omarchy-agent-chat/webengine-shim/$qt_version"
 output_file="$build_dir/libagent-chat-webengine-init.so"
+plugin_cache="$cache_home/omarchy-agent-chat"
+[[ ! -L "$plugin_cache" && ! -L "$build_dir" ]] || {
+  printf 'Agent Chat refused a symbolic link in its shim cache.\n' >&2
+  exit 1
+}
+mkdir -p -m 700 -- "$build_dir"
+chmod 700 "$plugin_cache" "$plugin_cache/webengine-shim" "$build_dir"
 
-if [[ -s "$output_file" && "$output_file" -nt "$source_file" ]]; then
+if [[ -f "$output_file" && ! -L "$output_file"
+    && "$(stat -Lc '%u' "$output_file")" == "$(id -u)"
+    && "$output_file" -nt "$source_file" ]]; then
   printf '%s\n' "$output_file"
   exit 0
 fi
 
-mkdir -p -- "$build_dir"
 temporary_file="$(mktemp "$build_dir/.webengine-shim-XXXXXX.so")"
 trap 'rm -f -- "$temporary_file"' EXIT
 
 c++ -std=c++17 -O2 -shared -fPIC "$source_file" -o "$temporary_file" -ldl
-mv -f -- "$temporary_file" "$output_file"
+chmod 600 "$temporary_file"
+mv -fT -- "$temporary_file" "$output_file"
 trap - EXIT
 printf '%s\n' "$output_file"

@@ -54,8 +54,17 @@ webengine_shim="${AGENT_CHAT_WEBENGINE_SHIM:-}"
 if [[ -z "$webengine_shim" ]]; then
   webengine_shim="$($plugin_dir/bin/omarchy-agent-webengine-shim)"
 fi
-if [[ ! -s "$webengine_shim" ]]; then
+shim_directory="$(dirname -- "$webengine_shim")"
+if [[ "$webengine_shim" != /* || ! -f "$webengine_shim" || -L "$webengine_shim"
+    || "$(stat -Lc '%u' "$webengine_shim" 2>/dev/null || true)" != "$(id -u)"
+    || "$(stat -Lc '%u' "$shim_directory" 2>/dev/null || true)" != "$(id -u)" ]]; then
   printf 'Agent Chat WebEngine compatibility shim is missing: %s\n' "$webengine_shim" >&2
+  exit 1
+fi
+shim_mode="$(stat -Lc '%a' "$webengine_shim")"
+shim_directory_mode="$(stat -Lc '%a' "$shim_directory")"
+if (( (8#$shim_mode & 0022) != 0 || (8#$shim_directory_mode & 0022) != 0 )); then
+  printf 'Agent Chat refused a group/world-writable WebEngine compatibility shim.\n' >&2
   exit 1
 fi
 

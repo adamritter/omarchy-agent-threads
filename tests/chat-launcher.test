@@ -34,10 +34,27 @@ chmod +x "$test_root/bin/hyprctl" "$test_root/bin/quickshell"
 export PATH="$test_root/bin:$PATH"
 export HYPR_LOG="$test_root/hypr.log"
 export QUICKSHELL_LOG="$test_root/quickshell.log"
+shim_file="$test_root/libfixture-shim.so"
+printf '%s\n' fixture > "$shim_file"
+chmod 600 "$shim_file"
 
-CHAT_WINDOW_OPEN=0 CHAT_WINDOW_OPEN_AFTER_LAUNCH=1 AGENT_CHAT_WEBENGINE_SHIM=/usr/lib/libc.so.6 \
+chmod 666 "$shim_file"
+if CHAT_WINDOW_OPEN=0 AGENT_CHAT_WEBENGINE_SHIM="$shim_file" \
+    "$plugin_root/bin/omarchy-agent-chat" --thread unsafe-shim >/dev/null 2>&1; then
+  printf 'Agent Chat accepted a group/world-writable preload shim\n' >&2
+  exit 1
+fi
+chmod 600 "$shim_file"
+ln -s -- "$shim_file" "$test_root/shim-link.so"
+if CHAT_WINDOW_OPEN=0 AGENT_CHAT_WEBENGINE_SHIM="$test_root/shim-link.so" \
+    "$plugin_root/bin/omarchy-agent-chat" --thread symlink-shim >/dev/null 2>&1; then
+  printf 'Agent Chat accepted a preload shim symbolic link\n' >&2
+  exit 1
+fi
+
+CHAT_WINDOW_OPEN=0 CHAT_WINDOW_OPEN_AFTER_LAUNCH=1 AGENT_CHAT_WEBENGINE_SHIM="$shim_file" \
   "$plugin_root/bin/omarchy-agent-chat" --thread thread-new --fast -m gpt-test
-grep -F -- "/usr/lib/libc.so.6||" "$QUICKSHELL_LOG" >/dev/null
+grep -F -- "$shim_file||" "$QUICKSHELL_LOG" >/dev/null
 grep -F -- "|--no-duplicate --daemonize --path $plugin_root/agent-chat.qml" \
   "$QUICKSHELL_LOG" >/dev/null
 cut -d '|' -f 3 "$QUICKSHELL_LOG" | jq -e '
@@ -63,7 +80,7 @@ grep -F -- '"effort":"high"' "$QUICKSHELL_LOG" >/dev/null
 
 rm -f -- "$QUICKSHELL_LOG"
 if CHAT_WINDOW_OPEN=0 CHAT_WINDOW_OPEN_AFTER_LAUNCH=0 \
-    AGENT_CHAT_WEBENGINE_SHIM=/usr/lib/libc.so.6 \
+    AGENT_CHAT_WEBENGINE_SHIM="$shim_file" \
     "$plugin_root/bin/omarchy-agent-chat" --thread thread-missing; then
   printf 'Agent Chat launcher succeeded without creating a window\n' >&2
   exit 1
