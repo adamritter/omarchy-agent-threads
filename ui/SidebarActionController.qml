@@ -233,7 +233,7 @@ Item {
       return false
     }
     panel.focusActions.releaseSidebarFocus(true)
-    return service.providers.openTerminal(target.mode, target.endpoint, target.path)
+    return service.threadActions.openTerminal(target.mode, target.endpoint, target.path)
   }
   
   function archiveSelected() {

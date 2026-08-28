@@ -105,7 +105,7 @@ Item {
 
   function finishRefresh() {
     controller.threads = controller.threadActions.threadsWithoutArchiveTombstones(
-      controller.providers.normalizePinnedThreads(pageBuffer))
+      controller.threadActions.normalizePinnedThreads(pageBuffer))
     loading = false
     lastRefreshMs = Date.now()
     if (controller.archiveConfirmationId !== "") {

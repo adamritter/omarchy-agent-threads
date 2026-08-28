@@ -2,7 +2,7 @@ import QtQuick
 import "../logic/AgentProviderLogic.js" as AgentProviderLogic
 
 Item {
-  required property var controller
+  required property var threadActions
   required property var appServerClient
   required property var localRegistry
   required property var remoteProvider
@@ -30,14 +30,14 @@ Item {
   }
   
   function pathForThread(hostId, thread) {
-    if (isLocalCodex(hostId)) return controller.threadActions.projectPathForThread(thread)
+    if (isLocalCodex(hostId)) return threadActions.projectPathForThread(thread)
     var local = localProviderForHost(hostId)
     if (local) return local.pathForThread(thread)
     return remoteProvider.pathForThread(remoteProvider.hostById(hostId), thread)
   }
   
   function threadStatus(hostId, thread) {
-    if (isLocalCodex(hostId)) return controller.threadActions.threadStatus(thread ? thread.id : "")
+    if (isLocalCodex(hostId)) return threadActions.threadStatus(thread ? thread.id : "")
     var local = localProviderForHost(hostId)
     if (local) return local.threadStatus(thread)
     return remoteProvider.threadStatus(thread)
@@ -70,21 +70,21 @@ Item {
   }
   
   function archiveThread(hostId, thread) {
-    if (isLocalCodex(hostId)) return controller.threadActions.archiveLocalCodexThread(thread)
+    if (isLocalCodex(hostId)) return threadActions.archiveLocalCodexThread(thread)
     var local = localProviderForHost(hostId)
     if (local) return local.archiveThread(thread)
     return remoteProvider.archiveThread(hostId, thread)
   }
   
   function renameThread(hostId, thread, name) {
-    if (isLocalCodex(hostId)) return controller.threadActions.renameLocalCodexThread(thread, name)
+    if (isLocalCodex(hostId)) return threadActions.renameLocalCodexThread(thread, name)
     var local = localProviderForHost(hostId)
     if (local) return local.renameThread(thread, name)
     return remoteProvider.renameThread(hostId, thread, name)
   }
   
   function toggleThreadPin(hostId, thread) {
-    if (isLocalCodex(hostId)) return controller.threadActions.toggleLocalCodexThreadPin(thread)
+    if (isLocalCodex(hostId)) return threadActions.toggleLocalCodexThreadPin(thread)
     var local = localProviderForHost(hostId)
     if (local) return local.toggleThreadPin(thread)
     return remoteProvider.toggleThreadPin(hostId, thread)

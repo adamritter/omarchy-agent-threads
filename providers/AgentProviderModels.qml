@@ -2,7 +2,9 @@ import QtQuick
 import "../logic/AgentProviderLogic.js" as AgentProviderLogic
 
 Item {
-  required property var controller
+  required property var codexModels
+  required property var codexConfig
+  required property var settings
   required property var registry
 
   function providerHost(providerType) { return registry.host(providerType) }
@@ -10,8 +12,8 @@ Item {
     var type = AgentProviderLogic.providerType(providerType)
     if (type === "codex") {
       return AgentProviderLogic.modelState(
-        controller.models, controller.codexConfig,
-        controller.settings.selectedModel, controller.settings.selectedEffort, modelId)
+        codexModels, codexConfig,
+        settings.selectedModel, settings.selectedEffort, modelId)
     }
     var selected = registry.selectedModel(type)
     var requested = modelId !== undefined ? modelId : selected
@@ -22,17 +24,17 @@ Item {
   }
   function models(providerType) {
     var type = AgentProviderLogic.providerType(providerType)
-    return type === "codex" ? (controller.models || []) : registry.models(type)
+    return type === "codex" ? (codexModels || []) : registry.models(type)
   }
   function agents(providerType) { return registry.agents(providerType) }
   function selectedModel(providerType) {
     var type = AgentProviderLogic.providerType(providerType)
-    return type === "codex" ? String(controller.settings.selectedModel || "")
+    return type === "codex" ? String(settings.selectedModel || "")
       : registry.selectedModel(type)
   }
   function selectedEffort(providerType) {
     var type = AgentProviderLogic.providerType(providerType)
-    return type === "codex" ? String(controller.settings.selectedEffort || "")
+    return type === "codex" ? String(settings.selectedEffort || "")
       : registry.selectedEffort(type)
   }
   function selectedAgent(providerType) { return registry.selectedAgent(providerType) }
@@ -49,12 +51,12 @@ Item {
   }
   function setModel(providerType, value) {
     var type = AgentProviderLogic.providerType(providerType)
-    if (type === "codex") controller.settings.setSelectedModel(value)
+    if (type === "codex") settings.setSelectedModel(value)
     else registry.setModel(type, value)
   }
   function setEffort(providerType, value) {
     var type = AgentProviderLogic.providerType(providerType)
-    if (type === "codex") controller.settings.setSelectedEffort(value)
+    if (type === "codex") settings.setSelectedEffort(value)
     else registry.setEffort(type, value)
   }
   function setAgent(providerType, value) { registry.setAgent(providerType, value) }

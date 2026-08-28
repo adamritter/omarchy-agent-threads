@@ -1,6 +1,5 @@
 import QtQuick
 import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
-import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 QtObject {
   required property var store
@@ -183,29 +182,8 @@ QtObject {
     routing.createThread(hostId, path)
   }
   
-  function openTerminal(mode, endpoint, path) {
-    if (!store.runtimeProcesses || store.runtimeProcesses.terminalRunning) return false
-    store.launchError = ""
-    return store.runtimeProcesses.startTerminal([
-      store.streamGuardPath,
-      "--",
-      store.terminalOpenHelperPath,
-      String(mode || ""),
-      String(endpoint || ""),
-      String(path || "")
-    ])
-  }
-  
   function refreshThreads() {
     appServer.refreshThreads()
-  }
-  
-  function threadIsPinned(thread) {
-    return ThreadStateLogic.threadIsPinned(thread, store.pinnedSectionId)
-  }
-  
-  function normalizePinnedThreads(items) {
-    return ThreadStateLogic.normalizePinnedThreads(items, store.pinnedSectionId)
   }
   
   function refreshProjects() {

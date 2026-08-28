@@ -77,7 +77,7 @@ Item {
 
   AgentProviderRouting {
     id: providerRouting
-    controller: root.controller
+    threadActions: root.controller.threadActions
     appServerClient: appServerClient
     localRegistry: localRegistry
     remoteProvider: remoteProvider
@@ -87,7 +87,9 @@ Item {
 
   AgentProviderModels {
     id: providerModels
-    controller: root.controller
+    codexModels: root.controller.models
+    codexConfig: root.controller.codexConfig
+    settings: root.controller.settings
     registry: localRegistry
   }
 }
