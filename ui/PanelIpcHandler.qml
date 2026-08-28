@@ -3,8 +3,14 @@ import Quickshell
 import Quickshell.Io
 
 Item {
+  id: root
   required property var panel
   visible: false
+
+  PanelGlobalActions {
+    id: globalActions
+    panel: root.panel
+  }
 
   IpcHandler {
     enabled: panel.bar !== null
@@ -72,6 +78,10 @@ Item {
       return panel.providerActions.cycleEffort()
     return panel.service.settings.selectedEffortForProvider(
       panel.activeProvider) || "default"
+  }
+
+  function globalAction(action: string): string {
+    return globalActions.route(action)
   }
 
   function scope(mode: string): string {

@@ -38,16 +38,6 @@ EOF
 
 chmod +x "$test_root/bin/uwsm-app" "$test_root/bin/hyprctl"
 
-# A detached pre-reload QML instance can briefly keep invoking the previous
-# launcher paths. Removing those files makes every click fail until the entire
-# Shell graph is replaced, so they must remain executable compatibility shims.
-for legacy_helper in omarchy-codex-thread-open omarchy-codex-project-new; do
-  if [[ ! -x "$plugin_root/bin/$legacy_helper" ]]; then
-    printf 'Missing hot-reload compatibility launcher: %s\n' "$legacy_helper" >&2
-    exit 1
-  fi
-done
-
 run_helper() {
   rm -f -- "$capture" "$launched"
   CODEX_LAUNCH_CAPTURE="$capture" CODEX_LAUNCH_MARKER="$launched" \
@@ -64,48 +54,6 @@ run_helper() {
   [[ "${launch_args[8]}" == "$project_dir" ]]
   [[ "${launch_args[9]}" == "codex" ]]
 }
-
-run_legacy_helper() {
-  local helper="$1"
-  shift
-  rm -f -- "$capture" "$launched"
-  CODEX_LAUNCH_CAPTURE="$capture" CODEX_LAUNCH_MARKER="$launched" \
-    XDG_RUNTIME_DIR="$test_root/runtime" PATH="$test_root/bin:$PATH" \
-    "$plugin_root/bin/$helper" "$@" >/dev/null
-  mapfile -t launch_args <"$capture"
-  [[ "${launch_args[0]}" == "--" ]]
-  [[ "${launch_args[1]}" == "xdg-terminal-exec" ]]
-  [[ "${launch_args[2]}" == "--dir=$project_dir" ]]
-  [[ "${launch_args[7]}" == */command.status ]]
-  [[ "${launch_args[8]}" == "$project_dir" ]]
-  [[ "${launch_args[9]}" == "codex" ]]
-}
-
-# This is the exact eight-argument layout retained by the stale local QML
-# instance: it omitted mapping namespace before model, effort, and tier.
-run_legacy_helper omarchy-codex-thread-open \
-  fixture-thread "$project_dir" "" "" "" gpt-5.6-sol high fast
-[[ "${launch_args[10]}" == "--model" ]]
-[[ "${launch_args[11]}" == "gpt-5.6-sol" ]]
-[[ "${launch_args[12]}" == "-c" ]]
-[[ "${launch_args[13]}" == 'model_reasoning_effort="high"' ]]
-[[ "${launch_args[14]}" == "-c" ]]
-[[ "${launch_args[15]}" == 'service_tier="fast"' ]]
-[[ "${launch_args[16]}" == "-C" ]]
-[[ "${launch_args[17]}" == "$project_dir" ]]
-[[ "${launch_args[18]}" == "resume" ]]
-[[ "${launch_args[19]}" == "fixture-thread" ]]
-
-run_legacy_helper omarchy-codex-project-new \
-  "$project_dir" "" "" "" gpt-5.6-terra high default
-[[ "${launch_args[10]}" == "--model" ]]
-[[ "${launch_args[11]}" == "gpt-5.6-terra" ]]
-[[ "${launch_args[12]}" == "-c" ]]
-[[ "${launch_args[13]}" == 'model_reasoning_effort="high"' ]]
-[[ "${launch_args[14]}" == "-c" ]]
-[[ "${launch_args[15]}" == 'service_tier="default"' ]]
-[[ "${launch_args[16]}" == "-C" ]]
-[[ "${launch_args[17]}" == "$project_dir" ]]
 
 run_helper --terminal-cwd "$project_dir" --thread-id fixture-thread -- \
   codex --model gpt-5.6-sol \

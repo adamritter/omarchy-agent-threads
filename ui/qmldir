@@ -11,6 +11,7 @@ ThreadListModel 1.0 ThreadListModel.qml
 ThreadListRow 1.0 ThreadListRow.qml
 ThreadContextMenu 1.0 ThreadContextMenu.qml
 internal ModelEffortOptions ModelEffortOptions.qml
+internal PanelGlobalActions PanelGlobalActions.qml
 internal RemoteSetupActions RemoteSetupActions.qml
 internal RemoteSetupSshHosts RemoteSetupSshHosts.qml
 internal SidebarActionController SidebarActionController.qml

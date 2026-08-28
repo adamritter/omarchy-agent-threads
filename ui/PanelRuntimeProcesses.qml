@@ -1,9 +1,12 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import "../logic/PanelReloadStateLogic.js" as PanelReloadStateLogic
+import "../logic/WorkspaceStateLogic.js" as WorkspaceStateLogic
 
 Item {
+  id: root
   required property var panel
   visible: false
 
@@ -113,19 +116,70 @@ Item {
     }
   }
 
-  Process {
+  function ipcObject(object) {
+    if (!object) return ({})
+    try { return object.lastIpcObject || ({}) }
+    catch (error) { return ({}) }
+  }
+
+  function workspaceSnapshot(workspace) {
+    if (!workspace) return ({})
+    var source = ipcObject(workspace)
+    return {
+      id: Number(workspace.id || source.id || 0),
+      name: String(workspace.name || source.name || ""),
+      monitorID: workspace.monitor ? Number(workspace.monitor.id) : Number(source.monitorID || -1),
+      hasfullscreen: workspace.hasFullscreen === true || source.hasfullscreen === true
+    }
+  }
+
+  function monitorSnapshot(monitor) {
+    if (!monitor) return ({})
+    var source = ipcObject(monitor)
+    return {
+      id: Number(monitor.id),
+      x: Number(monitor.x),
+      y: Number(monitor.y),
+      width: Number(monitor.width),
+      height: Number(monitor.height),
+      scale: Number(monitor.scale),
+      specialWorkspace: source.specialWorkspace || ({})
+    }
+  }
+
+  function workspaceState() {
+    var monitor = Hyprland.focusedMonitor
+    var active = monitor && monitor.activeWorkspace
+      ? monitor.activeWorkspace : Hyprland.focusedWorkspace
+    var workspaces = []
+    var workspaceValues = Hyprland.workspaces.values
+    for (var workspaceIndex = 0; workspaceIndex < workspaceValues.length; workspaceIndex++)
+      workspaces.push(workspaceSnapshot(workspaceValues[workspaceIndex]))
+    var clients = []
+    var toplevelValues = Hyprland.toplevels.values
+    for (var clientIndex = 0; clientIndex < toplevelValues.length; clientIndex++)
+      clients.push(ipcObject(toplevelValues[clientIndex]))
+    return WorkspaceStateLogic.derive(
+      workspaceSnapshot(active), monitorSnapshot(monitor), workspaces, clients)
+  }
+
+  QtObject {
     id: fullscreenProbeObject
-    command: [panel.environment.workspaceStateHelperPath]
-    running: false
+    property bool running: false
     onRunningChanged: {
+      if (running) {
+        Qt.callLater(function() {
+          if (!fullscreenProbeObject.running) return
+          panel.focusActions.applyFullscreenState(
+            JSON.stringify(root.workspaceState()))
+          fullscreenProbeObject.running = false
+        })
+        return
+      }
       if (!running && panel.session.fullscreenProbeQueued) {
         panel.session.fullscreenProbeQueued = false
         fullscreenProbeDebounceObject.restart()
       }
-    }
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: panel.focusActions.applyFullscreenState(text)
     }
   }
 }
