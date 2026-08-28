@@ -10,6 +10,8 @@ ShellRoot {
   property bool failed: false
   readonly property bool liveLayerChecks:
     Quickshell.env("AGENT_THREADS_PANEL_TEST_LIVE") === "1"
+  readonly property bool compileOnly:
+    Quickshell.env("AGENT_THREADS_PANEL_TEST_COMPILE_ONLY") === "1"
   property int firstMainLayerCount: 0
 
   FakePanelService { id: fakeService }
@@ -20,6 +22,7 @@ ShellRoot {
     AgentThreads.Panel {
       service: fakeService
       layerNamespace: "agent-threads-panel-test"
+      layerMappingEnabled: !testRoot.compileOnly
       fullscreenSuppressionEnabled: false
     }
   }
@@ -40,7 +43,11 @@ ShellRoot {
 
   function createPanel() {
     panelInstance = panelComponent.createObject(testRoot)
-    if (!check(panelInstance !== null, "Panel.qml could not be instantiated")) return
+    if (!check(panelInstance !== null, "panel creation failed")) return
+    if (compileOnly) {
+      Qt.callLater(function() { reloadBoundaryProbe.start(panelInstance) })
+      return
+    }
     panelInstance.open()
   }
 
@@ -64,6 +71,11 @@ ShellRoot {
 
   PanelLayerProbe {
     id: layerProbe
+    harness: testRoot
+  }
+
+  PanelReloadBoundaryProbe {
+    id: reloadBoundaryProbe
     harness: testRoot
   }
 

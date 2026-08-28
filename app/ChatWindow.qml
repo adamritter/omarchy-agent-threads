@@ -20,7 +20,7 @@ FloatingWindow {
 
   readonly property var initialOptions: ChatLaunchOptions.parseJson(
     Quickshell.env("AGENT_CHAT_OPTIONS"))
-  property string workingDirectory: initialOptions.cwd || Quickshell.env("HOME") || "/tmp"
+  property string workingDirectory: initialOptions.cwd || Quickshell.env("HOME")
   property string selectedModel: initialOptions.model
   property string selectedEffort: initialOptions.effort
   property string serviceTier: initialOptions.serviceTier
@@ -153,7 +153,7 @@ FloatingWindow {
   function applyLaunchOptions(options) {
     if (conversation.busy) return false
     var next = ChatLaunchOptions.normalize(options)
-    workingDirectory = next.cwd || Quickshell.env("HOME") || "/tmp"
+    workingDirectory = next.cwd || Quickshell.env("HOME")
     selectedModel = next.model
     selectedEffort = next.effort
     serviceTier = next.serviceTier

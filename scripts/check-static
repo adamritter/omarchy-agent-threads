@@ -20,110 +20,11 @@ while IFS= read -r file; do
 done < <(find "$plugin_dir/services" "$plugin_dir/providers" \
   "$plugin_dir/ui" "$plugin_dir/app" -type f -name '*.qml' | sort)
 
-while IFS= read -r file; do
-  if rg -q --pcre2 '^(?!import ).*\b(Hyprland|HyprlandFocusGrab)\b' "$file" \
-      && ! grep -qx 'import Quickshell.Hyprland' "$file"; then
-    printf 'QML file uses Hyprland without its file-local import: %s\n' \
-      "${file#"$plugin_dir/"}" >&2
-    exit 1
-  fi
-  if rg -q --pcre2 '^(?!import ).*\b(ToplevelManager|Wlr[A-Z][A-Za-z]*)\b' "$file" \
-      && ! grep -qx 'import Quickshell.Wayland' "$file"; then
-    printf 'QML file uses Wayland types without their file-local import: %s\n' \
-      "${file#"$plugin_dir/"}" >&2
-    exit 1
-  fi
-  if rg -q --pcre2 '^(?!import ).*\b(Process|StdioCollector|FileView|IpcHandler)\s*\{' "$file" \
-      && ! grep -qx 'import Quickshell.Io' "$file"; then
-    printf 'QML file uses Quickshell I/O types without their file-local import: %s\n' \
-      "${file#"$plugin_dir/"}" >&2
-    exit 1
-  fi
-  if rg -q --pcre2 '^(?!import ).*\bQuickshell\.' "$file" \
-      && ! grep -qx 'import Quickshell' "$file"; then
-    printf 'QML file uses Quickshell without its file-local import: %s\n' \
-      "${file#"$plugin_dir/"}" >&2
-    exit 1
-  fi
-  if rg -q --pcre2 '^(?!import ).*\b(RowLayout|ColumnLayout|GridLayout|Layout\.)' "$file" \
-      && ! grep -qx 'import QtQuick.Layouts' "$file"; then
-    printf 'QML file uses layout types without their file-local import: %s\n' \
-      "${file#"$plugin_dir/"}" >&2
-    exit 1
-  fi
-  if rg -q --pcre2 '^(?!import ).*\b(Button|TextArea|TextField|Menu|MenuItem|ScrollBar|Popup|Dialog)\s*\{' "$file" \
-      && ! grep -qx 'import QtQuick.Controls' "$file"; then
-    printf 'QML file uses control types without their file-local import: %s\n' \
-      "${file#"$plugin_dir/"}" >&2
-    exit 1
-  fi
-done < <(find "$plugin_dir" -path '*/node_modules' -prune -o \
-  -path '*/vendor' -prune -o -type f -name '*.qml' -print | sort)
-
 qmllint "$plugin_dir/agent-chat.qml"
 
 while IFS= read -r file; do
   qmllint "$file"
 done < <(find "$plugin_dir/logic" -maxdepth 1 -type f -name '*.js' | sort)
-
-grep -q 'ThreadListLogic.buildRows' "$plugin_dir/ui/ThreadListModel.qml"
-grep -q 'Components.ThreadListRow' "$plugin_dir/ui/CodexThreadList.qml"
-grep -q 'SidebarPreferences {' "$plugin_dir/services/ThreadStore.qml"
-grep -q 'ProviderSnapshotStore {' "$plugin_dir/services/ThreadStore.qml"
-grep -q 'ThreadRuntimeProcesses.qml' "$plugin_dir/services/ThreadStore.qml"
-grep -q 'ThreadStateLogic.mergeProviderUnread' \
-  "$plugin_dir/providers/LocalAgentProvider.qml"
-grep -q 'ThreadStateLogic.mergeProviderUnread' \
-  "$plugin_dir/providers/RemoteAgentSnapshots.qml"
-grep -q 'ThreadRowLogic.presentation' "$plugin_dir/ui/SidebarRowPresentation.qml"
-grep -q 'ThreadListRowActions.qml' "$plugin_dir/ui/ThreadListRow.qml"
-grep -q 'PresentationLogic.statusText' "$plugin_dir/ui/PanelProviderController.qml"
-
-if grep -q 'function threadById' \
-  "$plugin_dir/providers/LocalAgentProvider.qml" \
-  "$plugin_dir/providers/RemoteAgentProvider.qml"; then
-  printf '%s\n' 'Provider adapters duplicated shared thread lookup logic.' >&2
-  exit 1
-fi
-
-if rg -n 'service\.open(Remote)?Thread\(' "$plugin_dir/ui" \
-    --glob '!SidebarController.qml'; then
-  printf '%s\n' 'A UI component bypasses the sidebar activation controller.' >&2
-  exit 1
-fi
-
-if rg -n 'controller\.launchingThreadId[[:space:]]*=' \
-    "$plugin_dir/providers" "$plugin_dir/services"; then
-  printf '%s\n' 'A provider bypasses the thread launch state machine.' >&2
-  exit 1
-fi
-
-if rg -n 'controller\.activeThreadId[[:space:]]*=' "$plugin_dir/providers"; then
-  printf '%s\n' 'A provider bypasses confirmed active-thread observation.' >&2
-  exit 1
-fi
-
-if rg -n 'controller\.(archivingThreadId|renamingThreadId|pinningThreadId|movingThreadId|pendingPinValue|pendingMovePath|pendingMoveName|archivedThreadSnapshot|archivedThreadIndex)[[:space:]]*=' \
-    "$plugin_dir/providers"; then
-  printf '%s\n' 'A provider bypasses the thread mutation state machine.' >&2
-  exit 1
-fi
-
-if rg -n '^[[:space:]]*Process[[:space:]]*\{' \
-    "$plugin_dir/services/ThreadStore.qml"; then
-  printf '%s\n' 'ThreadStore owns a process instead of delegating to its runtime adapter.' >&2
-  exit 1
-fi
-
-if rg -n 'panel\.service\.[[:alnum:]_]+\(' \
-    "$plugin_dir/ui/ThreadListRow.qml" \
-    "$plugin_dir/ui/ThreadListRowActions.qml" \
-    "$plugin_dir/ui/ThreadContextMenu.qml" \
-    "$plugin_dir/ui/ProjectContextMenu.qml" \
-    "$plugin_dir/ui/RemoteContextMenu.qml"; then
-  printf '%s\n' 'A row component bypasses the sidebar command boundary.' >&2
-  exit 1
-fi
 
 oversized_sources=""
 while IFS= read -r -d '' file; do

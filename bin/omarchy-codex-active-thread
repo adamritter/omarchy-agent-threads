@@ -70,22 +70,4 @@ while (( queue_index < ${#queue[@]} )); do
   fi
 done
 
-# A freshly launched session may be focused before Codex opens its rollout.
-runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
-state_dir="${OMARCHY_CODEX_STATE_DIR:-${runtime_root}/omarchy-codex-threads-${UID}}"
-if [[ -d "$state_dir" ]]; then
-  newest_mapping=""
-  for mapping_file in "$state_dir"/*.address; do
-    [[ -f "$mapping_file" ]] || continue
-    [[ "$(<"$mapping_file")" == "$active_address" ]] || continue
-    [[ -z "$newest_mapping" || "$mapping_file" -nt "$newest_mapping" ]] \
-      && newest_mapping="$mapping_file"
-  done
-  if [[ -n "$newest_mapping" ]]; then
-    mapping_name="$(basename "$newest_mapping" .address)"
-    printf '%s\n' "${mapping_name##*--}"
-    exit 0
-  fi
-fi
-
 exit 0

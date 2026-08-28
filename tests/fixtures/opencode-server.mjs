@@ -2,6 +2,8 @@ import fs from "node:fs"
 import http from "node:http"
 
 const [portFile, actionLog, projectDirectory] = process.argv.slice(2)
+const sessionStatus = process.env.OPENCODE_FIXTURE_STATUS || "busy"
+const expectedAuthorization = process.env.OPENCODE_FIXTURE_AUTH || ""
 const session = {
   id: "ses_opencode_fixture",
   title: "Implement OpenCode support",
@@ -37,13 +39,15 @@ const server = http.createServer((request, response) => {
     response.writeHead(status, { "content-type": "application/json" })
     response.end(JSON.stringify(value))
   }
+  if (expectedAuthorization && request.headers.authorization !== expectedAuthorization)
+    return send(401, { error: "authentication required" })
 
   if (request.method === "GET" && url.pathname === "/global/health")
     return send(200, { healthy: true, version: "1.18.21-test" })
   if (request.method === "GET" && url.pathname === "/experimental/session")
     return send(200, [session])
   if (request.method === "GET" && url.pathname === "/session/status")
-    return send(200, { [session.id]: { type: "busy" } })
+    return send(200, { [session.id]: { type: sessionStatus } })
   if (request.method === "GET" && url.pathname === "/provider")
     return send(200, provider)
   if (request.method === "GET" && url.pathname === "/config")

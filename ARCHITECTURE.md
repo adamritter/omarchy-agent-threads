@@ -159,8 +159,8 @@ idle -> launching(requestId, target, source) -> confirmed(target)
 
 ## Required behavioral contracts
 
-Static source checks supplement, but do not replace, executable contracts. New
-changes to these paths must cover the outcome, including failure:
+Executable contracts define these boundaries. New changes to these paths must
+cover the outcome, including failure:
 
 - row activation parity between pointer and keyboard;
 - launch success, timeout, stale completion, and unchanged active state on
@@ -168,3 +168,22 @@ changes to these paths must cover the outcome, including failure:
 - workspace changes during hot reload restoration;
 - active-writer archive rejection before optimistic removal;
 - Quickshell-native component loading for top-level windows.
+
+## Test boundaries
+
+Tests follow the same dependency boundaries as production code:
+
+- `tests/tst_*.qml` exercises deterministic logic, QML models, controllers,
+  and rendered component behavior. Interaction assertions belong here rather
+  than in source-text searches.
+- `scripts/check-static` runs the plugin validator, language parsers and
+  linters, plus the explicit maintained-file size limit. It does not infer
+  runtime architecture from source-text patterns.
+- Bash integration tests cover executable, Node, SSH, IPC, and real process
+  boundaries. Bash launches these systems but does not emulate QML behavior.
+- `tests/panel-render.test` first loads the real `Panel` type with Quickshell
+  without instantiating a layer-shell window, then runs focused QML behavior
+  tests. This catches cold import and `qmldir` failures safely.
+- `PANEL_TEST_LIVE_WAYLAND=1 tests/panel-render.test` remains an isolated
+  release smoke test for real layer mapping and destruction. It must not run
+  during an active user session.

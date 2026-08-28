@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d -t agent-threads-runtime-state-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+source "$plugin_root/bin/lib/runtime-state.sh"
+
+expect_failure() {
+  local expected="$1"
+  shift
+  if "$@" >"$test_root/output" 2>"$test_root/error"; then
+    printf 'Expected runtime validation to fail: %s\n' "$expected" >&2
+    exit 1
+  fi
+  grep -F -- "$expected" "$test_root/error" >/dev/null
+}
+
+unset XDG_RUNTIME_DIR
+expect_failure 'XDG_RUNTIME_DIR is not set' agent_threads_runtime_root_init
+
+mkdir "$test_root/world-readable"
+chmod 755 "$test_root/world-readable"
+XDG_RUNTIME_DIR="$test_root/world-readable"
+export XDG_RUNTIME_DIR
+expect_failure 'XDG_RUNTIME_DIR must have mode 0700' agent_threads_runtime_root_init
+
+mkdir "$test_root/private"
+chmod 700 "$test_root/private"
+ln -s "$test_root/private" "$test_root/runtime-link"
+XDG_RUNTIME_DIR="$test_root/runtime-link"
+expect_failure 'XDG_RUNTIME_DIR must not be a symbolic link' agent_threads_runtime_root_init
+
+XDG_RUNTIME_DIR="$test_root/private"
+agent_threads_runtime_state_init
+[[ "$AGENT_THREADS_STATE_DIR" == "$test_root/private/omarchy-codex-threads-$UID" ]]
+[[ "$(stat -c '%a' "$AGENT_THREADS_STATE_DIR")" == 700 ]]
+
+rmdir "$AGENT_THREADS_STATE_DIR"
+ln -s "$test_root/private" "$AGENT_THREADS_STATE_DIR"
+expect_failure 'state directory must not be a symbolic link' agent_threads_runtime_state_init
+
+printf '%s\n' 'runtime-state tests passed'

@@ -1,14 +1,22 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { mapWithConcurrency, readJsonLimited, readResponseJsonLimited } from "./bounded-io.mjs"
+import { openCodeLoopbackUrl, openCodeRequestHeaders } from "./opencode-auth.mjs"
 
 const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
 const stateHome = process.env.XDG_STATE_HOME || path.join(home, ".local", "state")
 const openCodeCapabilitiesPath = path.join(stateHome, "omarchy", "opencode-capabilities.json")
-const openCodeURL = process.env.OMARCHY_OPENCODE_URL || "http://127.0.0.1:43962"
+const openCodeURL = openCodeLoopbackUrl(
+  process.env.OMARCHY_OPENCODE_URL || "http://127.0.0.1:43962")
+const MAX_CAPABILITIES_BYTES = 2 * 1024 * 1024
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+const MAX_MODELS = 2000
+const MAX_AGENTS = 1000
+const MAX_PROJECTS = 1000
 
 function readJSON(filePath, fallback = null) {
-  try { return JSON.parse(fs.readFileSync(filePath, "utf8")) } catch { return fallback }
+  return readJsonLimited(filePath, MAX_CAPABILITIES_BYTES, "OpenCode capability cache", fallback)
 }
 
 function cleanText(value) {
@@ -19,11 +27,15 @@ async function requestOpenCode(endpoint, options = {}) {
   const response = await fetch(openCodeURL + endpoint, {
     ...options,
     signal: AbortSignal.timeout(options.timeout || 5000),
-    headers: { "content-type": "application/json", ...(options.headers || {}) }
+    headers: {
+      "content-type": "application/json",
+      ...openCodeRequestHeaders(true),
+      ...(options.headers || {})
+    }
   })
   if (!response.ok) throw new Error(`OpenCode HTTP ${response.status}`)
   if (response.status === 204) return null
-  return response.json()
+  return readResponseJsonLimited(response, MAX_RESPONSE_BYTES, "OpenCode response")
 }
 
 function normalizeOpenCodeModels(providerResponse, defaultModel) {
@@ -42,6 +54,8 @@ function normalizeOpenCodeModels(providerResponse, defaultModel) {
         isDefault: id === defaultModel,
         efforts: variants
       })
+      if (models.length > MAX_MODELS)
+        throw new Error(`OpenCode returned more than ${MAX_MODELS} models`)
     }
   }
   models.sort((a, b) => Number(b.isDefault) - Number(a.isDefault)
@@ -50,7 +64,10 @@ function normalizeOpenCodeModels(providerResponse, defaultModel) {
 }
 
 function normalizeOpenCodeAgents(agentResponse) {
-  return (Array.isArray(agentResponse) ? agentResponse : [])
+  const agents = Array.isArray(agentResponse) ? agentResponse : []
+  if (agents.length > MAX_AGENTS)
+    throw new Error(`OpenCode returned more than ${MAX_AGENTS} agents`)
+  return agents
     .filter(agent => agent && agent.hidden !== true
       && (agent.mode === "primary" || agent.mode === "all"))
     .map(agent => ({
@@ -80,6 +97,8 @@ function openCodeDefaultAgent(agentResponse, configResponse = {}) {
 }
 
 export async function openCodeCapabilities(directories = []) {
+  if (!Array.isArray(directories) || directories.length > MAX_PROJECTS)
+    throw new Error(`OpenCode capability lookup exceeded ${MAX_PROJECTS} projects`)
   const cached = readJSON(openCodeCapabilitiesPath, null)
   try {
     const age = Date.now() - fs.statSync(openCodeCapabilitiesPath).mtimeMs
@@ -103,7 +122,7 @@ export async function openCodeCapabilities(directories = []) {
     const defaultAgent = openCodeDefaultAgent(agentResponse, configResponse)
     const defaultEffort = cleanText(configResponse && configResponse.variant)
     const connected = Array.isArray(providerResponse.connected) ? providerResponse.connected : []
-    const projectEntries = await Promise.all(directories.map(async directory => {
+    const projectEntries = await mapWithConcurrency(directories, 8, async directory => {
       try {
         const query = `?directory=${encodeURIComponent(directory)}`
         const [projectConfig, projectAgents] = await Promise.all([
@@ -124,7 +143,7 @@ export async function openCodeCapabilities(directories = []) {
           agents: normalizeOpenCodeAgents(agentResponse)
         }]
       }
-    }))
+    })
     const capabilities = {
       models: normalizeOpenCodeModels(providerResponse, defaultModel),
       agents: normalizeOpenCodeAgents(agentResponse),
@@ -143,7 +162,9 @@ export async function openCodeCapabilities(directories = []) {
     }
     fs.mkdirSync(path.dirname(openCodeCapabilitiesPath), { recursive: true, mode: 0o700 })
     const temporary = `${openCodeCapabilitiesPath}.${process.pid}.tmp`
-    fs.writeFileSync(temporary, JSON.stringify(capabilities) + "\n", { mode: 0o600 })
+    fs.writeFileSync(temporary, JSON.stringify(capabilities) + "\n", {
+      mode: 0o600, flag: "wx"
+    })
     fs.renameSync(temporary, openCodeCapabilitiesPath)
     return capabilities
   } catch (error) {

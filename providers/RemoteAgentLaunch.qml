@@ -19,9 +19,15 @@ Item {
     var requestId = provider.controller.mutations.beginThreadLaunch(
       threadId, source || (providerType + "-remote"))
     if (requestId === 0) return false
+    if (launches.focusCachedThread(threadId, String(hostId || ""))) {
+      provider.controller.mutations.observeActiveThread(
+        threadId, "cached-remote-" + providerType + "-window")
+      return true
+    }
     provider.openIsNew = false
     provider.openHostId = String(hostId || "")
     provider.openRequestId = requestId
+    provider.openThreadId = threadId
     processes.runOpen(ActionLogic.remoteAgentOpenCommand(
       provider.openHelperPath,
       provider.configPath,

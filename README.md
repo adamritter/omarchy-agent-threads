@@ -13,6 +13,15 @@ supports local and remote agents, and keeps completed work one shortcut away.
 
 Agent Threads works out of the box on a current standard Omarchy installation.
 
+Runtime helpers use Bash, Node.js, `jq`, `curl`, OpenSSH, `hyprctl`, and the
+provider CLI selected in the sidebar. These are present on a standard Omarchy
+installation. SSH provider hosts also need Node.js and curl. The optional Agent
+Chat window builds a small local compatibility shim on first use and therefore
+needs a C++17 compiler, `pkg-config`, and the Qt 6 WebEngine development
+package. Its web UI uses vendored Marked and MathJax assets under `app/web`;
+their versions and checksums are recorded in `app/web/vendor/README.md`, and
+the page does not download scripts at runtime.
+
 ### 1. Install and enable the plugin
 
 ```bash
@@ -179,6 +188,12 @@ Codex, Claude Code, and OpenCode must already be installed and authenticated
 on the remote machine. Agent Threads never installs their packages. Remote
 OpenCode additionally requires Node.js and curl.
 
+When a remote Claude terminal is opened, Agent Threads atomically installs its
+size-limited status hook at
+`~/.local/lib/omarchy-codex-threads/claude-thread-hook` on that host. The hook
+runs only through the per-launch Claude settings passed by Agent Threads; it
+does not modify the remote user's persistent Claude settings.
+
 ### Codex App Server remotes
 
 Direct Codex App Server connections support `ws://` and `wss://`. Use `wss://`
@@ -234,12 +249,15 @@ Persistent user state is stored under `~/.local/state/omarchy/`:
 codex-threads.json
 codex-thread-remotes.json
 agent-threads-launch.log
+opencode-server-auth.json
 ```
 
 Remote configuration is size-limited, must be a regular file, and cannot be a
 symbolic link. Agent Threads does not copy SSH keys or provider access tokens.
-Temporary window mappings and provider snapshots stay under
-`$XDG_RUNTIME_DIR`.
+Window coordination is transient QML state and is recovered from owned process
+metadata when needed; no window-address or provider-port mapping files are
+written. Short-lived launch status is created only below a validated,
+user-owned `$XDG_RUNTIME_DIR` with mode `0700`.
 
 Review the source before enabling any unsandboxed Shell plugin, especially the
 helpers under `bin/`.
@@ -252,7 +270,12 @@ omarchy plugin remove adam.codex-threads
 
 Removal leaves local state and remote connection configuration in place so a
 later reinstall can restore your organization. It does not remove remote agent
-sessions.
+sessions or the remote Claude status hook. To remove that hook from a remote
+host explicitly, run:
+
+```bash
+ssh your-host 'rm -f -- "$HOME/.local/lib/omarchy-codex-threads/claude-thread-hook"; rmdir -- "$HOME/.local/lib/omarchy-codex-threads" 2>/dev/null || true'
+```
 
 If Agent Threads is useful to you, consider starring the repository so other
 Omarchy users can find it.

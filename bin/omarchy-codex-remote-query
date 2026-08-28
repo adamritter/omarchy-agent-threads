@@ -1,21 +1,14 @@
 #!/usr/bin/env node
 
-import fs from "node:fs"
-import os from "node:os"
-import path from "node:path"
-import { spawn } from "node:child_process"
-import { fileURLToPath } from "node:url"
-import { bearerToken, createSshTransport, createWebSocketTransport, loadHost } from "./lib/remote-transport.mjs"
+import { createSshTransport, createWebSocketTransport, loadHost } from "./lib/remote-transport.mjs"
 import { providerTypeForHost, runRemoteClaude, runRemoteOpenCode } from "./lib/remote-provider-actions.mjs"
 
 const [configPath = "", hostId = "", action = "snapshot", actionValue = "",
   actionExtra = "", actionName = ""] = process.argv.slice(2)
 const timeoutMs = 60000
 const pinnedSectionId = "01984de2-8f74-7c91-a3b2-5c5e937cf318"
-const SSH_STDOUT_LIMIT = 16 * 1024 * 1024
-const SSH_STDERR_LIMIT = 256 * 1024
-const CONFIG_FILE_LIMIT = 1024 * 1024
-const TOKEN_FILE_LIMIT = 64 * 1024
+const MAX_LIST_ITEMS = 2000
+const MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
 let nextRequestId = 1
 
 function fail(message) {
@@ -127,12 +120,21 @@ async function main() {
 
   async function listAll(method, firstParams) {
     const items = []
+    let retainedBytes = 0
     let cursor = null
     for (let page = 0; page < 20; page++) {
       const params = { ...firstParams }
       if (cursor) params.cursor = cursor
       const result = await request(method, params)
-      items.push(...(Array.isArray(result.data) ? result.data : []))
+      const pageItems = Array.isArray(result.data) ? result.data : []
+      if (items.length + pageItems.length > MAX_LIST_ITEMS)
+        throw new Error(`${method} exceeded the ${MAX_LIST_ITEMS} item limit`)
+      for (const item of pageItems) {
+        retainedBytes += Buffer.byteLength(JSON.stringify(item))
+        if (retainedBytes > MAX_SNAPSHOT_BYTES)
+          throw new Error(`${method} exceeded the 32 MiB retained-data limit`)
+        items.push(item)
+      }
       cursor = result.nextCursor || null
       if (!cursor) break
     }
@@ -168,14 +170,17 @@ async function main() {
     }
   }
 
-  process.stdout.write(JSON.stringify({
+  const snapshot = JSON.stringify({
     hostId,
     label: String(host.label || host.id || "Remote"),
     type: host.type === "ssh" ? "ssh" : "app-server",
     home: remoteHome,
     threads,
     projects
-  }) + "\n")
+  }) + "\n"
+  if (Buffer.byteLength(snapshot) > MAX_SNAPSHOT_BYTES)
+    throw new Error("remote snapshot exceeded the 32 MiB output limit")
+  process.stdout.write(snapshot)
   transport.close()
 }
 

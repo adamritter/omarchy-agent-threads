@@ -122,6 +122,10 @@ Item {
     return "ok"
   }
 
+  function reloadSidebar(): string {
+    return panel.reloadEntryPoint("sidebar") ? "ok" : "unavailable"
+  }
+
   function search(text: string): string {
     panel.overlayActions.setSearchText(text)
     return String(panel.visibleThreadCount)
@@ -130,6 +134,8 @@ Item {
   function status(): string {
     return JSON.stringify({
       instanceToken: panel.session.instanceToken,
+      sidebarRevision: panel.sidebarReload.sidebarRevision,
+      sidebarContentRevision: panel.sidebarReload.contentRevision,
       activeProvider: panel.activeProvider,
       threadFrontend: panel.service.settings.threadFrontend,
       threadFrontendChangedBy: panel.service.settings.threadFrontendChangedBy,

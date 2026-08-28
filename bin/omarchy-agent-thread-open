@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/lib/agent-terminal-client-lookup.sh"
+
 provider="${1:-}"
 session_cwd="${2:-${HOME}}"
 session_id="${3:-}"
@@ -22,12 +25,6 @@ if [[ -n "$session_id" && ! "$session_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
 fi
 [[ -d "$session_cwd" ]] || session_cwd="${HOME}"
 
-runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
-state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
-mapping_file="${state_dir}/provider-${provider}--${session_id}.address"
-server_file="${state_dir}/provider-${provider}--${session_id}.server"
-mkdir -p -m 700 "$state_dir"
-
 client_exists() {
   local address="$1"
   hyprctl -j clients 2>/dev/null \
@@ -47,18 +44,19 @@ move_client_to_launch_workspace() {
     "${launch_workspace},address:${address}" >/dev/null
 }
 
-if [[ -n "$session_id" && -f "$mapping_file" ]]; then
-  mapped_address="$(<"$mapping_file")"
-  if [[ -n "$mapped_address" ]] && client_exists "$mapped_address"; then
-    focus_client "$mapped_address"
-    mapped_server=""
-    [[ -f "$server_file" ]] && mapped_server="$(<"$server_file")"
-    jq -cn --arg address "$mapped_address" --arg serverUrl "$mapped_server" \
-      '{address:$address,serverUrl:$serverUrl}'
-    exit 0
+if [[ -n "$session_id" ]]; then
+  agent_lookup_kind="local-${provider}"
+  agent_lookup_session_id="$session_id"
+  if existing_client="$(find_existing_agent_client)"; then
+    IFS=$'\t' read -r mapped_address mapped_server <<< "$existing_client"
+    if [[ -n "$mapped_address" ]] && client_exists "$mapped_address"; then
+      focus_client "$mapped_address"
+      jq -cn --arg address "$mapped_address" --arg serverUrl "$mapped_server" \
+        --arg sessionId "$session_id" \
+        '{address:$address,serverUrl:$serverUrl,sessionId:$sessionId}'
+      exit 0
+    fi
   fi
-  rm -f -- "$mapping_file"
-  rm -f -- "$server_file"
 fi
 
 if [[ "$provider" == "claude" ]]; then
@@ -86,14 +84,26 @@ if [[ "$provider" == "claude" ]]; then
   }}')"
   agent_command+=(--settings "$hook_settings")
 else
-  [[ "$server_url" == http://127.0.0.1:* || "$server_url" == http://localhost:* ]] || {
+  if [[ ! "$server_url" =~ ^http://(127\.0\.0\.1|localhost):([0-9]{1,5})$ ]] \
+      || (( BASH_REMATCH[2] < 1 || BASH_REMATCH[2] > 65535 )); then
     echo "Invalid local OpenCode server URL" >&2
+    exit 2
+  fi
+  auth_file="${OMARCHY_OPENCODE_AUTH_FILE:-${XDG_STATE_HOME:-${HOME}/.local/state}/omarchy/opencode-server-auth.json}"
+  opencode_username="$("${script_dir}/omarchy-agent-bounded-file" json-field \
+    "$auth_file" 8192 username)" || exit 2
+  opencode_password="$("${script_dir}/omarchy-agent-bounded-file" json-field \
+    "$auth_file" 8192 password)" || exit 2
+  [[ "$opencode_username" =~ ^[A-Za-z0-9._-]{1,64}$ \
+      && "$opencode_password" =~ ^[A-Za-z0-9_-]{32,128}$ ]] || {
+    echo "Invalid OpenCode server credentials" >&2
     exit 2
   }
   provider_server_url="$server_url"
   if [[ -z "$session_id" ]]; then
     encoded_cwd="$(jq -rn --arg value "$session_cwd" '$value|@uri')"
-    if ! new_session="$(curl -fsS --max-time 5 -X POST \
+    if ! new_session="$(curl -fsS --max-time 5 --max-filesize 1048576 \
+        --user "${opencode_username}:${opencode_password}" -X POST \
         "${provider_server_url}/session?directory=${encoded_cwd}" \
         -H 'content-type: application/json' --data '{}')"; then
       echo "OpenCode provider server is unavailable" >&2
@@ -105,8 +115,6 @@ else
       exit 1
     }
     session_id="$new_session_id"
-    mapping_file="${state_dir}/provider-${provider}--${session_id}.address"
-    server_file="${state_dir}/provider-${provider}--${session_id}.server"
   fi
   opencode_port=""
   for _ in $(seq 1 80); do
@@ -121,7 +129,9 @@ else
     exit 1
   }
   server_url="http://127.0.0.1:${opencode_port}"
-  agent_command=(env -u OPENCODE_SERVER_PASSWORD -u OPENCODE_SERVER_USERNAME
+  agent_command=(env
+    "OPENCODE_SERVER_USERNAME=${opencode_username}"
+    "OPENCODE_SERVER_PASSWORD=${opencode_password}"
     opencode "$session_cwd" --hostname 127.0.0.1 --port "$opencode_port")
   [[ -z "$selected_model" ]] || agent_command+=(--model "$selected_model")
   [[ -z "$selected_effort" ]] || agent_command+=(--variant "$selected_effort")
@@ -141,10 +151,6 @@ for _ in $(seq 1 80); do
     | select((($before | split("\n")) | index($address)) == null)
     | $address' | head -n 1)"
   if [[ -n "$new_address" ]]; then
-    if [[ -n "$session_id" ]]; then
-      printf '%s\n' "$new_address" > "$mapping_file"
-      [[ "$provider" != "opencode" ]] || printf '%s\n' "$server_url" > "$server_file"
-    fi
     move_client_to_launch_workspace "$new_address"
     focus_client "$new_address"
     output_server_url=""
@@ -160,6 +166,7 @@ done
 if [[ "$provider" == "opencode" && -n "$new_session_id" ]]; then
   encoded_cwd="$(jq -rn --arg value "$session_cwd" '$value|@uri')"
   curl -fsS --max-time 3 -X DELETE \
+    --user "${opencode_username}:${opencode_password}" \
     "${provider_server_url}/session/${new_session_id}?directory=${encoded_cwd}" \
     >/dev/null 2>&1 || true
 fi

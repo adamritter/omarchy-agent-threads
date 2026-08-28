@@ -36,6 +36,7 @@ Item {
   property string pendingWindowAddress: ""
   property int pendingAttempts: 0
   property int openRequestId: 0
+  property string openThreadId: ""
 
   readonly property string queryHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-remote-query").toString().replace(/^file:\/\//, "")

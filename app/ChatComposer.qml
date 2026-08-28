@@ -5,6 +5,7 @@ import "../logic/CodexConversationLogic.js" as ConversationLogic
 
 Item {
   id: root
+  objectName: "chatComposer"
   required property var window
   required property var client
   property alias text: editor.text
@@ -14,6 +15,7 @@ Item {
 
   Rectangle {
     id: composerFrame
+    objectName: "chatComposerFrame"
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: parent.bottom
@@ -27,6 +29,7 @@ Item {
 
     TextArea {
       id: editor
+      objectName: "chatEditor"
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top

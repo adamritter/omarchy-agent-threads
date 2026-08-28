@@ -8,9 +8,25 @@ Item {
   readonly property alias actionRunning: actionProcess.running
   readonly property alias openRunning: openProcess.running
 
-  function runQuery(command) { queryProcess.command = command; queryProcess.running = true }
-  function runAction(command) { actionProcess.command = command; actionProcess.running = true }
-  function runOpen(command) { openProcess.command = command; openProcess.running = true }
+  function guarded(command) {
+    var child = command
+    if (provider.providerType === "opencode") child = [
+      "env", "OMARCHY_OPENCODE_AUTH_FILE=" + provider.openCodeAuthFile
+    ].concat(command)
+    return [provider.controller.streamGuardPath, "--"].concat(child)
+  }
+  function runQuery(command) {
+    queryProcess.command = guarded(command)
+    queryProcess.running = true
+  }
+  function runAction(command) {
+    actionProcess.command = guarded(command)
+    actionProcess.running = true
+  }
+  function runOpen(command) {
+    openProcess.command = guarded(command)
+    openProcess.running = true
+  }
   function stopQuery() { queryProcess.running = false }
   function stopAll() {
     queryProcess.running = false
@@ -110,6 +126,7 @@ Item {
           provider.openRequestId,
           openStderr.text.trim() || "Could not open " + provider.label)
         provider.openRequestId = 0
+        provider.openThreadId = ""
         if (provider.openIsNew) provider.clearPendingNew()
         return
       }
@@ -129,8 +146,14 @@ Item {
           provider.restartNewResolveTimer()
         }
       } else {
+        launches.map(
+          provider.openThreadId || runtimeSessionId,
+          address,
+          provider.hostId,
+          runtimeServer)
         provider.controller.mutations.confirmThreadLaunch(provider.openRequestId, "")
         provider.openRequestId = 0
+        provider.openThreadId = ""
       }
       provider.controller.threadActions.refreshActiveThread()
       provider.refresh()

@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url"
 
 const SSH_STDOUT_LIMIT = 16 * 1024 * 1024
 const SSH_STDERR_LIMIT = 256 * 1024
+const MAX_DIRECTORY_ENTRIES = 2000
+const MAX_SCANNED_ENTRIES = 10000
 
 const [mode = "local", target = "-", action = "list", rawPath = "", folderName = ""] =
   process.argv.slice(2)
@@ -45,20 +47,34 @@ function listDirectory(value) {
   const stat = fs.statSync(requestedPath)
   if (!stat.isDirectory()) throw new Error("The selected path is not a directory")
   const currentPath = fs.realpathSync(requestedPath)
-  const allEntries = fs.readdirSync(currentPath, { withFileTypes: true })
-    .map(entry => directoryEntry(currentPath, entry))
-    .filter(Boolean)
-    .sort((left, right) => left.name.localeCompare(right.name, undefined, {
+  const entries = []
+  let scanned = 0
+  let truncated = false
+  const handle = fs.opendirSync(currentPath)
+  try {
+    while (true) {
+      const entry = handle.readSync()
+      if (!entry) break
+      scanned++
+      if (scanned > MAX_SCANNED_ENTRIES) { truncated = true; break }
+      const normalized = directoryEntry(currentPath, entry)
+      if (!normalized) continue
+      if (entries.length >= MAX_DIRECTORY_ENTRIES) { truncated = true; break }
+      entries.push(normalized)
+    }
+  } finally {
+    handle.closeSync()
+  }
+  entries.sort((left, right) => left.name.localeCompare(right.name, undefined, {
       numeric: true,
       sensitivity: "base"
     }))
-  const entries = allEntries.slice(0, 2000)
   return {
     path: currentPath,
     parent: path.dirname(currentPath),
     home: os.homedir(),
     entries,
-    truncated: allEntries.length > entries.length
+    truncated
   }
 }
 

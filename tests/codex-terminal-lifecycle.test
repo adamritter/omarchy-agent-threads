@@ -14,6 +14,7 @@ trap 'rm -rf -- "$test_root"' EXIT
 
 mkdir -p -- "$test_root/bin" "$test_root/runtime" "$project_dir" \
   "$test_root/proc/$fake_pid/fd"
+chmod 700 "$test_root/runtime"
 ln -s -- \
   "/state/rollout-2026-08-27T12-00-00-${thread_id}.jsonl" \
   "$test_root/proc/$fake_pid/fd/46"
@@ -25,17 +26,17 @@ if [[ "${1:-}" == "-j" && "${2:-}" == "clients" ]]; then
   if [[ "${CODEX_TEST_SCENARIO:-}" == "tmux-attached" ]]; then
     if [[ -f "$CODEX_LAUNCH_MARKER" ]]; then
       printf '%s\n' '[
-        {"address":"0xtmux","pid":7000},
-        {"address":"0xduplicate","pid":8000}
+        {"address":"0x7000","pid":7000},
+        {"address":"0x8000","pid":8000}
       ]'
     else
-      printf '%s\n' '[{"address":"0xtmux","pid":7000}]'
+      printf '%s\n' '[{"address":"0x7000","pid":7000}]'
     fi
   elif [[ "${CODEX_TEST_SCENARIO:-}" == "tmux-detached" \
       && -f "$CODEX_LAUNCH_MARKER" ]]; then
-    printf '%s\n' '[{"address":"0xattached","pid":8000}]'
+    printf '%s\n' '[{"address":"0xa77ac4ed","pid":8000}]'
   elif [[ -f "$CODEX_LAUNCH_MARKER" ]]; then
-    printf '%s\n' '[{"address":"0xfailed","pid":8000}]'
+    printf '%s\n' '[{"address":"0xfa11ed","pid":8000}]'
   else
     printf '%s\n' '[]'
   fi
@@ -129,7 +130,7 @@ tmux_result="$(env "${common_env[@]}" CODEX_TEST_SCENARIO=tmux-attached \
   "$plugin_root/bin/omarchy-codex-terminal-open" \
   --terminal-cwd "$project_dir" --thread-id "$thread_id" -- \
   codex -C "$project_dir" resume "$thread_id")"
-if [[ "$tmux_result" != "0xtmux" ]]; then
+if [[ "$tmux_result" != "0x7000" ]]; then
   printf 'Expected the existing tmux terminal, got: %s\n' "$tmux_result" >&2
   failures=$((failures + 1))
 fi
@@ -137,7 +138,7 @@ if [[ -e "$capture" ]]; then
   printf '%s\n' 'A duplicate terminal was launched for an active tmux thread' >&2
   failures=$((failures + 1))
 fi
-if ! grep -F -- 'address:0xtmux' "$focused" >/dev/null 2>&1; then
+if ! grep -F -- 'address:0x7000' "$focused" >/dev/null 2>&1; then
   printf '%s\n' 'The existing tmux terminal was not focused' >&2
   failures=$((failures + 1))
 fi
@@ -149,7 +150,7 @@ detached_result="$(env "${common_env[@]}" CODEX_TEST_SCENARIO=tmux-detached \
   "$plugin_root/bin/omarchy-codex-terminal-open" \
   --terminal-cwd "$project_dir" --thread-id "$thread_id" -- \
   codex -C "$project_dir" resume "$thread_id")"
-if [[ "$detached_result" != "0xattached" ]]; then
+if [[ "$detached_result" != "0xa77ac4ed" ]]; then
   printf 'Expected a terminal attached to tmux, got: %s\n' "$detached_result" >&2
   failures=$((failures + 1))
 fi

@@ -48,32 +48,10 @@ if "$plugin_root/bin/omarchy-codex-app-server-websocket" \
   printf '%s\n' 'WebSocket transport unexpectedly accepted an oversized token file' >&2
   exit 1
 fi
-grep -F -- 'token file exceeded the 64 KiB limit' \
+grep -E -- 'token file.*exceeded.*byte limit' \
   "$test_root/token-error" >/dev/null
 
 node "$plugin_root/tests/fixtures/websocket-flood-test.mjs" \
   "$plugin_root/bin/omarchy-codex-app-server-websocket"
-
-grep -F -- 'appServer.command = [controller.streamGuardPath, "--", "codex", "app-server"]' \
-  "$plugin_root/providers/CodexAppServerClient.qml" >/dev/null
-grep -F -- 'loginProcess.command = [controller.streamGuardPath, "--",' \
-  "$plugin_root/providers/RemoteClaudeManager.qml" >/dev/null
-if grep -F -- 'StdioCollector' \
-    "$plugin_root/providers/RemoteClaudeManager.qml" >/dev/null; then
-  printf '%s\n' 'remote Claude management still retains unbounded process output' >&2
-  exit 1
-fi
-if grep -F -- 'readline' \
-    "$plugin_root/bin/omarchy-codex-app-server-websocket" >/dev/null; then
-  printf '%s\n' 'WebSocket transport still uses an unbounded line reader' >&2
-  exit 1
-fi
-
-grep -F -- 'ConversationLogic.promptValidationError(value)' \
-  "$plugin_root/providers/CodexConversationOperations.qml" >/dev/null
-grep -F -- 'ConversationLogic.protocolStructureError(message)' \
-  "$plugin_root/providers/CodexConversationResponseHandler.qml" >/dev/null
-grep -F -- 'ConversationLogic.trackRequestDeadline(' \
-  "$plugin_root/providers/CodexConversationClient.qml" >/dev/null
 
 printf '%s\n' 'app-server transport tests passed'

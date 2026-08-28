@@ -2,15 +2,26 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { openCodeCapabilities } from "./opencode-capabilities.mjs"
+import {
+  mapWithConcurrency, readDirectoryLimited, readJsonLimited, readResponseJsonLimited
+} from "./bounded-io.mjs"
+import { openCodeLoopbackUrl, openCodeRequestHeaders } from "./opencode-auth.mjs"
 
 const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
 const stateHome = process.env.XDG_STATE_HOME || path.join(home, ".local", "state")
 const metadataPath = path.join(stateHome, "omarchy", "codex-thread-providers.json")
-const openCodeCapabilitiesPath = path.join(stateHome, "omarchy", "opencode-capabilities.json")
-const openCodeURL = process.env.OMARCHY_OPENCODE_URL || "http://127.0.0.1:43962"
+const openCodeURL = openCodeLoopbackUrl(
+  process.env.OMARCHY_OPENCODE_URL || "http://127.0.0.1:43962")
+const procRoot = process.env.OMARCHY_AGENT_PROC_ROOT || "/proc"
+const MAX_CMDLINE_BYTES = 64 * 1024
+const MAX_PROVIDER_FILE_BYTES = 2 * 1024 * 1024
+const MAX_OPENCODE_RESPONSE_BYTES = 8 * 1024 * 1024
+const MAX_OPENCODE_SESSIONS = 1000
+const MAX_OPENCODE_PROJECTS = 256
+const MAX_OPENCODE_STATUS_ENTRIES = 5000
 
 function readJSON(filePath, fallback = null) {
-  try { return JSON.parse(fs.readFileSync(filePath, "utf8")) } catch { return fallback }
+  return readJsonLimited(filePath, MAX_PROVIDER_FILE_BYTES, "provider state", fallback)
 }
 
 function loadMetadata() {
@@ -19,7 +30,14 @@ function loadMetadata() {
 }
 
 function cleanText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim()
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 4096)
+}
+
+function cleanStatus(value) {
+  return {
+    type: cleanText(value && value.type).slice(0, 64) || "idle",
+    message: cleanText(value && (value.message || value.error))
+  }
 }
 
 function projectList(threads) {
@@ -48,11 +66,15 @@ async function requestOpenCodeAt(baseURL, endpoint, options = {}) {
   const response = await fetch(baseURL + endpoint, {
     ...options,
     signal: AbortSignal.timeout(options.timeout || 5000),
-    headers: { "content-type": "application/json", ...(options.headers || {}) }
+    headers: {
+      "content-type": "application/json",
+      ...openCodeRequestHeaders(true),
+      ...(options.headers || {})
+    }
   })
   if (!response.ok) throw new Error(`OpenCode HTTP ${response.status}`)
   if (response.status === 204) return null
-  return response.json()
+  return readResponseJsonLimited(response, MAX_OPENCODE_RESPONSE_BYTES, "OpenCode response")
 }
 
 async function requestOpenCode(endpoint, options = {}) {
@@ -60,51 +82,82 @@ async function requestOpenCode(endpoint, options = {}) {
 }
 
 function openCodeRuntimeServers() {
-  const runtimeRoot = process.env.XDG_RUNTIME_DIR || "/tmp"
-  const runtimeDirectory = path.join(runtimeRoot, `omarchy-codex-threads-${process.getuid()}`)
-  let entries = []
-  try { entries = fs.readdirSync(runtimeDirectory, { withFileTypes: true }) } catch { return [] }
-  return entries.flatMap(entry => {
-    const match = /^provider-opencode--(.+)\.server$/.exec(entry.name)
-    if (!entry.isFile() || !match) return []
-    let url = ""
-    try { url = fs.readFileSync(path.join(runtimeDirectory, entry.name), "utf8").trim() } catch { return [] }
-    if (!/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(url)) return []
-    return [{ id: match[1], url, file: path.join(runtimeDirectory, entry.name) }]
-  })
+  let processEntries = []
+  try { processEntries = readDirectoryLimited(procRoot, 32768, "process directory") }
+  catch { return [] }
+  return processEntries.flatMap(entry => {
+    if (!entry.isDirectory() || !/^[0-9]+$/.test(entry.name)) return []
+    const processDirectory = path.join(procRoot, entry.name)
+    let processArguments = []
+    try {
+      if (fs.statSync(processDirectory).uid !== process.getuid()) return []
+      const descriptor = fs.openSync(path.join(processDirectory, "cmdline"), "r")
+      let bytes
+      try {
+        const buffer = Buffer.alloc(MAX_CMDLINE_BYTES + 1)
+        bytes = fs.readSync(descriptor, buffer, 0, buffer.length, 0)
+        if (bytes > MAX_CMDLINE_BYTES) return []
+        processArguments = buffer.subarray(0, bytes).toString("utf8").split("\0").filter(Boolean)
+      } finally { fs.closeSync(descriptor) }
+    } catch { return [] }
+    const sessionIndex = processArguments.indexOf("--session")
+    const portIndex = processArguments.indexOf("--port")
+    const hostnameIndex = processArguments.indexOf("--hostname")
+    const id = sessionIndex >= 0 ? String(processArguments[sessionIndex + 1] || "") : ""
+    const port = portIndex >= 0 ? Number(processArguments[portIndex + 1]) : 0
+    const hostname = hostnameIndex >= 0 ? String(processArguments[hostnameIndex + 1] || "") : ""
+    if (!/^[A-Za-z0-9._-]+$/.test(id)
+        || hostname !== "127.0.0.1"
+        || !Number.isInteger(port) || port < 1 || port > 65535) return []
+    return [{ id, url: `http://127.0.0.1:${port}` }]
+  }).slice(0, 256)
 }
 
 async function runtimeOpenCodeStatuses(sessions) {
   const directories = new Map(sessions.map(session => [String(session.id || ""), String(session.directory || home)]))
-  const results = await Promise.all(openCodeRuntimeServers().map(async runtime => {
+  const results = await mapWithConcurrency(openCodeRuntimeServers(), 8, async runtime => {
     try {
       const directory = directories.get(runtime.id) || home
       const status = await requestOpenCodeAt(
         runtime.url,
         `/session/status?directory=${encodeURIComponent(directory)}`,
         { timeout: 700 })
-      return [runtime.id, status && status[runtime.id]]
+      return [runtime.id, status && cleanStatus(status[runtime.id])]
     } catch {
-      try { fs.unlinkSync(runtime.file) } catch { /* The runtime entry may already be gone. */ }
       return [runtime.id, null]
     }
-  }))
+  })
   return Object.fromEntries(results.filter(([, status]) => status))
 }
 
 
 export async function openCodeSnapshot() {
   const sessions = await requestOpenCode("/experimental/session?roots=true&limit=1000&archived=false")
+  if (!Array.isArray(sessions)) throw new Error("OpenCode returned an invalid session list")
+  if (sessions.length > MAX_OPENCODE_SESSIONS)
+    throw new Error(`OpenCode returned more than ${MAX_OPENCODE_SESSIONS} sessions`)
   const directories = [...new Set(sessions.map(item => String(item.directory || "")).filter(Boolean))]
+  if (directories.length > MAX_OPENCODE_PROJECTS)
+    throw new Error(`OpenCode returned more than ${MAX_OPENCODE_PROJECTS} project directories`)
   const capabilities = await openCodeCapabilities(directories)
   const metadata = loadMetadata()
-  const statuses = {}
-  await Promise.all(directories.map(async directory => {
+  const statuses = Object.create(null)
+  let statusEntries = 0
+  let statusLimitExceeded = false
+  await mapWithConcurrency(directories, 8, async directory => {
     try {
       const scoped = await requestOpenCode(`/session/status?directory=${encodeURIComponent(directory)}`)
-      Object.assign(statuses, scoped || {})
+      for (const [id, value] of Object.entries(scoped || {})) {
+        statusEntries++
+        if (statusEntries > MAX_OPENCODE_STATUS_ENTRIES) {
+          statusLimitExceeded = true
+          break
+        }
+        statuses[String(id).slice(0, 256)] = cleanStatus(value)
+      }
     } catch { /* A stale project directory should not hide the session history. */ }
-  }))
+  })
+  if (statusLimitExceeded) throw new Error("OpenCode status entry limit exceeded")
   Object.assign(statuses, await runtimeOpenCodeStatuses(sessions))
   const threads = sessions.map(session => {
     const id = String(session.id || "")

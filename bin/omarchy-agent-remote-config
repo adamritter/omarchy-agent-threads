@@ -69,7 +69,8 @@ function readPrivate() {
   }
   if (existing.size > MAX_CONFIG_BYTES)
     fail(`state file exceeds ${MAX_CONFIG_BYTES} bytes`)
-  const descriptor = fs.openSync(configPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
+  const descriptor = fs.openSync(configPath,
+    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK)
   try {
     const current = fs.fstatSync(descriptor)
     if (!current.isFile()) fail("state path is not a regular file")
@@ -90,5 +91,14 @@ function readPrivate() {
 }
 
 if (action === "read") process.stdout.write(readPrivate())
-else if (action === "write") writePrivate(serialized)
+else if (action === "entry") {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(serialized))
+    fail("invalid remote id")
+  const config = JSON.parse(readPrivate())
+  const remotes = Array.isArray(config) ? config : config.remotes
+  const entry = Array.isArray(remotes)
+    ? remotes.find(item => item && String(item.id || "") === serialized) : null
+  if (!entry) fail("remote entry not found")
+  process.stdout.write(JSON.stringify(entry) + "\n")
+} else if (action === "write") writePrivate(serialized)
 else fail("expected read or write action")

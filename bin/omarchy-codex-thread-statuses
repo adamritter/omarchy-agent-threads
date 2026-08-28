@@ -10,7 +10,6 @@ declare -a thread_ids=()
 declare -a rollout_paths=()
 declare -a codex_fd_dirs=()
 declare -a live_rollouts_to_scan=()
-declare -A client_by_pid=()
 
 while (( $# >= 2 )); do
   thread_ids+=("$1")
@@ -49,38 +48,6 @@ if (( ${#codex_fd_dirs[@]} > 0 )); then
   done < <(find "${codex_fd_dirs[@]}" -maxdepth 1 -type l -printf '%l\n' 2>/dev/null || true)
 fi
 
-# Rebuild thread-to-window mappings from the live process tree. This also
-# repairs sessions whose rollout was created only after the launch timeout.
-while IFS=$'\t' read -r client_address client_pid; do
-  [[ -n "$client_address" && "$client_pid" =~ ^[0-9]+$ ]] || continue
-  client_by_pid["$client_pid"]="$client_address"
-done < <(hyprctl -j clients 2>/dev/null | jq -r '.[] | [.address, .pid] | @tsv' 2>/dev/null || true)
-
-client_address_for_process() {
-  local current_pid="$1"
-  local parent_pid stat_line stat_tail
-
-  while [[ "$current_pid" =~ ^[0-9]+$ ]] && (( current_pid > 1 )); do
-    if [[ -n "${client_by_pid[$current_pid]:-}" ]]; then
-      printf '%s\n' "${client_by_pid[$current_pid]}"
-      return 0
-    fi
-
-    [[ -r "/proc/${current_pid}/stat" ]] || break
-    stat_line="$(<"/proc/${current_pid}/stat")"
-    stat_tail="${stat_line##*) }"
-    read -r _ parent_pid _ <<<"$stat_tail" || true
-    [[ "$parent_pid" =~ ^[0-9]+$ ]] || break
-    current_pid="$parent_pid"
-  done
-
-  return 1
-}
-
-runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
-state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
-mkdir -p -m 700 "$state_dir"
-
 for fd_dir in "${codex_fd_dirs[@]}"; do
   codex_pid="${fd_dir#/proc/}"
   codex_pid="${codex_pid%/fd}"
@@ -95,14 +62,6 @@ for fd_dir in "${codex_fd_dirs[@]}"; do
     # as current activity.
     [[ "$rollout_path" -nt "/proc/${codex_pid}" ]] \
       && active_rollouts["$rollout_path"]=1
-  done < <(find "$fd_dir" -maxdepth 1 -type l -printf '%l\n' 2>/dev/null || true)
-  client_address="$(client_address_for_process "$codex_pid" || true)"
-  [[ -n "$client_address" ]] || continue
-
-  while IFS= read -r rollout_path; do
-    if [[ "$rollout_path" =~ -([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.jsonl$ ]]; then
-      printf '%s\n' "$client_address" > "${state_dir}/${BASH_REMATCH[1]}.address"
-    fi
   done < <(find "$fd_dir" -maxdepth 1 -type l -printf '%l\n' 2>/dev/null || true)
 done
 

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions
 
 Item {
+  objectName: "chatTranscriptPane"
   required property var window
   required property var client
 
@@ -14,6 +15,7 @@ Item {
 
   WebTranscript {
     id: transcriptView
+    objectName: "webTranscript"
     anchors.fill: parent
     messages: client.messages
     busy: client.busy

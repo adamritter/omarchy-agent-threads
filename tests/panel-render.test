@@ -4,150 +4,6 @@ set -euo pipefail
 
 plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 live_wayland="${PANEL_TEST_LIVE_WAYLAND:-0}"
-
-if [[ "$live_wayland" != "1" ]]; then
-  panel_source="$plugin_root/Panel.qml"
-  list_source="$plugin_root/ui/CodexThreadList.qml"
-  row_source="$plugin_root/ui/ThreadListRow.qml"
-  row_actions_source="$plugin_root/ui/ThreadListRowActions.qml"
-  project_menu_source="$plugin_root/ui/ProjectContextMenu.qml"
-  remote_menu_source="$plugin_root/ui/RemoteContextMenu.qml"
-  help_source="$plugin_root/ui/HelpOverlay.qml"
-  local_codex_source="$plugin_root/providers/LocalCodexProvider.qml"
-  header_source="$plugin_root/ui/SidebarHeader.qml"
-  body_source="$plugin_root/ui/SidebarBody.qml"
-  key_router_source="$plugin_root/ui/SidebarKeyRouter.qml"
-  runtime_source="$plugin_root/ui/PanelRuntimeConnections.qml"
-  process_source="$plugin_root/ui/PanelRuntimeProcesses.qml"
-  ipc_source="$plugin_root/ui/PanelIpcHandler.qml"
-  focus_source="$plugin_root/ui/PanelFocusController.qml"
-  provider_source="$plugin_root/ui/PanelProviderController.qml"
-  reload_source="$plugin_root/ui/PanelReloadController.qml"
-  appearance_source="$plugin_root/ui/PanelAppearance.qml"
-  help_items_source="$plugin_root/logic/PanelHelpLogic.js"
-
-  [[ "$(grep -c '^[[:space:]]*PanelWindow[[:space:]]*{' "$panel_source")" == "1" ]]
-  grep -q '^  visible: true$' "$panel_source"
-  grep -q '^  implicitWidth: button\.implicitWidth$' "$panel_source"
-  grep -q '^  implicitHeight: button\.implicitHeight$' "$panel_source"
-  if grep -q 'id: sidebarReservation' "$panel_source"; then
-    printf '%s\n' 'Panel.qml still owns a separate reservation window' >&2
-    exit 1
-  fi
-  grep -q 'id: panel' "$panel_source"
-  grep -q 'exclusiveZone: root.appearance.sidebarContentWidth' "$panel_source"
-  grep -q ': Border.flat("transparent", Math.max(1, Style.space(2)))' \
-    "$panel_source"
-  if grep -A3 'borderSpec: root.sidebarFocused' "$panel_source" \
-      | grep -q 'Border.none()'; then
-    printf '%s\n' 'The focus border changes panel content geometry.' >&2
-    exit 1
-  fi
-  grep -q 'sidebarBarGap: Style.gapsOut' "$appearance_source"
-  [[ "$(grep -c '? root.appearance.sidebarBarGap : 0' "$panel_source")" == "2" ]]
-  grep -q 'id: threadListView' "$body_source"
-  grep -q 'id: helpOverlayControl' "$panel_source"
-  grep -q 'Documentation:' "$help_source"
-  grep -q 'https://github.com/adamritter/omarchy-agent-threads' "$help_source"
-  grep -q 'onLinkActivated: function(link) { Qt.openUrlExternally(link) }' "$help_source"
-  grep -q 'id: helpFlickable' "$help_source"
-  grep -q 'ScrollBar.vertical: ScrollBar' "$help_source"
-  grep -q 'Components.FastScrollHandler' "$help_source"
-  grep -q 'spacing: 0' "$help_source"
-  grep -q 'panel.helpOverlay.scrollRows(dy)' "$key_router_source"
-  grep -q 'panel.helpOverlay.scrollPage(direction, fraction)' "$key_router_source"
-  grep -q 'panel.helpOverlay.scrollToEdge(edge)' "$key_router_source"
-  grep -q 'Ui.CodexThreadList' "$body_source"
-  grep -q 'Components.ThreadListRow' "$list_source"
-  grep -q 'ThreadListRowActions.qml' "$row_source"
-  grep -q 'readonly property alias actions: actionApi' \
-    "$plugin_root/ui/SidebarController.qml"
-  grep -q 'rowPresentation(' "$plugin_root/ui/SidebarActionController.qml"
-  grep -q 'panel.sidebarActions.actions.activateRow(row.index, "pointer")' "$row_source"
-  grep -q 'id: searchButton' "$header_source"
-  grep -q 'onClicked: panel.overlayActions.startSearch()' "$header_source"
-  grep -q 'id: notificationButton' "$header_source"
-  grep -q 'text: panel.service.settings.notificationsEnabled ? "󰂚" : "󰂛"' \
-    "$header_source"
-  grep -q 'onClicked: panel.service.settings.toggleNotifications()' "$header_source"
-  grep -q 'function notifications(mode: string): string' "$ipc_source"
-  notification_source="$(sed -n '/id: notificationButton/,/id: remoteButton/p' "$header_source")"
-  remote_button_source="$(sed -n '/id: remoteButton/,/id: helpButton/p' "$header_source")"
-  grep -q 'visible: !panel.session.renameOpen && !panel.session.helpOpen' <<<"$remote_button_source"
-  grep -q ': panel.appearance.dim' <<<"$notification_source"
-  if grep -q 'readyThreadColor' <<<"$notification_source"; then
-    printf '%s\n' 'The notification bell still uses a status color' >&2
-    exit 1
-  fi
-  grep -q 'id: fastModeButton' "$body_source"
-  grep -q 'text: "⚡︎"' "$body_source"
-  grep -q 'onClicked: panel.service.settings.toggleFastMode()' "$body_source"
-  grep -q 'readyThreadColor: "#98c379"' "$appearance_source"
-  grep -q 'function openLatestReadyThread()' "$provider_source"
-  grep -q 'function openReady(): string' "$ipc_source"
-  grep -q 'root.readyThreadCount > 0' "$panel_source"
-  grep -q 'HyprlandFocusGrab {' "$plugin_root/ui/ModelEffortSelector.qml"
-  grep -q 'active: picker.opened' "$plugin_root/ui/ModelEffortSelector.qml"
-  grep -q 'onCleared: picker.close()' "$plugin_root/ui/ModelEffortSelector.qml"
-  grep -q 'onFastToggleRequested:' "$key_router_source"
-  grep -q 'Super+Ctrl+F' "$help_items_source"
-  grep -q 'function fast(mode: string): string' "$ipc_source"
-  if grep -q 'id: threadFrontendButton' "$panel_source"; then
-    printf '%s\n' 'Panel.qml still exposes the Agent Chat frontend button' >&2
-    exit 1
-  fi
-  grep -q 'onFrontendToggleRequested:' "$key_router_source"
-  grep -q 'panel.service.settings.toggleThreadFrontend("shortcut")' "$key_router_source"
-  if grep -q 'if (text === "a")' "$key_router_source"; then
-    printf '%s\n' 'Panel.qml still exposes the unmodified Agent Chat toggle' >&2
-    exit 1
-  fi
-  grep -q 'Agent Chat is on' "$help_items_source"
-  grep -q 'Agent Chat is off (terminal)' "$help_items_source"
-  grep -q 'PointerFocusLogic.cursorPoint(cursorText)' "$focus_source"
-  grep -q '^import Quickshell.Hyprland$' "$focus_source"
-  grep -q 'focusWorkflowTimeout\.restart()' "$focus_source"
-  grep -q 'focusWorkflowTimeout\.stop()' "$focus_source"
-  grep -q 'panel\.session\.focusWorkflowPending = false' "$focus_source"
-  grep -q 'command: \["hyprctl", "cursorpos", "-j"\]' "$process_source"
-  grep -q 'id: focusWorkflowTimeout' "$focus_source"
-  grep -q 'panel.session.keyboardFocusRequested' "$focus_source"
-  grep -q 'escapeSidebarFocus()' "$focus_source"
-  grep -q 'pointerHoverSuppressed = true' "$focus_source"
-  grep -q 'name === "activespecial"' "$runtime_source"
-  grep -q 'activeWorkspaceKey' "$focus_source"
-  grep -q 'function nextThread(): string' "$ipc_source"
-  grep -q 'function previousThread(): string' "$ipc_source"
-  grep -q 'panel.service.providers.flushProviderSnapshot()' "$ipc_source"
-  grep -q 'PanelReloadStateLogic.decode' "$reload_source"
-  grep -q 'pendingReloadWorkspaceKey' "$reload_source"
-  grep -q 'cancelPanelReloadFocus()' "$reload_source"
-  grep -q 'running: panel.sidebarPresented || panel.session.keyboardFocusRequested' "$process_source"
-  grep -q 'panel.reloadSelectionPending' \
-    "$plugin_root/ui/SidebarNavigationController.qml"
-  grep -q 'Components.ProjectContextMenu' "$row_actions_source"
-  grep -q 'Components.ThreadContextMenu' "$row_actions_source"
-  grep -q 'panel.sidebarActions.actions.openSelected("context-menu")' \
-    "$plugin_root/ui/ThreadContextMenu.qml"
-  grep -q 'Components.RemoteContextMenu' "$row_actions_source"
-  grep -q 'id: projectMenu' "$project_menu_source"
-  grep -q 'panel.sidebarActions.actions.openSelectedTerminal()' \
-    "$project_menu_source"
-  if grep -q 'installRemoteClaude\|INSTALLING…\|"INSTALL"' "$remote_menu_source"; then
-    printf '%s\n' 'Remote Claude still exposes automatic installation' >&2
-    exit 1
-  fi
-  [[ "$(grep -c 'controller.providers.effectiveModel()' "$local_codex_source")" == "2" ]]
-  [[ "$(grep -c 'controller.providers.effectiveEffort()' "$local_codex_source")" == "2" ]]
-
-  "$plugin_root/scripts/test-unit" \
-    tests/tst_threadlistmodel.qml \
-    tests/tst_sidebarcontroller.qml \
-    tests/tst_keycatcher.qml
-  printf '%s\n' 'panel-render contract tests passed'
-  exit 0
-fi
-
 test_root="$(mktemp -d -t agent-threads-panel-render-XXXXXX)"
 output_file="$test_root/output.log"
 trap 'rm -rf -- "$test_root"' EXIT
@@ -155,7 +11,42 @@ trap 'rm -rf -- "$test_root"' EXIT
 ln -s -- /usr/share/omarchy/shell/Commons "$test_root/Commons"
 ln -s -- /usr/share/omarchy/shell/Ui "$test_root/Ui"
 ln -s -- "$plugin_root" "$test_root/AgentThreads"
-cp -- "$plugin_root/tests/panel-harness/shell.qml" "$test_root/shell.qml"
+cp -- "$plugin_root/tests/panel-harness/shell.qml" \
+  "$plugin_root/tests/panel-harness/FakePanelService.qml" \
+  "$plugin_root/tests/panel-harness/PanelLayerProbe.qml" \
+  "$plugin_root/tests/panel-harness/PanelReloadBoundaryProbe.qml" \
+  "$test_root/"
+
+if [[ "$live_wayland" != "1" ]]; then
+  set +e
+  AGENT_THREADS_PANEL_TEST=1 AGENT_THREADS_PANEL_TEST_COMPILE_ONLY=1 \
+    timeout 15s quickshell --path "$test_root/shell.qml" \
+    >"$output_file" 2>&1
+  exit_code=$?
+  set -e
+
+  if (( exit_code != 0 )) \
+      || ! grep -q 'PANEL_COMPONENT_PASS:' "$output_file" \
+      || grep -q 'PANEL_RENDER_FAIL:' "$output_file" \
+      || grep -Eq 'ReferenceError:|Cannot assign \[undefined\]' "$output_file"; then
+    cat "$output_file" >&2
+    printf 'Panel component-load contract failed with code %d.\n' \
+      "$exit_code" >&2
+    exit 1
+  fi
+
+  "$plugin_root/scripts/test-unit" \
+    tests/tst_threadlistmodel.qml \
+    tests/tst_sidebarcontroller.qml \
+    tests/tst_sidebarnavigation.qml \
+    tests/tst_keycatcher.qml \
+    tests/tst_panelfocuslogic.qml \
+    tests/tst_panelfocuscontroller.qml \
+    tests/tst_panelhelplogic.qml \
+    tests/tst_panelreloadstatelogic.qml
+  printf '%s\n' 'Panel component and behavior contracts passed.'
+  exit 0
+fi
 
 set +e
 AGENT_THREADS_PANEL_TEST=1 AGENT_THREADS_PANEL_TEST_LIVE=1 \
@@ -192,4 +83,4 @@ if [[ "$remaining_layers" != "0" ]]; then
   exit 1
 fi
 
-printf '%s\n' 'panel-render tests passed'
+printf '%s\n' 'Panel live Wayland smoke test passed.'

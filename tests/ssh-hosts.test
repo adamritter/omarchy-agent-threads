@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t agent-threads-ssh-hosts-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+helper="$plugin_root/bin/omarchy-codex-ssh-hosts"
+config="$test_root/config"
+included="$test_root/included.conf"
+
+printf '%s\n' 'Host beta alpha' > "$included"
+printf 'Include %s\nHost primary wildcard-*\n' "$included" > "$config"
+result="$($helper "$config")"
+jq -e '. == ["alpha","beta","primary"]' <<<"$result" >/dev/null
+
+oversized="$test_root/oversized.conf"
+truncate -s $((1024 * 1024 + 1)) "$oversized"
+if "$helper" "$oversized" >/dev/null 2>"$test_root/oversized-error"; then
+  echo "SSH host parser unexpectedly accepted an oversized config" >&2
+  exit 1
+fi
+grep -F -- 'SSH config file exceeded the 1048576 byte limit' \
+  "$test_root/oversized-error" >/dev/null
+
+fifo="$test_root/config.fifo"
+mkfifo "$fifo"
+set +e
+timeout 2 "$helper" "$fifo" >/dev/null 2>"$test_root/fifo-error"
+fifo_status=$?
+set -e
+if (( fifo_status == 0 || fifo_status == 124 )); then
+  echo "SSH host parser did not safely reject a FIFO" >&2
+  exit 1
+fi
+
+many_aliases="$test_root/many-aliases.conf"
+for index in $(seq 0 2048); do printf 'Host fixture-%s\n' "$index"; done > "$many_aliases"
+if "$helper" "$many_aliases" >/dev/null 2>"$test_root/aliases-error"; then
+  echo "SSH host parser unexpectedly accepted too many aliases" >&2
+  exit 1
+fi
+grep -F -- 'SSH alias limit exceeded' "$test_root/aliases-error" >/dev/null
+
+printf '%s\n' "ssh-host tests passed"

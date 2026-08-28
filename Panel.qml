@@ -22,6 +22,7 @@ Panel {
   property var service: Quickshell.env("AGENT_THREADS_PANEL_TEST") === "1"
     ? null : Services.ThreadStore
   property string layerNamespace: "omarchy-codex-threads"
+  property bool layerMappingEnabled: true
   readonly property alias appearance: appearanceObject
   Ui.PanelAppearance { id: appearanceObject; bar: root.bar }
   readonly property alias environment: environmentObject
@@ -30,8 +31,10 @@ Panel {
   readonly property bool fullscreenSuppressed: fullscreenSuppressionEnabled
     && session.activeWorkspaceHasFullscreen
   readonly property bool sidebarPresented: opened && !fullscreenSuppressed
-  readonly property bool sidebarItemFocused: keyCatcher.activeFocus || searchField.activeFocus
-    || renameField.activeFocus || remoteSetup.inputFocused
+  readonly property bool sidebarItemFocused: (sidebarView !== null
+    && sidebarView.searchField !== null && sidebarView.renameField !== null
+    && (sidebarView.activeFocus || sidebarView.searchField.activeFocus
+      || sidebarView.renameField.activeFocus)) || remoteSetup.inputFocused
   readonly property bool sidebarFocused: session.keyboardFocusRequested && sidebarItemFocused
   readonly property string activeProvider: service.settings.selectedProvider || "codex"
   readonly property var activeProviderHost: providerActions.providerHost(activeProvider)
@@ -89,10 +92,10 @@ Panel {
   Ui.SidebarController {
     id: sidebarController
     panel: root
-    listView: threadList
+    listView: root.sidebarView ? root.sidebarView.threadList : null
   }
 
-  readonly property alias sidebarView: keyRouter
+  readonly property var sidebarView: sidebarLoader.item
   readonly property alias remoteSetup: remoteSetupControl
   readonly property alias helpOverlay: helpOverlayControl
   readonly property alias listModel: threadListModelObject
@@ -105,9 +108,17 @@ Panel {
   readonly property alias listActions: listActionsObject
   Ui.PanelListController { id: listActionsObject; panel: root }
   readonly property alias focusActions: focusActionsObject
-  Ui.PanelFocusController { id: focusActionsObject; panel: root }
+  Ui.PanelFocusController {
+    id: focusActionsObject
+    panel: root
+    compositor: Hyprland
+  }
   readonly property alias sidebarHover: sidebarHoverObject
   readonly property alias runtime: runtimeProcesses
+  readonly property alias sidebarReload: sidebarReloadObject
+  Ui.SidebarReloadController { id: sidebarReloadObject; panel: root }
+
+  function reloadEntryPoint(kind) { return sidebarReload.reloadEntryPoint(kind) }
 
   Ui.PanelRuntimeConnections { panel: root }
 
@@ -140,7 +151,7 @@ Panel {
     id: panel
 
     screen: button.QsWindow.window ? button.QsWindow.window.screen : null
-    visible: root.sidebarPresented
+    visible: root.layerMappingEnabled && root.sidebarPresented
     color: "transparent"
     implicitWidth: root.appearance.sidebarContentWidth
     exclusionMode: ExclusionMode.Normal
@@ -190,14 +201,27 @@ Panel {
         }
       }
 
-      Ui.SidebarKeyRouter {
-        id: keyRouter
+      Loader {
+        id: sidebarLoader
         anchors.fill: parent
-        panel: root
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
         anchors.bottomMargin: card.contentBottomInset
         anchors.leftMargin: card.contentLeftInset
+
+        property string requestedSource: root.sidebarReload.sidebarSource
+        property bool initialized: false
+
+        function loadSidebar() {
+          setSource(requestedSource, { panel: root })
+        }
+
+        onRequestedSourceChanged: if (initialized) loadSidebar()
+        onLoaded: Qt.callLater(root.sidebarReload.restoreState)
+        Component.onCompleted: {
+          initialized = true
+          loadSidebar()
+        }
       }
 
       Ui.RemoteSetup {

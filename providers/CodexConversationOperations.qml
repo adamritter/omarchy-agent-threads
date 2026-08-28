@@ -58,7 +58,7 @@ QtObject {
   function newChat(cwd, model, effort) {
     if (client.busy) return false
     resetConversation()
-    client.pendingCwd = String(cwd || client.configuredCwd || Quickshell.env("HOME") || "/tmp")
+    client.pendingCwd = String(cwd || client.configuredCwd || Quickshell.env("HOME"))
     client.pendingModel = String(model || client.configuredModel || "")
     client.pendingEffort = String(effort || client.configuredEffort || "")
     return true
@@ -98,7 +98,7 @@ QtObject {
     client.messages = ConversationLogic.optimisticUserMessage(client.messages, value)
     if (client.activeThreadId === "") {
       client.pendingPrompt = value
-      client.pendingCwd = String(cwd || client.pendingCwd || Quickshell.env("HOME") || "/tmp")
+      client.pendingCwd = String(cwd || client.pendingCwd || Quickshell.env("HOME"))
       client.pendingModel = String(model || client.pendingModel || "")
       client.pendingEffort = String(effort || client.pendingEffort || "")
       client.busy = true

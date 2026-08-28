@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { readJsonLimited } from "./bounded-io.mjs"
 
 const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
 const MAX_CLAUDE_PROJECT_DIRECTORIES = 256
@@ -10,9 +11,10 @@ const MAX_CLAUDE_TRANSCRIPTS = 512
 const MAX_CLAUDE_TRANSCRIPT_HEAD_BYTES = 64 * 1024
 const MAX_CLAUDE_TRANSCRIPT_TAIL_BYTES = 256 * 1024
 const MAX_CLAUDE_JOBS = 512
+const MAX_CLAUDE_STATE_BYTES = 2 * 1024 * 1024
 
 function readJSON(filePath, fallback = null) {
-  try { return JSON.parse(fs.readFileSync(filePath, "utf8")) } catch { return fallback }
+  return readJsonLimited(filePath, MAX_CLAUDE_STATE_BYTES, "Claude state file", fallback)
 }
 function cleanText(value) { return String(value || "").replace(/\\s+/g, " ").trim() }
 

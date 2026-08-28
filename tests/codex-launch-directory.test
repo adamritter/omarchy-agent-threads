@@ -11,6 +11,7 @@ trap 'rm -rf -- "$test_root"' EXIT
 export AGENT_THREADS_LAUNCH_LOG="$test_root/launch.log"
 
 mkdir -p -- "$test_root/bin" "$project_dir" "$test_root/runtime"
+chmod 700 "$test_root/runtime"
 
 cat >"$test_root/bin/uwsm-app" <<'EOF'
 #!/usr/bin/env bash
@@ -22,7 +23,7 @@ cat >"$test_root/bin/hyprctl" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "-j" && "${2:-}" == "clients" ]]; then
   if [[ -f "$CODEX_LAUNCH_MARKER" ]]; then
-    printf '%s\n' '[{"address":"0xagent","pid":999999}]'
+    printf '%s\n' '[{"address":"0xa9e17","pid":999999}]'
   else
     printf '%s\n' '[]'
   fi
@@ -213,6 +214,7 @@ if "$plugin_root/bin/omarchy-codex-remote-open" \
   printf '%s\n' 'Codex remote launcher unexpectedly accepted an oversized token' >&2
   exit 1
 fi
-grep -F -- 'token file exceeded the 64 KiB limit' "$test_root/token-error" >/dev/null
+grep -E -- 'Bounded file reader: input file exceeded.*byte limit' \
+  "$test_root/token-error" >/dev/null
 
 printf '%s\n' 'codex-launch-directory tests passed'

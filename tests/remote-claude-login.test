@@ -71,6 +71,13 @@ grep -Fx 'browser' "$REMOTE_LOGIN_CAPTURE" >/dev/null
 grep -F 'https://claude.com/cai/oauth/authorize?code=true&fixture=1' \
   "$REMOTE_LOGIN_CAPTURE" >/dev/null
 
+watcher_result="$({
+  head -c $((5 * 1024 * 1024)) /dev/zero | tr '\0' x
+  printf '%s\n' 'https://console.anthropic.com/oauth/fixture'
+  head -c $((5 * 1024 * 1024)) /dev/zero | tr '\0' y
+} | timeout 3 "$plugin_root/bin/omarchy-agent-auth-url-watcher")"
+test "$watcher_result" = 'https://console.anthropic.com/oauth/fixture'
+
 if "$plugin_root/bin/omarchy-claude-remote-login" \
     "$config" lambda-codex >/dev/null 2>&1; then
   echo "Codex remote unexpectedly accepted for Claude sign-in" >&2

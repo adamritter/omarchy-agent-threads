@@ -1,0 +1,20 @@
+#!/usr/bin/env node
+
+const WINDOW_BYTES = 4096
+const URL_BYTES = 2048
+let window = ""
+let emitted = false
+
+process.stdin.on("data", chunk => {
+  if (emitted) return
+  window += Buffer.from(chunk).toString("utf8")
+  if (Buffer.byteLength(window) > WINDOW_BYTES)
+    window = Buffer.from(window).subarray(-WINDOW_BYTES).toString("utf8")
+  const match = window.match(/https:\/\/(?:claude\.com|console\.anthropic\.com)\/[^\x00-\x20\x7f-\x9f]+/)
+  if (!match) return
+  const url = Buffer.from(match[0]).subarray(0, URL_BYTES).toString("utf8")
+  process.stdout.write(url + "\n")
+  emitted = true
+})
+
+process.stdin.resume()

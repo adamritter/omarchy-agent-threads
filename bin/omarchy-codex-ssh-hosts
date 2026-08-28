@@ -3,11 +3,19 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { readDirectoryLimited, readFileLimited } from "./lib/bounded-io.mjs"
 
 const sshRoot = path.join(os.homedir(), ".ssh")
 const configPath = process.argv[2] || path.join(sshRoot, "config")
 const visited = new Set()
 const aliases = new Set()
+const MAX_CONFIG_FILE_BYTES = 1024 * 1024
+const MAX_TOTAL_CONFIG_BYTES = 4 * 1024 * 1024
+const MAX_INCLUDED_FILES = 128
+const MAX_INCLUDE_DEPTH = 16
+const MAX_INCLUDE_DIRECTORY_ENTRIES = 4096
+const MAX_ALIASES = 2048
+let totalConfigBytes = 0
 
 function tokens(value) {
   const result = []
@@ -42,7 +50,8 @@ function expandInclude(value, fromFile) {
   const directory = path.dirname(candidate)
   const pattern = globPattern(path.basename(candidate))
   try {
-    return fs.readdirSync(directory, { withFileTypes: true })
+    return readDirectoryLimited(
+      directory, MAX_INCLUDE_DIRECTORY_ENTRIES, "SSH Include directory")
       .filter(entry => entry.isFile() && pattern.test(entry.name))
       .map(entry => path.join(directory, entry.name))
       .sort()
@@ -52,14 +61,23 @@ function expandInclude(value, fromFile) {
   }
 }
 
-function parseFile(filePath) {
+function parseFile(filePath, depth = 0) {
+  if (depth > MAX_INCLUDE_DEPTH) throw new Error("SSH Include depth limit exceeded")
   let resolved
   try { resolved = fs.realpathSync(filePath) } catch { return }
   if (visited.has(resolved)) return
+  if (visited.size >= MAX_INCLUDED_FILES) throw new Error("SSH Include file limit exceeded")
   visited.add(resolved)
 
   let content
-  try { content = fs.readFileSync(resolved, "utf8") } catch { return }
+  try { content = readFileLimited(resolved, MAX_CONFIG_FILE_BYTES, "SSH config file") }
+  catch (error) {
+    if (error && error.code === "ENOENT") return
+    throw error
+  }
+  totalConfigBytes += Buffer.byteLength(content)
+  if (totalConfigBytes > MAX_TOTAL_CONFIG_BYTES)
+    throw new Error("SSH config total byte limit exceeded")
   for (const rawLine of content.split(/\r?\n/)) {
     const line = rawLine.replace(/\s+#.*$/, "").trim()
     if (line === "" || line.startsWith("#")) continue
@@ -69,16 +87,25 @@ function parseFile(filePath) {
     const values = tokens(match[2])
     if (key === "include") {
       for (const include of values)
-        for (const includedPath of expandInclude(include, resolved)) parseFile(includedPath)
+        for (const includedPath of expandInclude(include, resolved))
+          parseFile(includedPath, depth + 1)
       continue
     }
     if (key !== "host") continue
     for (const alias of values) {
       if (alias.startsWith("!") || /[*?]/.test(alias)) continue
-      if (/^[A-Za-z0-9_.@:-]+$/.test(alias)) aliases.add(alias)
+      if (/^[A-Za-z0-9_.@:-]+$/.test(alias)) {
+        aliases.add(alias)
+        if (aliases.size > MAX_ALIASES) throw new Error("SSH alias limit exceeded")
+      }
     }
   }
 }
 
-parseFile(configPath)
-process.stdout.write(JSON.stringify([...aliases].sort((a, b) => a.localeCompare(b))) + "\n")
+try {
+  parseFile(configPath)
+  process.stdout.write(JSON.stringify([...aliases].sort((a, b) => a.localeCompare(b))) + "\n")
+} catch (error) {
+  process.stderr.write(`Could not parse SSH config: ${error.message}\n`)
+  process.exitCode = 2
+}

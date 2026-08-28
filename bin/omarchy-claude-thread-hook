@@ -9,16 +9,46 @@ const stateHome = process.env.XDG_STATE_HOME || path.join(home, ".local", "state
 const statePath = process.env.OMARCHY_CLAUDE_RUNTIME_PATH
   || path.join(stateHome, "omarchy", "claude-thread-runtime.json")
 const lockPath = statePath + ".lock"
+const MAX_INPUT_BYTES = 1024 * 1024
+const MAX_STATE_BYTES = 2 * 1024 * 1024
+const MAX_SESSIONS = 512
+const MAX_FIELD_CHARS = 4096
+const VALID_EVENTS = new Set([
+  "SessionStart", "UserPromptSubmit", "Notification", "Stop", "StopFailure", "SessionEnd"
+])
 
 function readInput() {
-  try { return JSON.parse(fs.readFileSync(0, "utf8")) } catch { return null }
+  try {
+    const buffer = Buffer.alloc(MAX_INPUT_BYTES + 1)
+    let offset = 0
+    while (offset < buffer.length) {
+      const count = fs.readSync(0, buffer, offset, buffer.length - offset, null)
+      if (count === 0) break
+      offset += count
+    }
+    if (offset > MAX_INPUT_BYTES) return null
+    return JSON.parse(buffer.subarray(0, offset).toString("utf8"))
+  } catch { return null }
 }
 
 function readState() {
+  let descriptor
   try {
-    const value = JSON.parse(fs.readFileSync(statePath, "utf8"))
+    descriptor = fs.openSync(statePath,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK)
+    const stat = fs.fstatSync(descriptor)
+    if (!stat.isFile() || stat.size > MAX_STATE_BYTES) throw new Error("invalid state file")
+    const buffer = Buffer.alloc(stat.size)
+    let offset = 0
+    while (offset < buffer.length) {
+      const count = fs.readSync(descriptor, buffer, offset, buffer.length - offset, offset)
+      if (count === 0) throw new Error("state file changed")
+      offset += count
+    }
+    const value = JSON.parse(buffer.toString("utf8"))
     return value && typeof value === "object" ? value : { version: 1, sessions: {} }
   } catch { return { version: 1, sessions: {} } }
+  finally { if (descriptor !== undefined) fs.closeSync(descriptor) }
 }
 
 function acquireLock() {
@@ -32,9 +62,34 @@ function acquireLock() {
 }
 
 function saveState(value) {
+  const serialized = JSON.stringify(value) + "\n"
+  if (Buffer.byteLength(serialized) > MAX_STATE_BYTES) throw new Error("state exceeds byte limit")
   const temporary = `${statePath}.${process.pid}.tmp`
-  fs.writeFileSync(temporary, JSON.stringify(value) + "\n", { mode: 0o600 })
+  fs.writeFileSync(temporary, serialized, { mode: 0o600, flag: "wx" })
   fs.renameSync(temporary, statePath)
+}
+
+function clipped(value, limit = MAX_FIELD_CHARS) {
+  return String(value || "").replaceAll("\0", "").slice(0, limit)
+}
+
+function rateWindow(value) {
+  if (!value || typeof value !== "object") return null
+  const used = Number(value.used_percentage)
+  const reset = Number(value.resets_at)
+  if (!Number.isFinite(used)) return null
+  return {
+    used_percentage: Math.max(0, Math.min(100, used)),
+    resets_at: Number.isFinite(reset) ? reset : 0
+  }
+}
+
+function pruneSessions(sessions) {
+  const entries = Object.entries(sessions || {}).filter(([id, value]) =>
+    /^[A-Za-z0-9._-]{1,128}$/.test(id) && value && typeof value === "object")
+  entries.sort((left, right) =>
+    Number(right[1].updatedAt || 0) - Number(left[1].updatedAt || 0))
+  return Object.fromEntries(entries.slice(0, MAX_SESSIONS))
 }
 
 const input = readInput()
@@ -43,28 +98,31 @@ if (!input || !input.session_id || !acquireLock()) process.exit(0)
 try {
   const state = readState()
   if (!state.sessions || typeof state.sessions !== "object") state.sessions = {}
-  const id = String(input.session_id)
+  const id = clipped(input.session_id, 128)
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) process.exit(0)
   const now = Date.now()
-  const event = String(input.hook_event_name || "")
+  const event = clipped(input.hook_event_name, 64)
   const rateLimits = input.rate_limits && typeof input.rate_limits === "object"
     ? input.rate_limits : null
   if (rateLimits) {
+    const fiveHour = rateWindow(rateLimits.five_hour)
+    const sevenDay = rateWindow(rateLimits.seven_day)
     state.rateLimits = {
       updatedAt: now,
-      fiveHour: rateLimits.five_hour || null,
-      sevenDay: rateLimits.seven_day || null
+      fiveHour,
+      sevenDay
     }
   }
 
-  if (event !== "") {
+  if (VALID_EVENTS.has(event)) {
     const previous = state.sessions[id] && typeof state.sessions[id] === "object"
       ? state.sessions[id] : {}
     const next = {
       ...previous,
       sessionId: id,
       event,
-      cwd: String(input.cwd || previous.cwd || home),
-      transcriptPath: String(input.transcript_path || previous.transcriptPath || ""),
+      cwd: clipped(input.cwd || previous.cwd || home),
+      transcriptPath: clipped(input.transcript_path || previous.transcriptPath || ""),
       updatedAt: now
     }
 
@@ -80,8 +138,8 @@ try {
       next.alive = true
       next.state = "waiting"
       next.attentionToken = String(now)
-      next.notificationType = String(input.notification_type || "")
-      next.message = String(input.message || "")
+      next.notificationType = clipped(input.notification_type, 256)
+      next.message = clipped(input.message)
     } else if (event === "Stop") {
       next.alive = true
       next.state = "done"
@@ -93,8 +151,8 @@ try {
       next.state = "failed"
       next.completedAt = now
       next.completionToken = String(now)
-      next.error = String(input.error || "unknown")
-      next.message = String(input.last_assistant_message || input.error_details || "")
+      next.error = clipped(input.error || "unknown", 1024)
+      next.message = clipped(input.last_assistant_message || input.error_details || "")
     } else if (event === "SessionEnd") {
       next.alive = false
       if (next.state === "busy" || next.state === "waiting") {
@@ -107,6 +165,7 @@ try {
   }
 
   state.version = 1
+  state.sessions = pruneSessions(state.sessions)
   saveState(state)
 } catch {
   // A status hook must never affect Claude itself.

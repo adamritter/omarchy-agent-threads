@@ -31,6 +31,14 @@ while IFS= read -r request; do
       jq -cn --argjson id "$id" '{id:$id,result:{}}'
       ;;
     thread/list)
+      if [[ "${REMOTE_QUERY_OUTPUT:-}" == "excess-items" ]]; then
+        node -e 'const id=Number(process.argv[1]); console.log(JSON.stringify({id,result:{data:Array.from({length:2001},(_,index)=>({id:`thread-${index}`}))}}))' "$id"
+        continue
+      fi
+      if [[ "${REMOTE_QUERY_OUTPUT:-}" == "aggregate-bytes" ]]; then
+        node -e 'const id=Number(process.argv[1]); console.log(JSON.stringify({id,result:{data:[{id:`thread-${id}`,name:"x".repeat(2*1024*1024)}],nextCursor:"again"}}))' "$id"
+        continue
+      fi
       jq -cn --argjson id "$id" \
         '{id:$id,result:{data:[{id:"remote-thread",cwd:"/work",name:"Remote thread"}]}}'
       ;;
@@ -81,7 +89,7 @@ if "$plugin_root/bin/omarchy-codex-remote-query" \
   echo "Remote Codex unexpectedly accepted an oversized remotes config" >&2
   exit 1
 fi
-grep -F -- "remotes config exceeded its byte limit" \
+grep -E -- "remotes config.*exceeded.*byte limit" \
   "$test_root/config-error" >/dev/null
 
 token_file="$test_root/oversized-token"
@@ -97,7 +105,41 @@ if "$plugin_root/bin/omarchy-codex-remote-query" \
   echo "Remote Codex unexpectedly accepted an oversized token file" >&2
   exit 1
 fi
-grep -F -- "token file exceeded its byte limit" \
+grep -E -- "token file.*exceeded.*byte limit" \
   "$test_root/token-error" >/dev/null
+
+for special_file in "$test_root/token-link" "$test_root/token-fifo" /dev/zero; do
+  if [[ "$special_file" == *token-link ]]; then
+    ln -s -- "$token_file" "$special_file"
+  elif [[ "$special_file" == *token-fifo ]]; then
+    mkfifo "$special_file"
+  fi
+  jq --arg tokenFile "$special_file" \
+    '(.remotes[0].authTokenFile) = $tokenFile' "$app_server_config" \
+    > "$test_root/special-remotes.json"
+  set +e
+  timeout 2 "$plugin_root/bin/omarchy-codex-remote-query" \
+    "$test_root/special-remotes.json" remote-app-server snapshot \
+    >/dev/null 2>"$test_root/special-error"
+  special_status=$?
+  set -e
+  if (( special_status == 0 || special_status == 124 )); then
+    echo "Remote Codex did not safely reject special token file: $special_file" >&2
+    exit 1
+  fi
+done
+
+for attack in excess-items aggregate-bytes; do
+  if PATH="$stub_bin:$PATH" REMOTE_QUERY_OUTPUT="$attack" \
+      "$plugin_root/bin/omarchy-codex-remote-query" "$config" remote-codex snapshot \
+      >/dev/null 2>"$test_root/$attack-error"; then
+    echo "Remote Codex unexpectedly accepted $attack" >&2
+    exit 1
+  fi
+done
+grep -F -- "thread/list exceeded the 2000 item limit" \
+  "$test_root/excess-items-error" >/dev/null
+grep -F -- "thread/list exceeded the 32 MiB retained-data limit" \
+  "$test_root/aggregate-bytes-error" >/dev/null
 
 printf '%s\n' "remote-codex tests passed"

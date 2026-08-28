@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d -t agent-thread-focus-XXXXXX)"
+output_file="$test_root/output.log"
+trap 'rm -rf -- "$test_root"' EXIT
+
+ln -s -- "$plugin_root" "$test_root/AgentThreads"
+cp -- "$plugin_root/tests/thread-launch-focus-harness.qml" "$test_root/shell.qml"
+
+set +e
+timeout 10s quickshell --no-duplicate --path "$test_root/shell.qml" \
+  >"$output_file" 2>&1
+exit_code=$?
+set -e
+
+if (( exit_code != 0 )) \
+    || ! grep -F -- 'THREAD_LAUNCH_FOCUS_PASS' "$output_file" >/dev/null \
+    || grep -F -- 'THREAD_LAUNCH_FOCUS_FAIL:' "$output_file" >/dev/null; then
+  cat "$output_file" >&2
+  printf 'Thread launch focus contract failed with code %d.\n' "$exit_code" >&2
+  exit 1
+fi
+
+printf '%s\n' 'thread launch focus contract passed'

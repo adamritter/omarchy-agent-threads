@@ -37,4 +37,19 @@ if $helper read "$config" >/dev/null 2>&1; then
   exit 1
 fi
 
+rm -- "$config"
+mkfifo "$config"
+set +e
+timeout 2 "$helper" read "$config" >/dev/null 2>&1
+fifo_status=$?
+set -e
+if (( fifo_status == 0 )); then
+  echo "Remote config reader unexpectedly accepted a FIFO" >&2
+  exit 1
+fi
+[[ "$fifo_status" != 124 ]] || {
+  echo "Remote config reader blocked on a FIFO" >&2
+  exit 1
+}
+
 printf '%s\n' "remote-config tests passed"

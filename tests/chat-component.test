@@ -3,13 +3,17 @@
 set -euo pipefail
 
 plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-output_file="$(mktemp -t agent-chat-component-XXXXXX.log)"
-trap 'rm -f -- "$output_file"' EXIT
+test_root="$(mktemp -d -t agent-chat-component-XXXXXX)"
+output_file="$test_root/output.log"
+trap 'rm -rf -- "$test_root"' EXIT
+
+ln -s -- "$plugin_root" "$test_root/AgentThreads"
+cp -- "$plugin_root/tests/chat-component-harness.qml" "$test_root/shell.qml"
 
 set +e
-AGENT_CHAT_COMPONENT_PATH="$plugin_root/app/ChatWindow.qml" \
+AGENT_CHAT_COMPONENT_PATH="$test_root/AgentThreads/app/ChatWindow.qml" \
   timeout 10s quickshell --no-duplicate \
-    --path "$plugin_root/tests/chat-component-harness.qml" \
+    --path "$test_root/shell.qml" \
     >"$output_file" 2>&1
 exit_code=$?
 set -e

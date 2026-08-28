@@ -1,3 +1,7 @@
 singleton ThreadStore 1.0 ThreadStore.qml
 ProviderSnapshotStore 1.0 ProviderSnapshotStore.qml
 SidebarPreferences 1.0 SidebarPreferences.qml
+internal ThreadStoreMutations ThreadStoreMutations.qml
+internal ThreadStoreProviderApi ThreadStoreProviderApi.qml
+internal ThreadStoreSettingsApi ThreadStoreSettingsApi.qml
+internal ThreadStoreThreadApi ThreadStoreThreadApi.qml

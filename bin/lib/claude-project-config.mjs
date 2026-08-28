@@ -1,20 +1,17 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { readFileLimited, readJsonLimited } from "./bounded-io.mjs"
 
 const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
 const MAX_CLAUDE_AGENT_FILES = 256
 const MAX_CLAUDE_AGENT_BYTES = 128 * 1024
+const MAX_CLAUDE_SETTINGS_BYTES = 2 * 1024 * 1024
 function readJSON(filePath, fallback = null) {
-  try { return JSON.parse(fs.readFileSync(filePath, "utf8")) } catch { return fallback }
+  return readJsonLimited(filePath, MAX_CLAUDE_SETTINGS_BYTES, "Claude settings", fallback)
 }
 function readBoundedText(filePath, maxBytes) {
-  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
-  try {
-    const stat = fs.fstatSync(descriptor)
-    if (!stat.isFile() || stat.size > maxBytes) throw new Error("file exceeded limit")
-    return fs.readFileSync(descriptor, "utf8")
-  } finally { fs.closeSync(descriptor) }
+  return readFileLimited(filePath, maxBytes, "Claude agent file")
 }
 function boundedDirectoryEntries(directoryPath, limit) {
   const entries = []; let directory
@@ -132,4 +129,3 @@ export function claudeDefaults(configRoot, threads, configuredSettings, configur
     : (recentEffort || claudeDefaultEffort(model))
   return { model, effort, agent: cleanText(settings.agent) }
 }
-

@@ -15,6 +15,7 @@ Item {
   property string pendingNewWindowAddress: ""
   property int pendingNewThreadAttempts: 0
   property int openRequestId: 0
+  property string openThreadId: ""
 
   readonly property string terminalHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-terminal-open").toString().replace(/^file:\/\//, "")
@@ -25,21 +26,31 @@ Item {
 
   ThreadLaunchCoordinator { id: launchCoordinator }
 
+  function guarded(command) {
+    return [controller.streamGuardPath, "--"].concat(command)
+  }
+
   function openThread(thread, cwdOverride, source) {
     if (!thread || !thread.id || openProcess.running) return false
     var threadId = String(thread.id)
     var requestId = controller.mutations.beginThreadLaunch(
       threadId, source || "local-terminal")
     if (requestId === 0) return false
+    if (launchCoordinator.focusCachedThread(threadId, "")) {
+      controller.mutations.observeActiveThread(
+        threadId, "cached-local-codex-window")
+      return true
+    }
     openRequestId = requestId
-    openProcess.command = ActionLogic.localCodexTerminalCommand(
+    openThreadId = threadId
+    openProcess.command = guarded(ActionLogic.localCodexTerminalCommand(
       terminalHelperPath,
       threadId,
       String(cwdOverride || controller.threadActions.projectPathForThread(thread)
         || controller.backendHomePath),
       controller.providers.effectiveModel(),
       controller.providers.effectiveEffort(),
-      controller.codexServiceTier)
+      controller.codexServiceTier))
     openProcess.running = true
     return true
   }
@@ -58,10 +69,10 @@ Item {
     pendingNewThreadId = ""
     pendingNewWindowAddress = ""
     pendingNewThreadAttempts = 20
-    newProjectProcess.command = ActionLogic.localCodexTerminalCommand(
+    newProjectProcess.command = guarded(ActionLogic.localCodexTerminalCommand(
       terminalHelperPath, "", path,
       controller.providers.effectiveModel(), controller.providers.effectiveEffort(),
-      controller.codexServiceTier)
+      controller.codexServiceTier))
     newProjectProcess.running = true
   }
 
@@ -108,18 +119,25 @@ Item {
     running: false
     onExited: function(exitCode) {
       var requestId = root.openRequestId
+      var threadId = root.openThreadId
       root.openRequestId = 0
+      root.openThreadId = ""
       if (exitCode !== 0) controller.mutations.failThreadLaunch(
         requestId, openStderr.text.trim() || "Could not open the Codex thread")
-      else controller.mutations.confirmThreadLaunch(requestId, "")
+      else {
+        var result = launchCoordinator.parseOutput(openStdout.text)
+        launchCoordinator.map(threadId, result.address, "", "")
+        controller.mutations.confirmThreadLaunch(requestId, "")
+      }
       root.refreshActiveThread()
     }
+    stdout: StdioCollector { id: openStdout; waitForEnd: true }
     stderr: StdioCollector { id: openStderr; waitForEnd: true }
   }
 
   Process {
     id: activeThreadProcess
-    command: [root.activeThreadHelperPath]
+    command: root.guarded([root.activeThreadHelperPath])
     running: false
     stdout: StdioCollector {
       waitForEnd: true

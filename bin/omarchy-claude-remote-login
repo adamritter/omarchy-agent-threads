@@ -2,16 +2,17 @@
 
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 config_file="${1:-}"
 host_id="${2:-}"
 
-[[ -r "$config_file" && -n "$host_id" ]] || {
+[[ -n "$config_file" && -n "$host_id" ]] || {
   echo "Invalid remote Claude login arguments" >&2
   exit 2
 }
 
-remote_json="$(jq -cer --arg id "$host_id" \
-  '.remotes[] | select(.id == $id)' "$config_file")" || {
+remote_json="$("${script_dir}/omarchy-agent-remote-config" entry \
+  "$config_file" "$host_id")" || {
   echo "Remote entry not found" >&2
   exit 2
 }
@@ -34,8 +35,7 @@ claude_command="$(jq -r '.claudeCommand // "claude"' <<<"$remote_json")"
   exit 2
 }
 
-helper_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-auth_session_helper="${helper_dir}/omarchy-claude-remote-auth-session"
+auth_session_helper="${script_dir}/omarchy-claude-remote-auth-session"
 
 launch_workspace="$(hyprctl -j activeworkspace 2>/dev/null \
   | jq -r '.id // empty')"

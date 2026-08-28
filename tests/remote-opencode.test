@@ -62,6 +62,9 @@ jq -e '
 
 grep -F -- "serve --hostname 127.0.0.1 --port 43962" "$ssh_log" >/dev/null
 grep -F -- "OpenCode API did not become ready within 30 seconds" "$ssh_log" >/dev/null
+grep -F -- 'opencode-server-password' "$ssh_log" >/dev/null
+grep -F -- 'OPENCODE_SERVER_PASSWORD=' "$ssh_log" >/dev/null
+grep -F -- '--user "$opencode_username:$opencode_password"' "$ssh_log" >/dev/null
 grep -F -- " opencode 'archive' 'ses_remote_fixture' '/work' ''" "$ssh_log" >/dev/null
 grep -F -- " opencode 'pin' 'ses_remote_fixture' '' 'true'" "$ssh_log" >/dev/null
 grep -F -- " opencode 'rename' 'ses_remote_fixture' '/work' '' 'Remote renamed'" \

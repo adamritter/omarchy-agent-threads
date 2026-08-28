@@ -3,6 +3,7 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { collectSshOutput, shellQuote } from "./remote-transport.mjs"
+import { remoteOpenCodeBootstrap } from "./remote-opencode-bootstrap.mjs"
 
 function sourceWithInlineImports(entryPath) {
   const moduleUrl = filePath => {
@@ -126,7 +127,9 @@ async function runRemoteOpenCodeHelper() {
     metadata[key] = entry
     fs.mkdirSync(path.dirname(metadataPath), { recursive: true, mode: 0o700 })
     const temporary = \`\${metadataPath}.\${process.pid}.tmp\`
-    fs.writeFileSync(temporary, JSON.stringify(metadata) + "\\n", { mode: 0o600 })
+    fs.writeFileSync(temporary, JSON.stringify(metadata) + "\\n", {
+      mode: 0o600, flag: "wx"
+    })
     fs.renameSync(temporary, metadataPath)
     process.stdout.write(JSON.stringify({ ok: true }) + "\\n")
     return
@@ -141,24 +144,16 @@ runRemoteOpenCodeHelper().catch(error => {
   const helperSource = providerSource + launcherSource
 
   const serverURL = `http://127.0.0.1:${openCodePort}`
-  const stateDirectory = '"$HOME/.local/state/omarchy/codex-threads"'
-  const logPath = '"$HOME/.local/state/omarchy/codex-threads/opencode-remote-server.log"'
-  const ensureServer = `set -eu; mkdir -p ${stateDirectory}; `
-    + `if ! curl -fsS --max-time 2 ${shellQuote(serverURL + "/global/health")} >/dev/null 2>&1; then `
-    + `nohup env -u OPENCODE_SERVER_PASSWORD -u OPENCODE_SERVER_USERNAME `
-    + `${shellQuote(openCodeCommand)} serve --hostname 127.0.0.1 --port ${openCodePort} `
-    + `</dev/null >>${logPath} 2>&1 & `
-    + `i=0; while [ "$i" -lt 120 ]; do `
-    + `curl -fsS --max-time 2 ${shellQuote(serverURL + "/global/health")} >/dev/null 2>&1 && break; `
-    + `i=$((i + 1)); sleep 0.25; done; fi; `
-    + `curl -fsS --max-time 2 ${shellQuote(serverURL + "/global/health")} >/dev/null 2>&1 `
-    + `|| { echo 'OpenCode API did not become ready within 30 seconds' >&2; exit 70; }; `
+  const ensureServer = remoteOpenCodeBootstrap(
+    serverURL, openCodeCommand, openCodePort, shellQuote)
   const threadPath = action === "archive" || action === "rename" ? actionExtra : ""
   const pinValue = action === "pin" ? actionExtra : ""
   const renameValue = action === "rename" ? actionName : ""
   const remoteCommand = ensureServer
-    + `XDG_RUNTIME_DIR="$HOME/.cache/omarchy-codex-threads-runtime" `
-    + `OMARCHY_OPENCODE_URL=${shellQuote(serverURL)} node --input-type=module - opencode `
+    + `OMARCHY_OPENCODE_URL=${shellQuote(serverURL)} `
+    + `OMARCHY_OPENCODE_USERNAME="$opencode_username" `
+    + `OMARCHY_OPENCODE_PASSWORD="$opencode_password" `
+    + `node --input-type=module - opencode `
     + `${shellQuote(action)} ${shellQuote(actionValue)} ${shellQuote(threadPath)} ${shellQuote(pinValue)} `
     + shellQuote(renameValue)
   const child = spawn("ssh", [

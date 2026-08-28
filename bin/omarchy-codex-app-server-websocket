@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import fs from "node:fs"
 import os from "node:os"
+import { readFileLimited } from "./lib/bounded-io.mjs"
 
 const [remoteUrl = "", tokenEnv = "", configuredTokenFile = ""] = process.argv.slice(2)
 const lineLimit = 16 * 1024 * 1024
@@ -21,18 +21,6 @@ function expandHome(path) {
       : path
 }
 
-function readBoundedFile(path, limit, label) {
-  const descriptor = fs.openSync(path, "r")
-  try {
-    const buffer = Buffer.allocUnsafe(limit + 1)
-    const bytes = fs.readSync(descriptor, buffer, 0, buffer.length, 0)
-    if (bytes > limit) throw new Error(`${label} exceeded the 64 KiB limit`)
-    return buffer.subarray(0, bytes).toString("utf8")
-  } finally {
-    fs.closeSync(descriptor)
-  }
-}
-
 let endpoint
 try {
   endpoint = new URL(remoteUrl)
@@ -46,7 +34,7 @@ if (endpoint.protocol !== "ws:" && endpoint.protocol !== "wss:")
 let token = tokenEnv === "" ? "" : String(process.env[tokenEnv] || "").trim()
 if (token === "" && configuredTokenFile !== "") {
   try {
-    token = readBoundedFile(
+    token = readFileLimited(
       expandHome(configuredTokenFile), tokenFileLimit, "token file").trim()
   } catch (error) {
     fail(`could not read token file: ${error.message}`)

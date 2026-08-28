@@ -18,7 +18,7 @@ if [[ "$provider_type" == "claude" ]]; then
   helper_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
   remote_hook_path='.local/lib/omarchy-codex-threads/claude-thread-hook'
   hook_payload="$(base64 -w 0 -- "${helper_dir}/omarchy-claude-thread-hook")"
-  bootstrap_command="umask 077; mkdir -p \"\$HOME/.local/lib/omarchy-codex-threads\"; printf %s ${hook_payload@Q} | base64 -d > \"\$HOME/${remote_hook_path}\"; chmod 700 \"\$HOME/${remote_hook_path}\""
+  bootstrap_command="set -eu; umask 077; hook_dir=\"\$HOME/.local/lib/omarchy-codex-threads\"; if [ -L \"\$hook_dir\" ]; then echo 'Unsafe Claude hook directory' >&2; exit 70; fi; mkdir -p \"\$hook_dir\"; chmod 700 \"\$hook_dir\"; hook_tmp=\$(mktemp \"\$hook_dir/.claude-thread-hook.XXXXXX\"); trap 'rm -f \"\$hook_tmp\"' EXIT HUP INT TERM; printf %s ${hook_payload@Q} | base64 -d >\"\$hook_tmp\"; chmod 700 \"\$hook_tmp\"; mv -fT \"\$hook_tmp\" \"\$hook_dir/claude-thread-hook\"; trap - EXIT HUP INT TERM"
   if ! ssh -T -o BatchMode=yes -o ConnectTimeout=8 \
       "$ssh_host" "$bootstrap_command" </dev/null; then
     echo "Could not install the Claude status bridge on ${ssh_host}" >&2
@@ -54,10 +54,10 @@ elif [[ "$provider_type" == "opencode" ]]; then
   printf -v quoted_server_url '%q' "$server_url"
   printf -v quoted_opencode_command '%q' "$opencode_command"
   remote_state_dir='${HOME}/.local/state/omarchy/codex-threads'
-  ensure_server="set -eu; mkdir -p \"${remote_state_dir}\"; if ! curl -fsS --max-time 2 ${quoted_server_url}/global/health >/dev/null 2>&1; then nohup env -u OPENCODE_SERVER_PASSWORD -u OPENCODE_SERVER_USERNAME ${quoted_opencode_command} serve --hostname 127.0.0.1 --port ${opencode_port} </dev/null >>\"${remote_state_dir}/opencode-remote-server.log\" 2>&1 & i=0; while [ \"\$i\" -lt 120 ]; do curl -fsS --max-time 2 ${quoted_server_url}/global/health >/dev/null 2>&1 && break; i=\$((i + 1)); sleep 0.25; done; fi; curl -fsS --max-time 2 ${quoted_server_url}/global/health >/dev/null 2>&1 || { echo 'OpenCode API did not become ready within 30 seconds' >&2; exit 70; }"
+  ensure_server="set -eu; umask 077; state_dir=\"${remote_state_dir}\"; if [ -L \"\$state_dir\" ]; then echo 'Unsafe OpenCode state directory' >&2; exit 70; fi; mkdir -p \"\$state_dir\"; chmod 700 \"\$state_dir\"; auth_file=\"\$state_dir/opencode-server-password\"; if [ -L \"\$auth_file\" ]; then echo 'Unsafe OpenCode auth file' >&2; exit 70; fi; if [ ! -e \"\$auth_file\" ]; then tmp=\$(mktemp \"\$state_dir/.opencode-auth.XXXXXX\"); tr -d '-' </proc/sys/kernel/random/uuid >\"\$tmp\"; tr -d '-' </proc/sys/kernel/random/uuid >>\"\$tmp\"; chmod 600 \"\$tmp\"; ln \"\$tmp\" \"\$auth_file\" 2>/dev/null || true; rm -f \"\$tmp\"; fi; [ -f \"\$auth_file\" ] && [ ! -L \"\$auth_file\" ] && [ \"\$(wc -c <\"\$auth_file\")\" -le 128 ] || { echo 'Invalid OpenCode auth file' >&2; exit 70; }; IFS= read -r opencode_password <\"\$auth_file\"; case \"\$opencode_password\" in ''|*[!A-Za-z0-9_-]*) echo 'Invalid OpenCode auth secret' >&2; exit 70;; esac; opencode_username=omarchy-agent-threads; if ! curl -fsS --max-time 2 --user \"\$opencode_username:\$opencode_password\" ${quoted_server_url}/global/health >/dev/null 2>&1; then nohup env OPENCODE_SERVER_USERNAME=\"\$opencode_username\" OPENCODE_SERVER_PASSWORD=\"\$opencode_password\" ${quoted_opencode_command} serve --hostname 127.0.0.1 --port ${opencode_port} </dev/null >>\"\$state_dir/opencode-remote-server.log\" 2>&1 & i=0; while [ \"\$i\" -lt 120 ]; do curl -fsS --max-time 2 --user \"\$opencode_username:\$opencode_password\" ${quoted_server_url}/global/health >/dev/null 2>&1 && break; i=\$((i + 1)); sleep 0.25; done; fi; curl -fsS --max-time 2 --user \"\$opencode_username:\$opencode_password\" ${quoted_server_url}/global/health >/dev/null 2>&1 || { echo 'OpenCode API did not become ready within 30 seconds' >&2; exit 70; }"
   if [[ -z "$thread_id" ]]; then
     encoded_cwd="$(jq -rn --arg value "$remote_cwd" '$value|@uri')"
-    create_command="${ensure_server}; curl -fsS --max-time 8 -X POST ${quoted_server_url}/session?directory=${encoded_cwd} -H 'content-type: application/json' --data '{}'"
+    create_command="${ensure_server}; curl -fsS --max-time 8 --max-filesize 1048576 --user \"\$opencode_username:\$opencode_password\" -X POST ${quoted_server_url}/session?directory=${encoded_cwd} -H 'content-type: application/json' --data '{}'"
     if ! new_session="$(ssh -T -o BatchMode=yes -o ConnectTimeout=8 \
         "$ssh_host" "$create_command" </dev/null)"; then
       echo "Could not create the remote OpenCode session" >&2
@@ -69,22 +69,17 @@ elif [[ "$provider_type" == "opencode" ]]; then
       exit 1
     }
     thread_id="$new_session_id"
-    mapping_file="${state_dir}/${host_id}--${thread_id}.address"
   fi
-  remote_args=(env -u OPENCODE_SERVER_PASSWORD -u OPENCODE_SERVER_USERNAME
-    "$opencode_command" "$remote_cwd")
+  remote_args=("$opencode_command" "$remote_cwd")
   [[ -z "$selected_model" ]] || remote_args+=(--model "$selected_model")
   [[ -z "$selected_effort" ]] || remote_args+=(--variant "$selected_effort")
   [[ -z "$selected_agent" ]] || remote_args+=(--agent "$selected_agent")
   remote_args+=(--session "$thread_id")
   printf -v quoted_cwd '%q' "$remote_cwd"
   printf -v quoted_args '%q ' "${remote_args[@]}"
-  printf -v quoted_session_id '%q' "$thread_id"
   port_probe='const net=require("node:net"),server=net.createServer();server.listen(0,"127.0.0.1",()=>{process.stdout.write(String(server.address().port));server.close()})'
   printf -v quoted_port_probe '%q' "$port_probe"
-  remote_runtime_root='${HOME}/.cache/omarchy-codex-threads-runtime'
-  remote_runtime_dir='${HOME}/.cache/omarchy-codex-threads-runtime/omarchy-codex-threads-$(id -u)'
-  remote_command="cd -- ${quoted_cwd} && mkdir -p \"${remote_runtime_dir}\" && opencode_tui_port=\$(node -e ${quoted_port_probe}) && printf 'http://127.0.0.1:%s\\n' \"\$opencode_tui_port\" > \"${remote_runtime_dir}/provider-opencode--${quoted_session_id}.server\" && XDG_RUNTIME_DIR=\"${remote_runtime_root}\" exec ${quoted_args}--hostname 127.0.0.1 --port \"\$opencode_tui_port\""
+  remote_command="${ensure_server}; cd -- ${quoted_cwd} && opencode_tui_port=\$(node -e ${quoted_port_probe}) && exec env OPENCODE_SERVER_USERNAME=\"\$opencode_username\" OPENCODE_SERVER_PASSWORD=\"\$opencode_password\" ${quoted_args}--hostname 127.0.0.1 --port \"\$opencode_tui_port\""
 else
   codex_command="$(jq -r '.codexCommand // "codex"' <<<"$remote_json")"
   [[ "$codex_command" =~ ^[A-Za-z0-9_./-]+$ ]] || {

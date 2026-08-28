@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+
+import fs from "node:fs"
+import path from "node:path"
+import crypto from "node:crypto"
+import { spawn } from "node:child_process"
+import { openCodeCredentials } from "./lib/opencode-auth.mjs"
+
+const [authPath = "", configuredPort = "43962"] = process.argv.slice(2)
+const username = "omarchy-agent-threads"
+
+function fail(message) {
+  process.stderr.write(`OpenCode server: ${message}\n`)
+  process.exit(2)
+}
+
+if (!path.isAbsolute(authPath)) fail("auth file path must be absolute")
+const port = Number(configuredPort)
+if (!Number.isInteger(port) || port < 1024 || port > 65535) fail("invalid port")
+
+function createCredentials() {
+  fs.mkdirSync(path.dirname(authPath), { recursive: true, mode: 0o700 })
+  const value = { username, password: crypto.randomBytes(32).toString("base64url") }
+  const temporary = `${authPath}.${process.pid}.${Date.now()}.tmp`
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(value) + "\n", { mode: 0o600, flag: "wx" })
+    try { fs.linkSync(temporary, authPath) } catch (error) {
+      if (error.code !== "EEXIST") throw error
+    }
+  } finally {
+    try { fs.unlinkSync(temporary) } catch { /* The temporary file may not exist. */ }
+  }
+}
+
+process.env.OMARCHY_OPENCODE_AUTH_FILE = authPath
+try { openCodeCredentials(true) } catch (error) {
+  if (error && error.code !== "ENOENT") fail(error.message)
+  try { createCredentials() } catch (createError) { fail(createError.message) }
+}
+
+let credentials
+try { credentials = openCodeCredentials(true) } catch (error) { fail(error.message) }
+const child = spawn("opencode", [
+  "serve", "--hostname", "127.0.0.1", "--port", String(port)
+], {
+  stdio: "inherit",
+  env: {
+    ...process.env,
+    OPENCODE_SERVER_USERNAME: credentials.username,
+    OPENCODE_SERVER_PASSWORD: credentials.password
+  }
+})
+
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.on(signal, () => { if (!child.killed) child.kill(signal) })
+child.on("error", error => fail(error.message))
+child.on("exit", (code, signal) => {
+  if (signal) process.kill(process.pid, signal)
+  else process.exit(code === null ? 1 : code)
+})

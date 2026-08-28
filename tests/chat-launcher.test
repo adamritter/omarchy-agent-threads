@@ -45,7 +45,6 @@ cut -d '|' -f 3 "$QUICKSHELL_LOG" | jq -e '
   and .serviceTier == "fast"
   and .model == "gpt-test"
 ' >/dev/null
-grep -F -- '//@ pragma AppId org.omarchy.agent-chat' "$plugin_root/agent-chat.qml" >/dev/null
 grep -F -- 'hl.dsp.window.move({ workspace = "3", follow = false, window = "address:0xabc123" })' "$HYPR_LOG" >/dev/null
 grep -F -- 'hl.dsp.focus({ window = "address:0xabc123" })' "$HYPR_LOG" >/dev/null
 

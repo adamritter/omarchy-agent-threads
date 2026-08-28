@@ -1,7 +1,7 @@
-import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { spawn } from "node:child_process"
+import { readFileLimited } from "./bounded-io.mjs"
 
 const timeoutMs = 60000
 const pinnedSectionId = "01984de2-8f74-7c91-a3b2-5c5e937cf318"
@@ -9,24 +9,14 @@ const SSH_STDOUT_LIMIT = 16 * 1024 * 1024
 const SSH_STDERR_LIMIT = 256 * 1024
 const CONFIG_FILE_LIMIT = 1024 * 1024
 const TOKEN_FILE_LIMIT = 64 * 1024
+const INBOUND_MESSAGE_LIMIT = 256
+const INBOUND_BYTE_LIMIT = 16 * 1024 * 1024
 let nextRequestId = 1
 
 function expandHome(path) {
   return path === "~" ? os.homedir()
     : path.startsWith("~/") ? os.homedir() + path.slice(1)
       : path
-}
-
-function readFileLimited(filePath, limit, label) {
-  const descriptor = fs.openSync(filePath, "r")
-  try {
-    const buffer = Buffer.allocUnsafe(limit + 1)
-    const bytes = fs.readSync(descriptor, buffer, 0, buffer.length, 0)
-    if (bytes > limit) throw new Error(`${label} exceeded its byte limit`)
-    return buffer.subarray(0, bytes).toString("utf8")
-  } finally {
-    fs.closeSync(descriptor)
-  }
 }
 
 export function loadHost(configPath, hostId) {
@@ -80,26 +70,78 @@ export function createWebSocketTransport(host) {
   })
 
   return new Promise((resolve, reject) => {
-    socket.onopen = () => resolve({
-      send(message) { socket.send(JSON.stringify(message)) },
-      close() { socket.close(1000, "snapshot complete") },
-      setMessageHandler(handler) {
-        socket.onmessage = async event => {
-          let value = event.data
-          const bytes = typeof value === "string" ? Buffer.byteLength(value)
-            : value instanceof Blob ? value.size
-              : value instanceof ArrayBuffer ? value.byteLength : SSH_STDOUT_LIMIT + 1
-          if (bytes > SSH_STDOUT_LIMIT) {
-            socket.close(1009, "response too large")
-            throw new Error("App Server response exceeded the 16 MiB limit")
-          }
+    const inbound = []
+    let inboundBytes = 0
+    let delivering = false
+    let messageHandler = () => {}
+    let errorHandler = () => {}
+    let connected = false
+    let failed = false
+    let failure = null
+
+    function fail(error) {
+      if (failed) return
+      failed = true
+      failure = error
+      inbound.length = 0
+      inboundBytes = 0
+      socket.close(1009, "response queue exceeded limit")
+      if (connected) errorHandler(error)
+      else reject(error)
+    }
+
+    async function deliver() {
+      if (delivering) return
+      delivering = true
+      try {
+        while (inbound.length > 0) {
+          const next = inbound[0]
+          let value = next.value
           if (value instanceof Blob) value = await value.text()
           else if (value instanceof ArrayBuffer) value = Buffer.from(value).toString("utf8")
-          handler(String(value))
+          messageHandler(String(value))
+          inbound.shift()
+          inboundBytes -= next.bytes
         }
+      } catch (error) {
+        fail(error)
+      } finally {
+        delivering = false
       }
-    })
-    socket.onerror = event => reject(new Error(event && event.error && event.error.message
+    }
+
+    socket.onopen = () => {
+      connected = true
+      resolve({
+      send(message) { socket.send(JSON.stringify(message)) },
+      close() { socket.close(1000, "snapshot complete") },
+      setMessageHandler(handler) { messageHandler = handler },
+      setErrorHandler(handler) {
+        errorHandler = handler
+        if (failure) errorHandler(failure)
+      }
+      })
+    }
+    socket.onmessage = event => {
+      if (failed) return
+      const value = event.data
+      const bytes = typeof value === "string" ? Buffer.byteLength(value)
+        : value instanceof Blob ? value.size
+          : value instanceof ArrayBuffer ? value.byteLength : SSH_STDOUT_LIMIT + 1
+      if (bytes > SSH_STDOUT_LIMIT) {
+        fail(new Error("App Server response exceeded the 16 MiB limit"))
+        return
+      }
+      if (inbound.length >= INBOUND_MESSAGE_LIMIT
+          || inboundBytes + bytes > INBOUND_BYTE_LIMIT) {
+        fail(new Error("App Server response queue exceeded the 16 MiB limit"))
+        return
+      }
+      inbound.push({ value, bytes })
+      inboundBytes += bytes
+      void deliver()
+    }
+    socket.onerror = event => fail(new Error(event && event.error && event.error.message
       ? event.error.message : "WebSocket connection failed"))
   })
 }

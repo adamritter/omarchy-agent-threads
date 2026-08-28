@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
@@ -9,6 +8,7 @@ import { parseClaudeTranscript } from "./lib/claude-transcript-parser.mjs"
 import { claudeModels, claudeRuntimeInfo } from "./lib/claude-runtime-models.mjs"
 import { claudeAgentsForDirectory, claudeDefaults, claudeSettingsForDirectory } from "./lib/claude-project-config.mjs"
 import { claudeUsageRateLimits } from "./lib/claude-usage.mjs"
+import { readJsonLimited, writePrivateJson } from "./lib/bounded-io.mjs"
 
 const [provider = "", action = "snapshot", threadID = "", threadPath = "", actionValue = ""] = process.argv.slice(2)
 const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
@@ -18,8 +18,6 @@ const claudeRuntimePath = path.join(stateHome, "omarchy", "claude-runtime.json")
 const claudeUsagePath = path.join(stateHome, "omarchy", "claude-usage.json")
 const claudeThreadRuntimePath = process.env.OMARCHY_CLAUDE_RUNTIME_PATH
   || path.join(stateHome, "omarchy", "claude-thread-runtime.json")
-const claudeUsageURL = process.env.OMARCHY_CLAUDE_USAGE_URL
-  || "https://api.anthropic.com/api/oauth/usage"
 const claudeCommand = process.env.OMARCHY_CLAUDE_COMMAND || "claude"
 const MAX_CLAUDE_PROJECT_DIRECTORIES = 256
 const MAX_CLAUDE_DIRECTORY_ENTRIES = 1024
@@ -32,41 +30,22 @@ const MAX_PROVIDER_JSON_BYTES = 2 * 1024 * 1024
 const MAX_CLAUDE_JOBS = 512
 const MAX_CLAUDE_AGENT_FILES = 256
 const MAX_CLAUDE_AGENT_BYTES = 128 * 1024
+const MAX_PROVIDER_OUTPUT_BYTES = 15 * 1024 * 1024
 
 function fail(message) {
   process.stderr.write(`${provider || "agent"}: ${message}\n`)
   process.exit(2)
 }
 
+function output(value) {
+  const serialized = JSON.stringify(value) + "\n"
+  if (Buffer.byteLength(serialized) > MAX_PROVIDER_OUTPUT_BYTES)
+    throw new Error("provider response exceeded the 15 MiB limit")
+  process.stdout.write(serialized)
+}
+
 function readJSON(filePath, fallback = null) {
-  try { return JSON.parse(readBoundedText(filePath, MAX_PROVIDER_JSON_BYTES)) }
-  catch { return fallback }
-}
-
-function readBoundedText(filePath, maxBytes) {
-  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY)
-  try {
-    const stat = fs.fstatSync(descriptor)
-    if (!stat.isFile() || stat.size > maxBytes) throw new Error("file exceeds read limit")
-    const buffer = Buffer.alloc(stat.size)
-    let offset = 0
-    while (offset < buffer.length) {
-      const count = fs.readSync(descriptor, buffer, offset, buffer.length - offset, offset)
-      if (count === 0) break
-      offset += count
-    }
-    if (offset !== buffer.length) throw new Error("file changed while being read")
-    return buffer.toString("utf8")
-  } finally {
-    fs.closeSync(descriptor)
-  }
-}
-
-function writePrivateJSON(filePath, value) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 })
-  const temporary = `${filePath}.${process.pid}.tmp`
-  fs.writeFileSync(temporary, JSON.stringify(value) + "\n", { mode: 0o600 })
-  fs.renameSync(temporary, filePath)
+  return readJsonLimited(filePath, MAX_PROVIDER_JSON_BYTES, "provider state", fallback)
 }
 
 function loadMetadata() {
@@ -75,7 +54,7 @@ function loadMetadata() {
 }
 
 function saveMetadata(value) {
-  writePrivateJSON(metadataPath, value)
+  writePrivateJson(metadataPath, value)
 }
 
 function metadataKey(id) {
@@ -200,7 +179,7 @@ async function main() {
 
   if (action === "pin") {
     updateLocalMetadata("pin", actionValue)
-    process.stdout.write(JSON.stringify({ ok: true }) + "\n")
+    output({ ok: true })
     return
   }
 
@@ -209,21 +188,21 @@ async function main() {
     else {
       await openCode.archiveOpenCode(threadID, threadPath)
     }
-    process.stdout.write(JSON.stringify({ ok: true }) + "\n")
+    output({ ok: true })
     return
   }
 
   if (action === "rename") {
     if (provider === "claude") renameClaudeThread(threadID, actionValue)
     else await openCode.renameOpenCode(threadID, threadPath, actionValue)
-    process.stdout.write(JSON.stringify({ ok: true }) + "\n")
+    output({ ok: true })
     return
   }
 
   if (action !== "snapshot") fail("unsupported action")
   const snapshot = provider === "claude"
     ? await claudeSnapshot() : await openCode.openCodeSnapshot()
-  process.stdout.write(JSON.stringify(snapshot) + "\n")
+  output(snapshot)
 }
 
 main().catch(error => fail(error && error.message ? error.message : String(error)))

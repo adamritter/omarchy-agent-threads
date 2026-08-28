@@ -10,11 +10,14 @@ Item {
   readonly property alias openRunning: openProcess.running
   readonly property alias sshHostsRunning: sshHostsProcess.running
 
-  function runQuery(command) { queryProcess.command = command; queryProcess.running = true }
-  function runAction(command) { actionProcess.command = command; actionProcess.running = true }
-  function runTest(command) { managementTestProcess.command = command; managementTestProcess.running = true }
-  function runOpen(command) { openProcess.command = command; openProcess.running = true }
-  function runSshHosts(command) { sshHostsProcess.command = command; sshHostsProcess.running = true }
+  function guarded(command) {
+    return [provider.controller.streamGuardPath, "--"].concat(command)
+  }
+  function runQuery(command) { queryProcess.command = guarded(command); queryProcess.running = true }
+  function runAction(command) { actionProcess.command = guarded(command); actionProcess.running = true }
+  function runTest(command) { managementTestProcess.command = guarded(command); managementTestProcess.running = true }
+  function runOpen(command) { openProcess.command = guarded(command); openProcess.running = true }
+  function runSshHosts(command) { sshHostsProcess.command = guarded(command); sshHostsProcess.running = true }
   function stopAll() {
     queryProcess.running = false
     actionProcess.running = false
@@ -149,6 +152,7 @@ Item {
           provider.controller.mutations.failThreadLaunch(provider.openRequestId, message)
         else provider.controller.launchError = message
         provider.openRequestId = 0
+        provider.openThreadId = ""
         if (provider.openIsNew) provider.clearPendingNew()
         else provider.openHostId = ""
         return
@@ -167,8 +171,14 @@ Item {
           provider.restartNewResolveTimer()
         }
       } else {
+        launches.map(
+          provider.openThreadId || runtimeSessionId,
+          address,
+          provider.openHostId,
+          result.serverUrl)
         provider.controller.mutations.confirmThreadLaunch(provider.openRequestId, "")
         provider.openRequestId = 0
+        provider.openThreadId = ""
         provider.openHostId = ""
       }
       provider.controller.threadActions.refreshActiveThread()

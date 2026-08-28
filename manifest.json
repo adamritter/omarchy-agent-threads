@@ -11,6 +11,10 @@
   "entryPoints": {
     "barWidget": "Panel.qml"
   },
+  "hotReload": {
+    "sidebar": "ui/SidebarKeyRouter.qml",
+    "sidebarContent": "ui/SidebarMainContent.qml"
+  },
   "barWidget": {
     "displayName": "Agent Threads",
     "description": "A keyboard-first session browser for Codex, Claude Code, and OpenCode.",

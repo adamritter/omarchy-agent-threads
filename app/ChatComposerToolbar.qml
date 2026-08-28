@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 RowLayout {
   id: composerToolbar
+  objectName: "chatComposerToolbar"
   required property var window
   required property var client
   required property var composer
@@ -18,6 +19,7 @@ RowLayout {
 
   Button {
     id: newChatButton
+    objectName: "newChatButton"
     Layout.preferredWidth: 34
     Layout.preferredHeight: 34
     text: "+"
@@ -40,6 +42,7 @@ RowLayout {
 
   ComboBox {
     id: modelSelector
+    objectName: "modelSelector"
     Layout.fillWidth: true
     Layout.minimumWidth: 72
     Layout.preferredWidth: 150
@@ -66,6 +69,7 @@ RowLayout {
 
   ComboBox {
     id: effortSelector
+    objectName: "effortSelector"
     Layout.preferredWidth: 78
     Layout.preferredHeight: 34
     model: window.effortChoices()
@@ -90,6 +94,7 @@ RowLayout {
 
   Button {
     id: fastButton
+    objectName: "fastButton"
     Layout.preferredWidth: 34
     Layout.preferredHeight: 34
     text: "⚡︎"
@@ -115,6 +120,7 @@ RowLayout {
 
   Button {
     id: approveForMeButton
+    objectName: "approveForMeButton"
     Layout.preferredWidth: 122
     Layout.preferredHeight: 34
     text: "✓  Approve for me"
@@ -141,6 +147,7 @@ RowLayout {
 
   Button {
     id: optionsButton
+    objectName: "optionsButton"
     Layout.preferredWidth: 34
     Layout.preferredHeight: 34
     text: "⋯"
@@ -162,6 +169,7 @@ RowLayout {
 
     Menu {
       id: optionsMenu
+      objectName: "optionsMenu"
       y: -height - 6
       palette.window: window.raised
       palette.text: window.foreground
@@ -203,6 +211,7 @@ RowLayout {
 
   Button {
     id: sendButton
+    objectName: "sendButton"
     Layout.preferredWidth: 36
     Layout.preferredHeight: 36
     text: client.busy ? "■" : "↑"

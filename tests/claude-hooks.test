@@ -68,4 +68,17 @@ snapshot | jq -e --arg id "$session_id" '
   .threads[] | select(.id == $id)
   | .lifecycle == "waiting" and (.attentionToken | length) > 0' >/dev/null
 
+previous_state="$(sha256sum "$runtime_path" | cut -d ' ' -f 1)"
+head -c $((1024 * 1024 + 1)) /dev/zero | \
+  OMARCHY_AGENT_PROVIDER_HOME="$fixture_home" \
+  OMARCHY_CLAUDE_RUNTIME_PATH="$runtime_path" \
+  timeout 3 "$plugin_root/bin/omarchy-claude-thread-hook"
+test "$(sha256sum "$runtime_path" | cut -d ' ' -f 1)" = "$previous_state"
+
+jq -n '{version:1,sessions:(reduce range(0;520) as $index ({};
+  .["fixture-\($index)"]={sessionId:"fixture-\($index)",updatedAt:$index}))}' \
+  > "$runtime_path"
+printf '%s\n' "{\"session_id\":\"$session_id\",\"hook_event_name\":\"Stop\"}" | hook
+jq -e '.sessions | length == 512' "$runtime_path" >/dev/null
+
 printf '%s\n' "claude-hook tests passed"

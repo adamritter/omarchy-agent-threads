@@ -188,9 +188,10 @@ Item {
   }
   
   function activateAdjacentThread(direction) {
-    var activeIndex = activeThreadRowIndex()
-    if (activeIndex < 0) return ""
-    var index = adjacentThreadIndex(activeIndex, direction, Number(direction) >= 0)
+    var targetId = followTargetThreadId()
+    var targetIndex = targetId !== "" ? rowIndexForThread(targetId) : -1
+    if (targetIndex < 0) return ""
+    var index = adjacentThreadIndex(targetIndex, direction, Number(direction) >= 0)
     if (index < 0) return ""
     if (selectThreadIndex(index) === "") return ""
     return openSelected("cycle")

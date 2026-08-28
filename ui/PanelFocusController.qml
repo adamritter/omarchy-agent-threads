@@ -1,12 +1,11 @@
 import QtQuick
-import Quickshell
-import Quickshell.Hyprland
 import "../logic/PanelFocusLogic.js" as PanelFocusLogic
 import "../logic/PointerFocusLogic.js" as PointerFocusLogic
 
 Item {
   id: root
   required property var panel
+  required property var compositor
   visible: false
 
   Timer {
@@ -35,7 +34,7 @@ Item {
     if (panel.fullscreenSuppressed) return
     panel.session.keyboardFocusRequested = true
     panel.session.focusPrimed = false
-    // Briefly use Exclusive so Hyprland transfers the compositor keyboard
+    // Briefly use Exclusive so the compositor transfers keyboard
     // focus, then settle on OnDemand so normal window clicks keep working.
     panel.session.focusAttemptsRemaining = 30
     panel.runtime.focusReleaseGuard.restart()
@@ -90,7 +89,7 @@ Item {
     panel.runtime.pointerWarpGuard.restart()
     panel.session.focusWorkflowPending = false
     try {
-      Hyprland.dispatch("hl.dsp.cursor.move({ x = " + summonPoint.x
+      compositor.dispatch("hl.dsp.cursor.move({ x = " + summonPoint.x
         + ", y = " + summonPoint.y + " })")
     } catch (error) {
       root.focusSidebar()
@@ -195,9 +194,9 @@ Item {
     var returnY = panel.session.cursorReturnY
     releaseSidebarFocus(true)
     if (returnX < 0 || returnY < 0) return
-    Quickshell.execDetached([
-      "hyprctl", "dispatch",
-      "hl.dsp.cursor.move({ x = " + returnX + ", y = " + returnY + " })"
-    ])
+    try {
+      compositor.dispatch("hl.dsp.cursor.move({ x = " + returnX
+        + ", y = " + returnY + " })")
+    } catch (error) {}
   }
 }

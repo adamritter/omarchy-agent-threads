@@ -9,6 +9,7 @@ runtime_dir="$test_root/runtime"
 project_dir="$test_root/project"
 plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p -- "$stub_bin" "$runtime_dir" "$project_dir"
+chmod 700 "$runtime_dir"
 
 printf '%s\n' \
   '#!/usr/bin/env bash' \
@@ -64,10 +65,22 @@ chmod +x "$stub_bin/hyprctl" "$stub_bin/omarchy" "$stub_bin/ssh" \
 
 export PATH="$stub_bin:$PATH"
 export XDG_RUNTIME_DIR="$runtime_dir"
+export XDG_STATE_HOME="$test_root/state"
 export HYPR_STUB_COUNT="$test_root/hypr-count"
 export OMARCHY_STUB_LOG="$test_root/omarchy.log"
 export SSH_STUB_LOG="$test_root/ssh.log"
 export HYPR_STUB_DISPATCH_LOG="$test_root/hypr-dispatch.log"
+mkdir -p -- "$XDG_STATE_HOME/omarchy"
+printf '%s\n' \
+  '{"username":"omarchy-agent-threads","password":"fixture_password_012345678901234567890123456789"}' \
+  > "$XDG_STATE_HOME/omarchy/opencode-server-auth.json"
+chmod 600 "$XDG_STATE_HOME/omarchy/opencode-server-auth.json"
+
+if "$plugin_root/bin/omarchy-agent-thread-open" opencode "$project_dir" "" \
+    'http://127.0.0.1:@example.invalid' >/dev/null 2>&1; then
+  echo "OpenCode launcher unexpectedly accepted a non-loopback URL" >&2
+  exit 1
+fi
 
 local_result="$("$plugin_root/bin/omarchy-agent-thread-open" \
   claude "$project_dir" "" http://127.0.0.1:43962 sonnet high reviewer)"
@@ -78,7 +91,9 @@ grep -F -- "claude --session-id $local_session --model sonnet --effort high --ag
 grep -F -- 'refreshInterval' "$OMARCHY_STUB_LOG" >/dev/null
 
 resume_session="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
-rm -f -- "$HYPR_STUB_COUNT"
+# Resumed sessions perform one process-recovery client scan before capturing
+# the pre-launch compositor state.
+printf '%s\n' -1 > "$HYPR_STUB_COUNT"
 local_resume_result="$("$plugin_root/bin/omarchy-agent-thread-open" \
   claude "$project_dir" "$resume_session" http://127.0.0.1:43962 opus xhigh "")"
 jq -e --arg id "$resume_session" '.sessionId == $id and .address == "0xabc123"' \
@@ -98,11 +113,9 @@ grep -F -- "claude --session-id $remote_session --model opus --effort xhigh --ag
   "$OMARCHY_STUB_LOG" >/dev/null
 grep -F -- '$HOME/.local/bin' "$OMARCHY_STUB_LOG" >/dev/null
 grep -F -- 'refreshInterval' "$OMARCHY_STUB_LOG" >/dev/null
-test "$(<"$runtime_dir/omarchy-codex-threads-${UID}/remote-claude--${remote_session}.address")" \
-  = "0xabc123"
-
-rm -f -- "$HYPR_STUB_COUNT"
-rm -f -- "$runtime_dir/omarchy-codex-threads-${UID}/remote-claude--${resume_session}.address"
+grep -F -- '.claude-thread-hook.XXXXXX' "$SSH_STUB_LOG" >/dev/null
+grep -F -- 'mv -fT' "$SSH_STUB_LOG" >/dev/null
+printf '%s\n' -1 > "$HYPR_STUB_COUNT"
 remote_resume_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
   --config "$test_root/remotes.json" --host-id remote-claude --cwd /work \
   --thread-id "$resume_session" --model sonnet --effort medium)"
@@ -139,8 +152,9 @@ jq -e '
 grep -F -- "opencode /work --model fixture/model --variant high --agent build --session ses_opencode_remote_new" \
   "$OMARCHY_STUB_LOG" >/dev/null
 grep -F -- "OpenCode API did not become ready within 30 seconds" "$SSH_STUB_LOG" >/dev/null
-test "$(<"$runtime_dir/omarchy-codex-threads-${UID}/remote-opencode--ses_opencode_remote_new.address")" \
-  = "0xabc123"
+grep -F -- 'opencode-server-password' "$SSH_STUB_LOG" >/dev/null
+grep -F -- 'OPENCODE_SERVER_PASSWORD=' "$SSH_STUB_LOG" >/dev/null
+grep -F -- '--user' "$SSH_STUB_LOG" >/dev/null
 
 rm -f -- "$HYPR_STUB_COUNT"
 opencode_result="$("$plugin_root/bin/omarchy-agent-thread-open" \
@@ -155,7 +169,5 @@ grep -E -- 'opencode .*/project --hostname 127\.0\.0\.1 --port [0-9]+ --model fi
   "$OMARCHY_STUB_LOG" >/dev/null
 grep -F -- 'dispatch movetoworkspacesilent 3,address:0xabc123' \
   "$HYPR_STUB_DISPATCH_LOG" >/dev/null
-test "$(<"$runtime_dir/omarchy-codex-threads-${UID}/provider-opencode--ses_opencode_new.address")" \
-  = "0xabc123"
 
 printf '%s\n' "agent-launcher tests passed"

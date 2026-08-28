@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/lib/agent-terminal-client-lookup.sh"
+
 config_file=""
 host_id=""
 remote_cwd=""
@@ -74,11 +77,16 @@ while (( $# > 0 )); do
   esac
 done
 
-[[ -r "$config_file" && -n "$host_id" && -n "$remote_cwd" ]] || {
+[[ -n "$config_file" && -n "$host_id" && -n "$remote_cwd" ]] || {
   echo "Invalid remote agent launch arguments" >&2
   exit 2
 }
-remote_json="$(jq -cer --arg id "$host_id" '.remotes[] | select(.id == $id)' "$config_file")" || {
+[[ "$host_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || {
+  echo "Invalid remote host id" >&2
+  exit 2
+}
+remote_json="$("${script_dir}/omarchy-agent-remote-config" entry \
+  "$config_file" "$host_id")" || {
   echo "Remote agent entry not found" >&2
   exit 2
 }
@@ -128,26 +136,18 @@ if [[ "$remote_type" != "ssh" ]]; then
     if [[ "$token_file" == "~/"* ]]; then
       token_file="${HOME}/${token_file#~/}"
     fi
-    [[ -r "$token_file" ]] || {
-      echo "Codex remote token file is not readable" >&2
-      exit 2
-    }
     [[ -n "$token_env" ]] || token_env="CODEX_REMOTE_TOKEN"
     [[ "$token_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
       echo "Invalid Codex remote token environment variable" >&2
       exit 2
     }
-    token_bytes="$(wc -c <"$token_file")"
-    [[ "$token_bytes" =~ ^[0-9]+$ && "$token_bytes" -le 65536 ]] || {
-      echo "Codex remote token file exceeded the 64 KiB limit" >&2
-      exit 2
-    }
-    remote_token="$(<"$token_file")"
+    remote_token="$("${script_dir}/omarchy-agent-bounded-file" read \
+      "$token_file" 65536)" || exit 2
     export "${token_env}=${remote_token}"
   fi
 
   terminal_command=("${helper_dir}/omarchy-codex-terminal-open"
-    --terminal-cwd "${HOME}" --mapping-namespace "$host_id")
+    --terminal-cwd "${HOME}")
   if [[ -n "$thread_id" ]]; then
     terminal_command+=(--thread-id "$thread_id")
   else
@@ -175,23 +175,20 @@ focus_client() {
   hyprctl dispatch "hl.dsp.focus({ window = \"address:${address}\" })" >/dev/null
 }
 
-runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
-state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
-mapping_file="${state_dir}/${host_id}--${thread_id}.address"
-if [[ -n "$thread_id" && -f "$mapping_file" ]]; then
-  mapped_address="$(<"$mapping_file")"
-  if [[ -n "$mapped_address" ]] && hyprctl -j clients 2>/dev/null \
-      | jq -e --arg address "$mapped_address" \
-        '.[] | select(.address == $address)' >/dev/null; then
+if [[ -n "$thread_id" ]]; then
+  agent_lookup_kind="ssh-${provider_type}"
+  agent_lookup_session_id="$thread_id"
+  agent_lookup_ssh_host="$ssh_host"
+  if existing_client="$(find_existing_agent_client)"; then
+    IFS=$'\t' read -r mapped_address _ <<< "$existing_client"
     focus_client "$mapped_address"
     jq -cn --arg address "$mapped_address" --arg sessionId "$thread_id" \
       '{address:$address,sessionId:$sessionId}'
     exit 0
   fi
-  rm -f -- "$mapping_file"
 fi
 
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/remote-agent-command.sh"
+source "${script_dir}/lib/remote-agent-command.sh"
 
 before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
 omarchy launch terminal ssh -t -o BatchMode=yes -o ConnectTimeout=8 \
@@ -205,10 +202,6 @@ for _ in $(seq 1 80); do
   if [[ -n "$new_address" ]]; then
     focus_client "$new_address"
     mapped_session_id="${thread_id:-$new_session_id}"
-    if [[ -n "$mapped_session_id" ]]; then
-      mkdir -p -m 700 "$state_dir"
-      printf '%s\n' "$new_address" > "${state_dir}/${host_id}--${mapped_session_id}.address"
-    fi
     jq -cn --arg address "$new_address" --arg sessionId "$mapped_session_id" \
       '{address:$address,sessionId:$sessionId}'
     exit 0

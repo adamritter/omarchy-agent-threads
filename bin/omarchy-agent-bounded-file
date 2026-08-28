@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+
+import path from "node:path"
+import { readFileLimited } from "./lib/bounded-io.mjs"
+
+const [action = "", filePath = "", configuredLimit = "", field = ""] = process.argv.slice(2)
+const limit = Number(configuredLimit)
+
+function fail(message) {
+  process.stderr.write(`Bounded file reader: ${message}\n`)
+  process.exit(2)
+}
+
+if (!path.isAbsolute(filePath)) fail("path must be absolute")
+if (!Number.isSafeInteger(limit) || limit < 1 || limit > 16 * 1024 * 1024)
+  fail("invalid byte limit")
+
+let text
+try { text = readFileLimited(filePath, limit, "input file") }
+catch (error) { fail(error.message) }
+
+if (action === "read") process.stdout.write(text)
+else if (action === "json-field") {
+  if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field)) fail("invalid JSON field")
+  let value
+  try { value = JSON.parse(text) } catch { fail("input file contains invalid JSON") }
+  const result = value && value[field]
+  if (typeof result !== "string") fail("JSON field is not a string")
+  if (result.includes("\0") || result.includes("\n") || result.includes("\r"))
+    fail("JSON field contains invalid characters")
+  process.stdout.write(result)
+} else fail("expected read or json-field action")

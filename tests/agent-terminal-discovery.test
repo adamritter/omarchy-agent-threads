@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+test_root="$(mktemp -d -t agent-threads-process-discovery-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+mkdir -p "$test_root/bin" "$test_root/proc/100" "$test_root/proc/101" \
+  "$test_root/proc/102" "$test_root/proc/103" "$test_root/proc/104"
+
+printf '%s\n' '#!/usr/bin/env bash' \
+  'if [[ "${1:-}" == -j && "${2:-}" == clients ]]; then' \
+  '  printf '\''%s\n'\'' '\''[{"address":"0xabc123","pid":100}]'\''' \
+  'fi' >"$test_root/bin/hyprctl"
+chmod +x "$test_root/bin/hyprctl"
+
+for pid in 101 102 103 104; do
+  printf '%s (fixture) S 100 0 0 0\n' "$pid" >"$test_root/proc/$pid/stat"
+done
+printf '%s (terminal) S 1 0 0 0\n' 100 >"$test_root/proc/100/stat"
+printf '%s\0' /usr/bin/terminal >"$test_root/proc/100/cmdline"
+printf '%s\0' /opt/custom-agent /work --hostname 127.0.0.1 --port 43123 \
+  --session session.v1 >"$test_root/proc/101/cmdline"
+printf '%s\0' /usr/bin/claude --resume claude.v1 \
+  >"$test_root/proc/102/cmdline"
+printf '%s\0' /usr/bin/ssh -T fixture \
+  'cd -- /work && exec opencode /work --session remote.v1 --hostname 127.0.0.1 --port 41234' \
+  >"$test_root/proc/103/cmdline"
+{
+  printf '%s\0' /usr/bin/opencode /work --hostname 127.0.0.1 --port 49999 \
+    --session oversized
+  head -c 70000 /dev/zero | tr '\0' x
+} >"$test_root/proc/104/cmdline"
+
+export PATH="$test_root/bin:$PATH"
+source "$plugin_root/bin/lib/agent-terminal-client-lookup.sh"
+agent_lookup_proc_root="$test_root/proc"
+
+agent_lookup_kind=local-opencode
+agent_lookup_session_id=session.v1
+result="$(find_existing_agent_client)"
+[[ "$result" == $'0xabc123\thttp://127.0.0.1:43123' ]]
+
+agent_lookup_kind=local-claude
+agent_lookup_session_id=claude.v1
+result="$(find_existing_agent_client)"
+[[ "$result" == $'0xabc123\t' || "$result" == 0xabc123 ]]
+
+agent_lookup_kind=ssh-opencode
+agent_lookup_session_id=remote.v1
+agent_lookup_ssh_host=fixture
+result="$(find_existing_agent_client)"
+[[ "$result" == $'0xabc123\t' || "$result" == 0xabc123 ]]
+
+agent_lookup_kind=local-opencode
+agent_lookup_session_id=oversized
+if find_existing_agent_client >/dev/null; then
+  printf '%s\n' 'Oversized process metadata was unexpectedly accepted' >&2
+  exit 1
+fi
+
+agent_lookup_kind=ssh-opencode
+agent_lookup_session_id=remoteXv1
+agent_lookup_ssh_host=fixture
+if find_existing_agent_client >/dev/null; then
+  printf '%s\n' 'A dotted session id was treated as a regular expression' >&2
+  exit 1
+fi
+
+printf '%s\n' 'agent-terminal-discovery tests passed'

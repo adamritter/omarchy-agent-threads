@@ -17,6 +17,20 @@ SidebarControllerTestBase {
     compare(activationEvents.join(","), "release,open:alpha")
   }
 
+  function test_keyboardActivationUsesUiSelectionNotActiveThread() {
+    viewRows = [
+      { kind: "thread", path: "/work/a", thread: { id: "alpha" } },
+      { kind: "thread", path: "/work/b", thread: { id: "beta" } }
+    ]
+    service.activeThreadId = "alpha"
+    selectedIndex = 1
+
+    compare(controller.actions.openSelected("keyboard"), "thread:beta")
+    compare(selectedIndex, 1)
+    compare(openedThreadId, "beta")
+    compare(activationEvents.join(","), "release,open:beta")
+  }
+
   function test_derivesRowPresentationAtControllerBoundary() {
     service.activeThreadId = "busy"
     service.threads = [{ id: "busy", name: "Busy", cwd: "/work" }]
@@ -93,6 +107,21 @@ SidebarControllerTestBase {
     compare(selectedIndex, 1)
     compare(openedThreadCount, 2)
     compare(openedThreadId, "alpha")
+  }
+
+  function test_repeatedCycleAdvancesFromPendingActivation() {
+    viewRows = [
+      { kind: "thread", path: "/work/a", thread: { id: "alpha" } },
+      { kind: "thread", path: "/work/b", thread: { id: "beta" } },
+      { kind: "thread", path: "/work/c", thread: { id: "gamma" } }
+    ]
+    service.activeThreadId = "alpha"
+
+    compare(controller.actions.activateAdjacentThread(1), "thread:beta")
+    compare(controller.actions.activateAdjacentThread(1), "thread:gamma")
+    compare(openedThreadCount, 2)
+    compare(openedThreadId, "gamma")
+    compare(selectedIndex, 2)
   }
 
   function test_previousActivationStopsAtFirstThread() {

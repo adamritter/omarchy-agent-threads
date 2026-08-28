@@ -6,12 +6,13 @@ import "../logic/NavigationLogic.js" as NavigationLogic
 SidebarKeyCatcher {
   id: root
   required property var panel
-  property alias searchField: content.searchField
-  property alias renameField: content.renameField
-  property alias threadList: content.threadList
-  property alias providerMenu: content.providerMenu
-  property alias modelEffortSelector: content.modelEffortSelector
-  blocked: content.searchField.activeFocus
+  readonly property var content: contentLoader.item
+  readonly property var searchField: content ? content.searchField : null
+  readonly property var renameField: content ? content.renameField : null
+  readonly property var threadList: content ? content.threadList : null
+  readonly property var providerMenu: content ? content.providerMenu : null
+  readonly property var modelEffortSelector: content ? content.modelEffortSelector : null
+  blocked: !content || content.searchField.activeFocus
     || content.renameField.activeFocus
     || panel.remoteSetup.inputFocused
 
@@ -196,9 +197,21 @@ onTextKey: function(text) {
 }
 
 
-  SidebarMainContent {
-    id: content
+  Loader {
+    id: contentLoader
     anchors.fill: parent
-    panel: root.panel
+    property string requestedSource: root.panel.sidebarReload.contentSource
+    property bool initialized: false
+
+    function loadContent() {
+      setSource(requestedSource, { panel: root.panel })
+    }
+
+    onRequestedSourceChanged: if (initialized) loadContent()
+    onLoaded: Qt.callLater(root.panel.sidebarReload.restoreState)
+    Component.onCompleted: {
+      initialized = true
+      loadContent()
+    }
   }
 }

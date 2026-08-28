@@ -3,6 +3,7 @@ import QtQuick.Controls
 import qs.Commons
 import qs.Ui
 
+// The host treats this component as a manifest-declared hot-reload boundary.
 Column {
   id: root
   required property var panel

@@ -10,3 +10,14 @@ SidebarKeyCatcher 1.0 SidebarKeyCatcher.qml
 ThreadListModel 1.0 ThreadListModel.qml
 ThreadListRow 1.0 ThreadListRow.qml
 ThreadContextMenu 1.0 ThreadContextMenu.qml
+internal ModelEffortOptions ModelEffortOptions.qml
+internal RemoteSetupActions RemoteSetupActions.qml
+internal RemoteSetupSshHosts RemoteSetupSshHosts.qml
+internal SidebarActionController SidebarActionController.qml
+internal SidebarBody SidebarBody.qml
+internal SidebarHeader SidebarHeader.qml
+internal SidebarMainContent SidebarMainContent.qml
+internal SidebarNavigationController SidebarNavigationController.qml
+internal SidebarProviderMenu SidebarProviderMenu.qml
+internal SidebarReloadController SidebarReloadController.qml
+internal SidebarRowPresentation SidebarRowPresentation.qml

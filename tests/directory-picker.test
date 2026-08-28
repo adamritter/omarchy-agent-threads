@@ -14,6 +14,13 @@ listing="$($helper local - list "$test_root")"
 jq -e --arg path "$test_root" '.path == $path' <<<"$listing" >/dev/null
 jq -e '.entries | map(.name) == ["alpha", "Beta", "file-dir"]' <<<"$listing" >/dev/null
 
+large_directory="$test_root/large"
+mkdir -p -- "$large_directory"
+for index in $(seq 1 2001); do mkdir "$large_directory/entry-$index"; done
+large_listing="$($helper local - list "$large_directory")"
+jq -e '.truncated == true and (.entries | length) == 2000' \
+  <<<"$large_listing" >/dev/null
+
 created="$($helper local - mkdir "$test_root" "new project")"
 jq -e --arg path "$test_root/new project" '.path == $path and .entries == []' \
   <<<"$created" >/dev/null

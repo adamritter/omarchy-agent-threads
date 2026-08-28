@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 Rectangle {
+  objectName: "chatApprovalOverlay"
   required property var window
   required property var client
   property bool rememberApproval: false
@@ -54,6 +55,7 @@ Rectangle {
       }
 
       CheckBox {
+        objectName: "rememberApproval"
         visible: client.approvalRequest
           && client.approvalRequest.kind !== "unknown"
         text: "Remember for this session"
@@ -65,6 +67,7 @@ Rectangle {
       RowLayout {
         Layout.alignment: Qt.AlignRight
         Button {
+          objectName: "declineApproval"
           text: "Decline"
           onClicked: {
             client.answerApproval(false, false)
@@ -72,6 +75,7 @@ Rectangle {
           }
         }
         Button {
+          objectName: "approveRequest"
           text: "Approve"
           highlighted: true
           onClicked: {

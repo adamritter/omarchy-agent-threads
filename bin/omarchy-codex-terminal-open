@@ -4,6 +4,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/lib/launch-diagnostics.sh"
+source "${script_dir}/lib/runtime-state.sh"
 agent_threads_launch_log_init
 
 terminal_cwd=""
@@ -21,8 +22,8 @@ Usage: omarchy-codex-terminal-open --terminal-cwd DIR [OPTIONS] -- COMMAND [ARG.
 
 Terminal adapter options:
   --terminal-cwd DIR          Local directory used by the terminal
-  --thread-id ID              Existing Codex thread used for window mapping
-  --mapping-namespace NAME    Namespace for remote window mappings
+  --thread-id ID              Existing Codex thread used for process recovery
+  --mapping-namespace NAME    Legacy compatibility option (no state is written)
   --move-to-active-workspace  Move a newly created window to the active workspace
   --require-terminal-cwd      Fail instead of falling back to HOME if DIR is missing
   -h, --help                  Show this help
@@ -125,32 +126,12 @@ cleanup_launch_status() {
 trap 'launch_status=$?; agent_threads_launch_log codex-terminal-open unexpected-error "exit_status=${launch_status}" "line=${LINENO}" "command=${BASH_COMMAND}"; echo "The Codex terminal adapter failed unexpectedly at line ${LINENO}; see $(agent_threads_launch_log_path)" >&2' ERR
 trap 'launch_status=$?; cleanup_launch_status; if (( launch_status != 0 )); then agent_threads_launch_log codex-terminal-open failed "exit_status=${launch_status}"; fi' EXIT
 
-runtime_root="${XDG_RUNTIME_DIR:-/tmp}"
-state_dir="${runtime_root}/omarchy-codex-threads-${UID}"
+agent_threads_runtime_state_init
 proc_root="${CODEX_PROC_ROOT:-/proc}"
-mapping_file=""
-if [[ -n "$thread_id" ]]; then
-  mapping_prefix="${mapping_namespace:+${mapping_namespace}--}"
-  mapping_file="${state_dir}/${mapping_prefix}${thread_id}.address"
-fi
-mkdir -p -m 700 "$state_dir"
 
 source "${script_dir}/lib/codex-terminal-client-lookup.sh"
 
-if [[ -n "$mapping_file" && -f "$mapping_file" ]]; then
-  mapped_address="$(<"$mapping_file")"
-  if [[ -n "$mapped_address" ]] && client_exists "$mapped_address"; then
-    agent_threads_launch_log codex-terminal-open existing-window \
-      "address=$mapped_address" "source=mapping"
-    focus_client "$mapped_address"
-    printf '%s\n' "$mapped_address"
-    exit 0
-  fi
-  rm -f -- "$mapping_file"
-fi
-
 if existing_address="$(find_existing_client)"; then
-  printf '%s\n' "$existing_address" >"$mapping_file"
   agent_threads_launch_log codex-terminal-open existing-window \
     "address=$existing_address" "source=process"
   focus_client "$existing_address"
@@ -194,7 +175,7 @@ if [[ "$move_to_active_workspace" == true ]]; then
     | jq -r '.id // empty')"
 fi
 before_addresses="$(hyprctl -j clients 2>/dev/null | jq -r '.[].address')"
-launch_status_dir="$(mktemp -d "${state_dir}/launch-status.XXXXXX")"
+launch_status_dir="$(mktemp -d "${AGENT_THREADS_STATE_DIR}/launch-status.XXXXXX")"
 launch_status_file="${launch_status_dir}/command.status"
 agent_threads_launch_log codex-terminal-open terminal-launch \
   "workspace=${launch_workspace:-unchanged}"
@@ -210,13 +191,9 @@ for _ in $(seq 1 80); do
     | select((($before | split("\n")) | index($address)) == null)
     | $address' | head -n 1)"
   if [[ -n "$new_address" ]]; then
-    if [[ -n "$mapping_file" ]]; then
-      printf '%s\n' "$new_address" >"$mapping_file"
-    fi
     move_client_to_launch_workspace "$new_address"
     focus_client "$new_address"
     if ! wait_for_codex_bootstrap; then
-      [[ -z "$mapping_file" ]] || rm -f -- "$mapping_file"
       echo "Codex exited during terminal startup with status ${bootstrap_exit_status}; see $(agent_threads_launch_log_path)" >&2
       exit 1
     fi
@@ -230,7 +207,6 @@ done
 
 # A terminal may reuse an existing process/window, producing no new address.
 if existing_address="$(find_existing_client)"; then
-  printf '%s\n' "$existing_address" >"$mapping_file"
   agent_threads_launch_log codex-terminal-open existing-window \
     "address=$existing_address" "source=final-process-check"
   focus_client "$existing_address"

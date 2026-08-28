@@ -2,18 +2,20 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
+import { readJsonLimited } from "./bounded-io.mjs"
 
 const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
 const stateHome = process.env.XDG_STATE_HOME || path.join(home, ".local", "state")
 const claudeRuntimePath = path.join(stateHome, "omarchy", "claude-runtime.json")
 const claudeCommand = process.env.OMARCHY_CLAUDE_COMMAND || "claude"
+const MAX_CLAUDE_STATE_BYTES = 2 * 1024 * 1024
 function readJSON(filePath, fallback = null) {
-  try { return JSON.parse(fs.readFileSync(filePath, "utf8")) } catch { return fallback }
+  return readJsonLimited(filePath, MAX_CLAUDE_STATE_BYTES, "Claude runtime cache", fallback)
 }
 function writePrivateJSON(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 })
   const temporary = `${filePath}.${process.pid}.tmp`
-  fs.writeFileSync(temporary, JSON.stringify(value) + "\\n", { mode: 0o600 })
+  fs.writeFileSync(temporary, JSON.stringify(value) + "\\n", { mode: 0o600, flag: "wx" })
   fs.renameSync(temporary, filePath)
 }
 function cleanText(value) { return String(value || "").replace(/\\s+/g, " ").trim() }
@@ -43,6 +45,7 @@ export function claudeRuntimeInfo() {
     const result = spawnSync(candidate, ["--version"], {
       encoding: "utf8",
       timeout: 3000,
+      maxBuffer: 256 * 1024,
       windowsHide: true
     })
     // Some sandboxed launchers report a harmless EPERM alongside a successful
@@ -66,6 +69,7 @@ export function claudeRuntimeInfo() {
     const authResult = spawnSync(resolvedCommand, ["auth", "status"], {
       encoding: "utf8",
       timeout: 4000,
+      maxBuffer: 256 * 1024,
       windowsHide: true
     })
     try {
@@ -121,4 +125,3 @@ export function claudeModels(settings, state, configuredModels = []) {
     .filter(entry => !available || available.includes(entry.id))
     .map(entry => Object.assign({}, entry, { efforts: claudeModelEfforts(entry.id) }))
 }
-

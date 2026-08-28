@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions
+import "../logic/CodexConversationLogic.js" as ConversationLogic
 
 Item {
   id: root
@@ -22,7 +23,7 @@ Item {
   property string configuredApprovalPolicy: ""
   property string configuredApprovalsReviewer: "user"
   property string configuredSandbox: ""
-  property string configuredCwd: Quickshell.env("HOME") || "/tmp"
+  property string configuredCwd: Quickshell.env("HOME")
   property var configOverrides: []
   property var models: []
   property var codexConfig: ({})
@@ -150,7 +151,7 @@ Item {
     configuredApprovalPolicy = next.approvalPolicy
     configuredApprovalsReviewer = next.approvalsReviewer
     configuredSandbox = next.sandbox
-    configuredCwd = next.cwd || Quickshell.env("HOME") || "/tmp"
+    configuredCwd = next.cwd || Quickshell.env("HOME")
     configOverrides = next.configOverrides
     requestedThreadId = next.threadId
     protocolViolation = false
@@ -215,6 +216,7 @@ Item {
   }
   function interrupt() { return operationApi.interrupt() }
   function stopTransport() { appServer.running = false }
+  function handleLine(line) { responseApi.handleLine(line) }
 
   function answerApproval(accepted, remember) {
     if (!approvalRequest) return
@@ -267,7 +269,7 @@ Item {
         restartTimer.restart()
       }
     }
-    stdout: SplitParser { onRead: function(line) { responseApi.handleLine(line) } }
+    stdout: SplitParser { onRead: function(line) { root.handleLine(line) } }
     stderr: SplitParser {
       onRead: function(line) {
         var value = String(line || "").trim()

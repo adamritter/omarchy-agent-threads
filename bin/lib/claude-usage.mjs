@@ -1,18 +1,21 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { readJsonLimited, readResponseJsonLimited } from "./bounded-io.mjs"
 
 const home = process.env.OMARCHY_AGENT_PROVIDER_HOME || os.homedir()
 const stateHome = process.env.XDG_STATE_HOME || path.join(home, ".local", "state")
 const claudeUsagePath = path.join(stateHome, "omarchy", "claude-usage.json")
-const claudeUsageURL = process.env.OMARCHY_CLAUDE_USAGE_URL || "https://api.anthropic.com/api/oauth/usage"
+const claudeUsageURL = "https://api.anthropic.com/api/oauth/usage"
+const MAX_CLAUDE_STATE_BYTES = 2 * 1024 * 1024
+const MAX_CLAUDE_USAGE_RESPONSE_BYTES = 1024 * 1024
 function readJSON(filePath, fallback = null) {
-  try { return JSON.parse(fs.readFileSync(filePath, "utf8")) } catch { return fallback }
+  return readJsonLimited(filePath, MAX_CLAUDE_STATE_BYTES, "Claude usage state", fallback)
 }
 function writePrivateJSON(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 })
   const temporary = `${filePath}.${process.pid}.tmp`
-  fs.writeFileSync(temporary, JSON.stringify(value) + "\\n", { mode: 0o600 })
+  fs.writeFileSync(temporary, JSON.stringify(value) + "\\n", { mode: 0o600, flag: "wx" })
   fs.renameSync(temporary, filePath)
 }
 
@@ -89,7 +92,9 @@ export async function claudeUsageRateLimits(configRoot, hookRuntime, authenticat
           }
         })
         if (!response.ok) throw new Error(`Claude usage HTTP ${response.status}`)
-        const limits = normalizedClaudeUsage(await response.json())
+        const usage = await readResponseJsonLimited(
+          response, MAX_CLAUDE_USAGE_RESPONSE_BYTES, "Claude usage response")
+        const limits = normalizedClaudeUsage(usage)
         if (limits.primary || limits.secondary) {
           try { writePrivateJSON(claudeUsagePath, limits) } catch { /* Cache is best effort. */ }
           return limits

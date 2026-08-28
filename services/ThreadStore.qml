@@ -74,7 +74,7 @@ Item {
     "../bin/omarchy-agent-chat").toString().replace(/^file:\/\//, "")
   readonly property string streamGuardPath: Qt.resolvedUrl(
     "../bin/omarchy-agent-stream-guard").toString().replace(/^file:\/\//, "")
-  readonly property string localHome: Quickshell.env("HOME") || "/tmp"
+  readonly property string localHome: Quickshell.env("HOME")
   readonly property string backendHomePath: localHome
   readonly property string pinnedSectionId: "01984de2-8f74-7c91-a3b2-5c5e937cf318"
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME")

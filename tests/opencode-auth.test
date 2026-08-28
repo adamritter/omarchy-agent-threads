@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+test_root="$(mktemp -d -t agent-threads-opencode-auth-XXXXXX)"
+trap 'rm -rf -- "$test_root"' EXIT
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+stub_bin="$test_root/bin"
+auth_file="$test_root/state/omarchy/opencode-server-auth.json"
+capture="$test_root/opencode-environment.json"
+mkdir -p -- "$stub_bin"
+
+cat > "$stub_bin/opencode" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+jq -cn --arg username "${OPENCODE_SERVER_USERNAME:-}" \
+  --arg password "${OPENCODE_SERVER_PASSWORD:-}" \
+  --arg arguments "$*" '{username:$username,password:$password,arguments:$arguments}' \
+  > "$OPENCODE_AUTH_CAPTURE"
+EOF
+chmod +x "$stub_bin/opencode"
+
+PATH="$stub_bin:$PATH" OPENCODE_AUTH_CAPTURE="$capture" \
+  "$plugin_root/bin/omarchy-agent-opencode-server" "$auth_file" 43962
+test "$(stat -c '%a' "$auth_file")" = 600
+jq -e '.username == "omarchy-agent-threads"
+  and (.password | test("^[A-Za-z0-9_-]{32,128}$"))' "$auth_file" >/dev/null
+jq -e --slurpfile auth "$auth_file" '
+  .username == $auth[0].username and .password == $auth[0].password
+  and .arguments == "serve --hostname 127.0.0.1 --port 43962"' "$capture" >/dev/null
+
+target="$test_root/preserved.json"
+printf '%s\n' '{"preserved":true}' > "$target"
+rm -- "$auth_file"
+ln -s -- "$target" "$auth_file"
+if PATH="$stub_bin:$PATH" OPENCODE_AUTH_CAPTURE="$capture" \
+    "$plugin_root/bin/omarchy-agent-opencode-server" "$auth_file" 43962 \
+    >/dev/null 2>&1; then
+  echo "OpenCode server unexpectedly followed an auth-file symlink" >&2
+  exit 1
+fi
+jq -e '.preserved == true' "$target" >/dev/null
+
+printf '%s\n' "opencode-auth tests passed"

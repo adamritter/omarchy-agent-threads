@@ -8,21 +8,13 @@ codex_legacy_prepare_remote_auth() {
   if [[ "$remote_auth_file" == "~/"* ]]; then
     remote_auth_file="${HOME}/${remote_auth_file#~/}"
   fi
-  [[ -r "$remote_auth_file" ]] || {
-    echo "Codex remote token file is not readable" >&2
-    exit 2
-  }
   [[ -n "$remote_auth_env" ]] || remote_auth_env="CODEX_REMOTE_TOKEN"
   [[ "$remote_auth_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
     echo "Invalid Codex remote token environment variable" >&2
     exit 2
   }
-  remote_token_bytes="$(wc -c <"$remote_auth_file")"
-  [[ "$remote_token_bytes" =~ ^[0-9]+$ && "$remote_token_bytes" -le 65536 ]] || {
-    echo "Codex remote token file exceeded the 64 KiB limit" >&2
-    exit 2
-  }
-  remote_token="$(<"$remote_auth_file")"
+  remote_token="$("${script_dir}/omarchy-agent-bounded-file" read \
+    "$remote_auth_file" 65536)" || exit 2
   export "${remote_auth_env}=${remote_token}"
 }
 

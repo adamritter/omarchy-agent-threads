@@ -4,8 +4,10 @@ set -euo pipefail
 
 test_root="$(mktemp -d -t codex-threads-opencode-XXXXXX)"
 server_pid=""
+runtime_server_pid=""
 cleanup() {
   [[ -z "$server_pid" ]] || kill "$server_pid" 2>/dev/null || true
+  [[ -z "$runtime_server_pid" ]] || kill "$runtime_server_pid" 2>/dev/null || true
   rm -rf -- "$test_root"
 }
 trap cleanup EXIT
@@ -14,27 +16,58 @@ fake_home="$test_root/home"
 state_home="$test_root/state"
 project_dir="$fake_home/project"
 port_file="$test_root/port"
+runtime_port_file="$test_root/runtime-port"
 action_log="$test_root/actions.log"
+auth_file="$state_home/omarchy/opencode-server-auth.json"
 plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 helper="$plugin_root/bin/omarchy-agent-provider-query"
-mkdir -p -- "$fake_home" "$state_home" "$project_dir"
+mkdir -p -- "$fake_home" "$state_home/omarchy" "$project_dir"
+mkdir -p -- "$test_root/proc/1234"
+auth_password="fixture_password_012345678901234567890123456789"
+printf '%s\n' "{\"username\":\"omarchy-agent-threads\",\"password\":\"$auth_password\"}" \
+  > "$auth_file"
+chmod 600 "$auth_file"
+fixture_auth="Basic $(printf '%s' "omarchy-agent-threads:$auth_password" | base64 -w 0)"
 
-node "$plugin_root/tests/fixtures/opencode-server.mjs" \
+OPENCODE_FIXTURE_STATUS=idle OPENCODE_FIXTURE_AUTH="$fixture_auth" \
+  node "$plugin_root/tests/fixtures/opencode-server.mjs" \
   "$port_file" "$action_log" "$project_dir" &
 server_pid=$!
+OPENCODE_FIXTURE_STATUS=busy OPENCODE_FIXTURE_AUTH="$fixture_auth" \
+  node "$plugin_root/tests/fixtures/opencode-server.mjs" \
+  "$runtime_port_file" "$test_root/runtime-actions.log" "$project_dir" &
+runtime_server_pid=$!
 for _ in $(seq 1 50); do
-  [[ ! -s "$port_file" ]] || break
+  [[ ! -s "$port_file" || ! -s "$runtime_port_file" ]] || break
   sleep 0.05
 done
 [[ -s "$port_file" ]]
+[[ -s "$runtime_port_file" ]]
 server_url="http://127.0.0.1:$(<"$port_file")"
+runtime_port="$(<"$runtime_port_file")"
+printf '%s\0' /opt/custom-opencode "$project_dir" --hostname 127.0.0.1 \
+  --port "$runtime_port" --session ses_opencode_fixture \
+  >"$test_root/proc/1234/cmdline"
 
 run_helper() {
   OMARCHY_AGENT_PROVIDER_HOME="$fake_home" \
     OMARCHY_OPENCODE_URL="$server_url" \
+    OMARCHY_OPENCODE_AUTH_FILE="$auth_file" \
+    OMARCHY_AGENT_PROC_ROOT="$test_root/proc" \
     XDG_STATE_HOME="$state_home" \
     node "$helper" opencode "$@"
 }
+
+if OMARCHY_AGENT_PROVIDER_HOME="$fake_home" \
+    OMARCHY_OPENCODE_URL="https://example.invalid" \
+    OMARCHY_OPENCODE_AUTH_FILE="$auth_file" \
+    XDG_STATE_HOME="$state_home" \
+    node "$helper" opencode snapshot \
+    >"$test_root/external-url-output" 2>"$test_root/external-url-error"; then
+  echo "OpenCode provider unexpectedly accepted a non-loopback server URL" >&2
+  exit 1
+fi
+grep -F -- 'plain loopback HTTP origin' "$test_root/external-url-error" >/dev/null
 
 snapshot="$(run_helper snapshot)"
 jq -e --arg cwd "$project_dir" '
@@ -56,6 +89,11 @@ jq -e --arg cwd "$project_dir" '
   and .threads[0].lifecycle == "busy"
   and .threads[0].cwd == $cwd
 ' <<<"$snapshot" >/dev/null
+
+rm "$test_root/proc/1234/cmdline"
+run_helper snapshot | jq -e '
+  .threads[0].status.type == "idle" and .threads[0].lifecycle == "idle"
+' >/dev/null
 
 run_helper pin ses_opencode_fixture "$project_dir" true >/dev/null
 run_helper snapshot | jq -e '.threads[0].isPinned == true' >/dev/null
