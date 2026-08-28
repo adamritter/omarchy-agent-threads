@@ -71,6 +71,80 @@ composition edge, but should not become the default dependency mechanism for
 lower-level components. Prefer a cohesive state object or action API over a
 service-locator-style object graph.
 
+## Operational change map
+
+Start with the row that matches the requested behavior. Read the entry files,
+then follow only the listed ownership chain until the authoritative state or
+runtime owner is reached. Do not load every provider, controller, or UI file
+for a provider-specific change.
+
+The owner named below is the only layer that should write the relevant mutable
+state. Adapters may translate values and controllers may route actions, but
+neither should create a second source of truth.
+
+| Requested change | Start here | Authoritative chain and owner | Focused verification |
+| --- | --- | --- | --- |
+| Sidebar structure, header, or body composition | `ui/SidebarMainContent.qml`, then `ui/SidebarHeader.qml` or `ui/SidebarBody.qml` | `Panel.qml` owns composition; `ui/PanelSessionState.qml` owns ephemeral panel state; durable preferences go through `services/ThreadStoreSettingsApi.qml` | `tests/panel-render.test`; the nearest sidebar QML test |
+| Sidebar keys, selection, or list actions | `ui/SidebarKeyRouter.qml`, `ui/SidebarController.qml`, `ui/SidebarNavigationController.qml` | Route actions through the controller to `services/ThreadStoreThreadApi.qml`; selection remains in `ui/PanelSessionState.qml` | `tests/tst_keycatcher.qml`, `tests/tst_sidebarcontroller.qml`, `tests/tst_sidebarnavigation.qml` |
+| Thread filtering, grouping, ordering, or row derivation | `ui/ThreadListModel.qml`, then `logic/ThreadListLogic.js` and the relevant `ThreadList*Logic.js` module | `services/ThreadStore.qml` owns source collections; deterministic logic derives rows; the model exposes them to `ui/CodexThreadList.qml` | `tests/tst_threadlistmodel.qml`, `tests/tst_threadrowlogic.qml`, `tests/tst_presentationlogic.qml` |
+| Thread row presentation or row actions | `ui/ThreadListRow.qml`, `ui/ThreadListRowActions.qml` | Rows display model values and delegate mutations through `ui/SidebarController.qml`; they do not write store or provider state | `tests/panel-render.test`, `tests/tst_threadrowlogic.qml`, `tests/tst_sidebarcontroller.qml` |
+| Thread activation, launch, terminal focus, or resume | `services/ThreadStoreThreadApi.qml`, then `providers/ThreadLaunchCoordinator.qml` | `logic/ThreadLaunchLogic.js` decides routing; `providers/AgentProviderLibrary.qml` selects the provider; the selected provider and process host own runtime execution | `tests/tst_threadlaunchcoordinator.qml`, `tests/tst_remoteagentlaunch.qml`; `tests/thread-launch-focus.test`, `tests/codex-terminal-lifecycle.test` |
+| Rename, archive, pin, delete, or bulk mutation | `services/ThreadStoreThreadApi.qml`, `services/ThreadStoreMutations.qml` | `logic/ThreadMutationLogic.js` defines deterministic transitions; the provider boundary performs external mutations; the next provider snapshot reconciles stored state | `tests/tst_threadmutationlogic.qml`, `tests/tst_sidebarcontroller.qml`; the affected provider integration test |
+| Local Codex snapshots, models, rate limits, or account state | `providers/CodexAppServerClient.qml`, `providers/CodexAppServerResponseHandler.qml` | App-server responses are normalized through provider logic and exposed through `services/ThreadStoreProviderApi.qml`; `services/ProviderSnapshotStore.qml` owns persisted snapshots | `tests/app-server-transport.test`, `tests/thread-statuses.test`, `tests/tst_providersnapshotlogic.qml` |
+| Claude or OpenCode behavior | `providers/LocalAgentProvider.qml`, `providers/LocalAgentProcessHost.qml`, then the matching `bin/agent-*-query` helper | `providers/AgentProviderLibrary.qml` exposes the common boundary; provider-specific parsing and execution stay private to that provider | `tests/claude-provider.test`; `tests/opencode-provider.test`, `tests/opencode-auth.test`, `tests/agent-launchers.test` |
+| Remote hosts, remote snapshots, or remote actions | `providers/RemoteAgentProvider.qml`, then `RemoteAgentSnapshots.qml`, `RemoteAgentManagement.qml`, or `RemoteAgentProcessHost.qml` | `providers/RemoteConfigStore.qml` owns host configuration; remote adapters normalize provider data; the remote process host owns SSH execution | `tests/remote-codex.test`, `tests/remote-claude.test`, `tests/remote-opencode.test`, `tests/remote-config.test`, `tests/ssh-hosts.test` |
+| Panel window, focus, overlays, help, or shell lifecycle | `Panel.qml`, then the matching `ui/Panel*Controller.qml` or overlay | `Panel.qml` directly owns shell-sensitive objects; controllers coordinate behavior; deterministic decisions belong in the matching `logic/Panel*Logic.js` module | Run `tests/panel-render.test` before and after the change; run the matching panel logic/controller QML test |
+| Preferences, cached snapshots, or reload-state restoration | `services/SidebarPreferences.qml`, `services/ProviderSnapshotStore.qml`, `ui/PanelReloadController.qml`, `ui/SidebarReloadController.qml` | The focused store owns durable data; `logic/PanelReloadStateLogic.js` defines capture and restore; controllers only apply the transition | `tests/tst_sidebarpreferences.qml`, `tests/tst_providersnapshotlogic.qml`, `tests/tst_panelreloadstatelogic.qml`, `tests/panel-render.test` |
+| Standalone Agent Chat UI or conversation protocol | `app/ChatWindow.qml`, then the affected `app/Chat*` component | `providers/CodexConversationClient.qml`, `CodexConversationOperations.qml`, and `CodexConversationResponseHandler.qml` own transport; `logic/Conversation*Logic.js` owns deterministic protocol transformations | The matching `tests/tst_chat*.qml` or `tests/tst_codexconversation*.qml` test; `tests/chat-launcher.test`, `tests/chat-options.test`, `tests/web-transcript.test` as applicable |
+| Helper scripts, command construction, quoting, or validation | The matching executable under `bin/`, then its provider adapter | The helper owns the external command boundary; QML passes structured inputs and consumes normalized outputs | The matching integration test under `tests/`; `scripts/check-static` |
+
+When a public boundary or ownership path changes, update this map in the same
+commit. A stale map is worse than no map because it sends future changes
+through obsolete paths.
+
+### Reload and test scope
+
+Saving the two manifest hot-reload boundary files has intentionally narrow
+scope:
+
+- `ui/SidebarKeyRouter.qml` reloads the `sidebar` component while preserving
+  the panel, store, provider clients, and other long-lived state.
+- `ui/SidebarMainContent.qml` reloads the `sidebarContent` component with the
+  same preservation rules.
+
+Editing a QML file imported below those boundaries usually causes an in-process
+QML graph reload, because the imported component is not itself a manifest
+boundary. If the saved change does not appear, run `./scripts/reload-plugin` and
+let it validate the graph, wait for a new panel generation, and verify plugin
+status. Do not restart the shell for an ordinary edit to an existing file.
+
+Adding or renaming a QML component in an already imported directory can require
+one complete shell restart because Qt caches directory listings. Panel startup,
+shutdown, stuck socket or child-process recovery, and an explicit final release
+smoke test are the other full-restart cases.
+
+During iteration, run the narrowest test named in the map. Use
+`./scripts/test-unit` for QML logic and models, `./scripts/test-integration` for
+helpers and providers, and `./scripts/check-static` for validation. Run
+`./scripts/test` outside the sandbox before handoff. Panel ownership, window
+bindings, overlays, and list wiring additionally require
+`tests/panel-render.test` before and after the edit.
+
+### Trace discipline
+
+- Start a UI change at the visible component or action, then trace inward to
+  one public domain API and one state owner.
+- Start a provider change at `AgentProviderLibrary.qml` only when the common
+  contract changes. Otherwise open just the selected provider chain.
+- Put a deterministic decision in `logic/` before adding branches to QML
+  adapters, controllers, or process hosts.
+- Do not bypass `ThreadStore` from UI code or expose provider implementation
+  objects through new aliases.
+- Do not duplicate derived values as mutable state merely to shorten a binding
+  chain. Add a focused model or domain API when the chain itself is the problem.
+- Treat completion as behavior plus deletion: redirect callers, remove the old
+  route, run the focused checks, then run the full suite.
+
 ## Refactoring method
 
 Boundary work and simplification happen together, one domain at a time. For
