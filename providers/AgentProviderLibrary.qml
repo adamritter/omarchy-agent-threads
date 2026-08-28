@@ -10,26 +10,16 @@ Item {
 
   required property var controller
 
-  readonly property alias ready: appServerClient.ready
-  readonly property alias loading: appServerClient.loading
-  readonly property alias refreshQueued: appServerClient.refreshQueued
-  readonly property alias lastRefreshMs: appServerClient.lastRefreshMs
+  // Internal domain ports used by ThreadStore. UI code only sees the store APIs.
+  readonly property alias appServer: appServerClient
+  readonly property alias localCodex: localCodexProvider
+  readonly property alias localProviders: localRegistry
+  readonly property alias remotes: remoteProvider
+  readonly property alias routing: providerRouting
+  readonly property alias modelSettings: providerModels
 
-  readonly property alias remoteConfigLoaded: remoteProvider.configLoaded
-  readonly property alias remoteConfig: remoteProvider.remoteConfig
-  readonly property alias remoteQueryHostId: remoteProvider.queryHostId
   readonly property string actionHostId: remoteProvider.actionHostId !== ""
     ? remoteProvider.actionHostId : localRegistry.actionHostId
-  property alias remoteAddError: remoteProvider.addError
-  readonly property alias remoteTestHostId: remoteProvider.managementTestHostId
-  readonly property alias remoteTestRunning: remoteProvider.managementTestRunning
-  readonly property alias remoteTestSucceeded: remoteProvider.managementTestSucceeded
-  readonly property alias remoteTestMessage: remoteProvider.managementTestMessage
-  readonly property alias remoteClaudeLoginHostId: remoteProvider.loginHostId
-  readonly property alias remoteClaudeLoginRunning: remoteProvider.loginRunning
-  readonly property alias sshHosts: remoteProvider.sshHosts
-  readonly property alias sshHostsLoading: remoteProvider.sshHostsLoading
-  readonly property alias sshHostsError: remoteProvider.sshHostsError
 
   readonly property var localCodexHost: AgentProviderLogic.normalizeHost({
     id: "provider-codex",
@@ -43,7 +33,7 @@ Item {
     models: controller.models,
     agents: [],
     rateLimits: controller.rateLimits,
-    loading: loading,
+    loading: appServerClient.loading,
     error: controller.errorText
   })
   readonly property var localHosts: AgentProviderLogic.normalizeHosts(localRegistry.hosts)
@@ -95,111 +85,9 @@ Item {
     allHosts: root.allHosts
   }
 
-  function normalizeProviderType(value) { return providerRouting.normalizeProviderType(value) }
-  function hostById(hostId) { return providerRouting.hostById(hostId) }
-  function isLocalCodex(hostId) { return providerRouting.isLocalCodex(hostId) }
-  function localProviderForHost(hostId) { return providerRouting.localProviderForHost(hostId) }
-  function localProviderForThread(thread) { return providerRouting.localProviderForThread(thread) }
-  function pathForThread(hostId, thread) { return providerRouting.pathForThread(hostId, thread) }
-  function threadStatus(hostId, thread) { return providerRouting.threadStatus(hostId, thread) }
-  function refreshHost(hostId) { return providerRouting.refreshHost(hostId) }
-  function refreshSupplementalHosts(hostId) { return providerRouting.refreshSupplementalHosts(hostId) }
-  function markSupplementalThreadSeen(threadId) { return providerRouting.markSupplementalThreadSeen(threadId) }
-  function archiveThread(hostId, thread) { return providerRouting.archiveThread(hostId, thread) }
-  function renameThread(hostId, thread, name) { return providerRouting.renameThread(hostId, thread, name) }
-  function toggleThreadPin(hostId, thread) { return providerRouting.toggleThreadPin(hostId, thread) }
-  function openThread(hostId, thread, path, source) { return providerRouting.openThread(hostId, thread, path, source) }
-  function createThread(hostId, path) { return providerRouting.createThread(hostId, path) }
-
-  function reset() { appServerClient.reset() }
-  function start() { appServerClient.start() }
-  function refreshThreads() { appServerClient.refreshThreads() }
-  function refreshProjects() { appServerClient.refreshProjects() }
-  function refreshRateLimits() { appServerClient.refreshRateLimits() }
-  function refreshModels() { appServerClient.refreshModels() }
-  function refreshConfig() { appServerClient.refreshConfig() }
-  function createProject(threadId, name, path) {
-    return appServerClient.createProject(threadId, name, path)
-  }
-  function moveThread(threadId, projectId) {
-    return appServerClient.moveThread(threadId, projectId)
-  }
-  function clearMoveRequests() { appServerClient.clearMoveRequests() }
-  function archiveLocalCodexRpc(threadId) { return appServerClient.archiveThread(threadId) }
-  function renameLocalCodexRpc(threadId, name) {
-    return appServerClient.renameThread(threadId, name)
-  }
-  function pinLocalCodexRpc(threadId, pinned, sectionId) {
-    return appServerClient.setThreadPinned(threadId, pinned, sectionId)
-  }
-  function clearPendingLocalCodexThread() { localCodexProvider.clearPendingNew() }
-  function resolvePendingLocalCodexThread() { localCodexProvider.resolvePendingNew() }
-  function refreshActiveThread() { localCodexProvider.refreshActiveThread() }
-  function snapshotLocalProviders() { return localRegistry.snapshotHosts() }
-  function restoreLocalProviders(snapshots) { localRegistry.restoreSnapshots(snapshots) }
-  function restoreRemoteHosts(snapshots) { remoteProvider.restoreSnapshots(snapshots) }
-  function addRemote(label, type, address, home, tokenFile, providerType) {
-    return remoteProvider.add(label, type, address, home, tokenFile, providerType)
-  }
-  function updateRemote(hostId, label, type, address, home, tokenFile, providerType) {
-    return remoteProvider.updateRemote(
-      hostId, label, type, address, home, tokenFile, providerType)
-  }
-  function removeRemote(hostId) { return remoteProvider.removeRemote(hostId) }
-  function testRemote(hostId) { return remoteProvider.testRemote(hostId) }
-  function loginRemoteClaude(hostId) { return remoteProvider.loginClaude(hostId) }
-  function sshHostEnabled(alias, providerType) {
-    return remoteProvider.sshHostEnabled(alias, providerType)
-  }
-  function remoteIdForSshHost(alias, providerType) {
-    return remoteProvider.remoteIdForSshHost(alias, providerType)
-  }
-  function refreshSshHosts() { remoteProvider.refreshSshHosts() }
-
-
-
   AgentProviderModels {
     id: providerModels
     controller: root.controller
     registry: localRegistry
   }
-
-  function providerHost(providerType) { return providerModels.providerHost(providerType) }
-
-  function modelState(providerType, modelId) { return providerModels.modelState(providerType, modelId) }
-
-  function models(providerType) { return providerModels.models(providerType) }
-
-  function agents(providerType) { return providerModels.agents(providerType) }
-
-  function selectedModel(providerType) { return providerModels.selectedModel(providerType) }
-
-  function selectedEffort(providerType) { return providerModels.selectedEffort(providerType) }
-
-  function selectedAgent(providerType) { return providerModels.selectedAgent(providerType) }
-
-  function defaultModel(providerType) { return providerModels.defaultModel(providerType) }
-
-  function defaultEffort(providerType, modelId) { return providerModels.defaultEffort(providerType, modelId) }
-
-  function defaultAgent(providerType) { return providerModels.defaultAgent(providerType) }
-
-  function effectiveModel(providerType) { return providerModels.effectiveModel(providerType) }
-
-  function effectiveEffort(providerType) { return providerModels.effectiveEffort(providerType) }
-
-  function effectiveAgent(providerType) { return providerModels.effectiveAgent(providerType) }
-
-  function modelEfforts(providerType, modelId) { return providerModels.modelEfforts(providerType, modelId) }
-
-  function setModel(providerType, value) { return providerModels.setModel(providerType, value) }
-
-  function setEffort(providerType, value) { return providerModels.setEffort(providerType, value) }
-
-  function setAgent(providerType, value) { return providerModels.setAgent(providerType, value) }
-
-  function loadSettings(settings) { return providerModels.loadSettings(settings) }
-
-  function settingsObject() { return providerModels.settingsObject() }
-
 }

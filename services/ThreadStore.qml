@@ -99,7 +99,7 @@ Item {
   SidebarPreferences {
     id: sidebarPreferences
     path: root.sidebarSettingsPath
-    providerSettings: agentProviders
+    providerSettings: agentProviders.modelSettings
     onReady: root.providers.startAppServer()
   }
 
@@ -124,11 +124,24 @@ Item {
   ThreadStoreProviderApi {
     id: providerApi
     store: root
-    providerLibrary: agentProviders
+    appServer: agentProviders.appServer
+    routing: agentProviders.routing
+    modelSettings: agentProviders.modelSettings
+    localProviders: agentProviders.localProviders
+    remotes: agentProviders.remotes
+    supplementalHosts: agentProviders.supplementalHosts
+    configuredRemoteHosts: agentProviders.configuredRemoteHosts
+    actionHostId: agentProviders.actionHostId
     preferences: sidebarPreferences
     snapshots: providerSnapshotStore
   }
-  ThreadStoreThreadApi { id: threadApi; store: root; providerLibrary: agentProviders }
+  ThreadStoreThreadApi {
+    id: threadApi
+    store: root
+    appServer: agentProviders.appServer
+    routing: agentProviders.routing
+    localCodex: agentProviders.localCodex
+  }
   ThreadStoreSettingsApi { id: settingsApi; preferences: sidebarPreferences }
 
 

@@ -7,7 +7,9 @@ import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 QtObject {
   required property var store
-  required property var providerLibrary
+  required property var appServer
+  required property var routing
+  required property var localCodex
 
   function projectForId(projectId) {
     return ThreadListLogic.projectForId(store.projects, projectId)
@@ -43,7 +45,7 @@ QtObject {
       return true
     }
   
-    providerLibrary.createProject(threadId, store.pendingMoveName, path)
+    appServer.createProject(threadId, store.pendingMoveName, path)
     return true
   }
   
@@ -52,18 +54,18 @@ QtObject {
       failThreadMove("Could not resolve the target Codex project")
       return
     }
-    providerLibrary.moveThread(store.movingThreadId, projectId)
+    appServer.moveThread(store.movingThreadId, projectId)
   }
   
   function failThreadMove(message, silent) {
-    providerLibrary.clearMoveRequests()
+    appServer.clearMoveRequests()
     var result = ThreadMutationLogic.completeMutation(store.threadMutationState, "move")
     if (result.applied) store.threadMutationState = result.state
     if (!silent) store.errorText = String(message || "Could not move the Codex thread")
   }
   
   function finishThreadMove() {
-    providerLibrary.clearMoveRequests()
+    appServer.clearMoveRequests()
     var result = ThreadMutationLogic.completeMutation(store.threadMutationState, "move")
     if (!result.applied) return false
     store.threadMutationState = result.state
@@ -88,7 +90,7 @@ QtObject {
       delete nextUnread[id]
       store.unreadThreads = nextUnread
     }
-    providerLibrary.markSupplementalThreadSeen(id)
+    routing.markSupplementalThreadSeen(id)
   }
   
   function applyThreadStatuses(nextStatuses) {
@@ -134,7 +136,7 @@ QtObject {
     setArchiveTombstone(store.archivingThreadId, true)
     store.threads = threadsWithoutArchiveTombstones(store.threads)
     store.errorText = ""
-    if (!providerLibrary.archiveLocalCodexRpc(store.archivingThreadId)) {
+    if (!appServer.archiveThread(store.archivingThreadId)) {
       restoreArchivedThread()
       store.errorText = "Could not reach the Codex App Server"
       return false
@@ -147,7 +149,7 @@ QtObject {
     var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
     if (id === "" || normalized === ""
         || !store.mutations.beginThreadMutation("rename", id)) return false
-    if (!providerLibrary.renameLocalCodexRpc(id, normalized)) {
+    if (!appServer.renameThread(id, normalized)) {
       store.mutations.failThreadMutation("rename", "Could not reach the Codex App Server")
       return false
     }
@@ -158,7 +160,7 @@ QtObject {
     var id = String(thread && thread.id || "")
     if (id === "" || !store.mutations.beginThreadMutation("pin", id)) return false
     store.mutations.setPendingPinValue(thread.isPinned !== true)
-    if (!providerLibrary.pinLocalCodexRpc(id, store.pendingPinValue, store.pinnedSectionId)) {
+    if (!appServer.setThreadPinned(id, store.pendingPinValue, store.pinnedSectionId)) {
       store.mutations.failThreadMutation("pin", "Could not reach the Codex App Server")
       return false
     }
@@ -196,15 +198,15 @@ QtObject {
   }
   
   function archiveThread(thread) {
-    return providerLibrary.archiveThread("provider-codex", thread)
+    return routing.archiveThread("provider-codex", thread)
   }
   
   function renameThread(thread, name) {
-    return providerLibrary.renameThread("provider-codex", thread, name)
+    return routing.renameThread("provider-codex", thread, name)
   }
   
   function toggleThreadPin(thread) {
-    return providerLibrary.toggleThreadPin("provider-codex", thread)
+    return routing.toggleThreadPin("provider-codex", thread)
   }
   
   function openThread(thread, cwdOverride, source) {
@@ -212,14 +214,14 @@ QtObject {
       var path = String(cwdOverride || projectPathForThread(thread) || store.backendHomePath)
       return launchAgentChat(thread, path, source)
     }
-    return !!providerLibrary.openThread(
+    return !!routing.openThread(
       "provider-codex", thread, cwdOverride, source)
   }
   
   function newProjectThread(projectPath) {
     if (store.settings.threadFrontend === "agent-chat")
       return launchAgentChat(null, projectPath)
-    return providerLibrary.createThread("provider-codex", projectPath)
+    return routing.createThread("provider-codex", projectPath)
   }
   
   function launchAgentChat(thread, cwd, source) {
@@ -243,15 +245,15 @@ QtObject {
   }
   
   function clearPendingNewThread() {
-    providerLibrary.clearPendingLocalCodexThread()
+    localCodex.clearPendingNew()
   }
   
   function resolvePendingNewThread() {
-    providerLibrary.resolvePendingLocalCodexThread()
+    localCodex.resolvePendingNew()
   }
   
   function refreshActiveThread() {
-    providerLibrary.refreshActiveThread()
+    localCodex.refreshActiveThread()
   }
   
   function scheduleEventRefresh() {

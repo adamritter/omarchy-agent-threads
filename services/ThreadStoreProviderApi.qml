@@ -4,36 +4,43 @@ import "../logic/ThreadStateLogic.js" as ThreadStateLogic
 
 QtObject {
   required property var store
-  required property var providerLibrary
+  required property var appServer
+  required property var routing
+  required property var modelSettings
+  required property var localProviders
+  required property var remotes
+  required property var supplementalHosts
+  required property var configuredRemoteHosts
+  required property string actionHostId
   required property var preferences
   required property var snapshots
 
-  readonly property bool ready: providerLibrary.ready
-  readonly property bool loading: providerLibrary.loading
-  readonly property bool refreshQueued: providerLibrary.refreshQueued
-  readonly property double lastRefreshMs: providerLibrary.lastRefreshMs
-  readonly property bool remoteConfigLoaded: providerLibrary.remoteConfigLoaded
-  readonly property var remoteConfig: providerLibrary.remoteConfig
-  readonly property var remoteHosts: providerLibrary.supplementalHosts
-  readonly property string remoteQueryHostId: providerLibrary.remoteQueryHostId
-  readonly property string remoteActionHostId: providerLibrary.actionHostId
-  readonly property string remoteAddError: providerLibrary.remoteAddError
-  readonly property string remoteTestHostId: providerLibrary.remoteTestHostId
-  readonly property bool remoteTestRunning: providerLibrary.remoteTestRunning
-  readonly property bool remoteTestSucceeded: providerLibrary.remoteTestSucceeded
-  readonly property string remoteTestMessage: providerLibrary.remoteTestMessage
-  readonly property string remoteClaudeLoginHostId: providerLibrary.remoteClaudeLoginHostId
-  readonly property bool remoteClaudeLoginRunning: providerLibrary.remoteClaudeLoginRunning
-  readonly property var sshHosts: providerLibrary.sshHosts
-  readonly property bool sshHostsLoading: providerLibrary.sshHostsLoading
-  readonly property string sshHostsError: providerLibrary.sshHostsError
+  readonly property bool ready: appServer.ready
+  readonly property bool loading: appServer.loading
+  readonly property bool refreshQueued: appServer.refreshQueued
+  readonly property double lastRefreshMs: appServer.lastRefreshMs
+  readonly property bool remoteConfigLoaded: remotes.configLoaded
+  readonly property var remoteConfig: remotes.remoteConfig
+  readonly property var remoteHosts: supplementalHosts
+  readonly property string remoteQueryHostId: remotes.queryHostId
+  readonly property string remoteActionHostId: actionHostId
+  readonly property string remoteAddError: remotes.addError
+  readonly property string remoteTestHostId: remotes.managementTestHostId
+  readonly property bool remoteTestRunning: remotes.managementTestRunning
+  readonly property bool remoteTestSucceeded: remotes.managementTestSucceeded
+  readonly property string remoteTestMessage: remotes.managementTestMessage
+  readonly property string remoteClaudeLoginHostId: remotes.loginHostId
+  readonly property bool remoteClaudeLoginRunning: remotes.loginRunning
+  readonly property var sshHosts: remotes.sshHosts
+  readonly property bool sshHostsLoading: remotes.sshHostsLoading
+  readonly property string sshHostsError: remotes.sshHostsError
   readonly property bool snapshotLoaded: snapshots.loaded
   readonly property bool snapshotRestored: snapshots.restored
   readonly property bool snapshotHydrating: snapshots.hydrating
   readonly property string snapshot: snapshots.encoded
 
   function clearRemoteError() {
-    providerLibrary.remoteAddError = ""
+    remotes.addError = ""
   }
 
   function providerSnapshotObject() {
@@ -49,8 +56,8 @@ QtObject {
         unreadThreads: store.unreadThreads,
         activeThreadId: store.activeThreadId
       },
-      remoteHosts: providerLibrary.configuredRemoteHosts,
-      localProviders: providerLibrary.snapshotLocalProviders()
+      remoteHosts: configuredRemoteHosts,
+      localProviders: localProviders.snapshotHosts()
     }
   }
   
@@ -79,102 +86,102 @@ QtObject {
     store.threadStatuses = codex.threadStatuses
     store.unreadThreads = codex.unreadThreads
     store.activeThreadId = codex.activeThreadId
-    providerLibrary.restoreRemoteHosts(snapshot.remoteHosts)
-    providerLibrary.restoreLocalProviders(snapshot.localProviders)
+    remotes.restoreSnapshots(snapshot.remoteHosts)
+    localProviders.restoreSnapshots(snapshot.localProviders)
   }
   
   function resetBackendState() {
     if (store.threadLaunchPhase === "launching")
       store.mutations.failThreadLaunch(store.threadLaunchRequestId, "The provider stopped during thread launch")
-    providerLibrary.reset()
+    appServer.reset()
   }
   
   function startAppServer() {
-    providerLibrary.start()
+    appServer.start()
   }
   
   function remoteHostById(hostId) {
-    return providerLibrary.hostById(hostId)
+    return routing.hostById(hostId)
   }
   
   function remotePathForThread(host, thread) {
-    return providerLibrary.pathForThread(host ? host.id : "", thread)
+    return routing.pathForThread(host ? host.id : "", thread)
   }
   
   function remoteThreadStatus(thread) {
     var provider = localAgentProviderForThread(thread)
     var hostId = provider ? provider.hostId : ""
-    return providerLibrary.threadStatus(hostId, thread)
+    return routing.threadStatus(hostId, thread)
   }
   
   function refreshRemotes(hostId) {
-    providerLibrary.refreshSupplementalHosts(hostId)
+    routing.refreshSupplementalHosts(hostId)
   }
   
   function localAgentProvider(hostId) {
-    return providerLibrary.localProviderForHost(hostId)
+    return routing.localProviderForHost(hostId)
   }
   
   function localAgentProviderForThread(thread) {
-    return providerLibrary.localProviderForThread(thread)
+    return routing.localProviderForThread(thread)
   }
   
   function addRemote(label, type, address, home, tokenFile, providerType) {
-    return providerLibrary.addRemote(label, type, address, home, tokenFile, providerType)
+    return remotes.add(label, type, address, home, tokenFile, providerType)
   }
   
   function updateRemote(hostId, label, type, address, home, tokenFile, providerType) {
-    return providerLibrary.updateRemote(
+    return remotes.updateRemote(
       hostId, label, type, address, home, tokenFile, providerType)
   }
   
   function removeRemote(hostId) {
-    return providerLibrary.removeRemote(hostId)
+    return remotes.removeRemote(hostId)
   }
   
   function testRemote(hostId) {
-    return providerLibrary.testRemote(hostId)
+    return remotes.testRemote(hostId)
   }
   
   function loginRemoteClaude(hostId) {
-    return providerLibrary.loginRemoteClaude(hostId)
+    return remotes.loginClaude(hostId)
   }
   
   function sshHostEnabled(alias, providerType) {
-    return providerLibrary.sshHostEnabled(alias, providerType)
+    return remotes.sshHostEnabled(alias, providerType)
   }
   
   function remoteIdForSshHost(alias, providerType) {
-    return providerLibrary.remoteIdForSshHost(alias, providerType)
+    return remotes.remoteIdForSshHost(alias, providerType)
   }
   
   function refreshSshHosts() {
-    providerLibrary.refreshSshHosts()
+    remotes.refreshSshHosts()
   }
   
   function archiveRemoteThread(hostId, thread) {
-    return !!providerLibrary.archiveThread(hostId, thread)
+    return !!routing.archiveThread(hostId, thread)
   }
   
   function renameRemoteThread(hostId, thread, name) {
     var normalized = String(name || "").replace(/\s+/g, " ").trim().slice(0, 200)
     if (normalized === "") return false
-    var started = providerLibrary.renameThread(hostId, thread, normalized)
+    var started = routing.renameThread(hostId, thread, normalized)
     if (!started && store.errorText === "")
       store.errorText = "Could not start the thread rename"
     return !!started
   }
   
   function toggleRemoteThreadPin(hostId, thread) {
-    return !!providerLibrary.toggleThreadPin(hostId, thread)
+    return !!routing.toggleThreadPin(hostId, thread)
   }
   
   function openRemoteThread(hostId, thread, path, source) {
-    return !!providerLibrary.openThread(hostId, thread, path, source)
+    return !!routing.openThread(hostId, thread, path, source)
   }
   
   function newRemoteThread(hostId, path) {
-    providerLibrary.createThread(hostId, path)
+    routing.createThread(hostId, path)
   }
   
   function openTerminal(mode, endpoint, path) {
@@ -191,7 +198,7 @@ QtObject {
   }
   
   function refreshThreads() {
-    providerLibrary.refreshThreads()
+    appServer.refreshThreads()
   }
   
   function threadIsPinned(thread) {
@@ -203,19 +210,19 @@ QtObject {
   }
   
   function refreshProjects() {
-    providerLibrary.refreshProjects()
+    appServer.refreshProjects()
   }
   
   function refreshRateLimits() {
-    providerLibrary.refreshRateLimits()
+    appServer.refreshRateLimits()
   }
   
   function refreshModels() {
-    providerLibrary.refreshModels()
+    appServer.refreshModels()
   }
   
   function refreshConfig() {
-    providerLibrary.refreshConfig()
+    appServer.refreshConfig()
   }
   
   function setSelectedModel(value) {
@@ -227,82 +234,82 @@ QtObject {
   }
   
   function selectedModelInfo() {
-    return providerLibrary.modelState("codex").model
+    return modelSettings.modelState("codex").model
   }
   
   function effectiveModel() {
-    return providerLibrary.effectiveModel("codex")
+    return modelSettings.effectiveModel("codex")
   }
   
   function effectiveEffort() {
-    return providerLibrary.effectiveEffort("codex")
+    return modelSettings.effectiveEffort("codex")
   }
   
   function selectedModelEfforts(modelId) {
-    return providerLibrary.modelEfforts("codex", modelId)
+    return modelSettings.modelEfforts("codex", modelId)
   }
   
   function providerHost(providerType) {
-    return providerLibrary.providerHost(providerType)
+    return modelSettings.providerHost(providerType)
   }
   
   function modelsForProvider(providerType) {
-    return providerLibrary.models(providerType)
+    return modelSettings.models(providerType)
   }
   
   function agentsForProvider(providerType) {
-    return providerLibrary.agents(providerType)
+    return modelSettings.agents(providerType)
   }
   
   function selectedModelForProvider(providerType) {
-    return providerLibrary.selectedModel(providerType)
+    return modelSettings.selectedModel(providerType)
   }
   
   function selectedEffortForProvider(providerType) {
-    return providerLibrary.selectedEffort(providerType)
+    return modelSettings.selectedEffort(providerType)
   }
   
   function selectedAgentForProvider(providerType) {
-    return providerLibrary.selectedAgent(providerType)
+    return modelSettings.selectedAgent(providerType)
   }
   
   function defaultModelForProvider(providerType) {
-    return providerLibrary.defaultModel(providerType)
+    return modelSettings.defaultModel(providerType)
   }
   
   function defaultEffortForProvider(providerType, modelId) {
-    return providerLibrary.defaultEffort(providerType, modelId)
+    return modelSettings.defaultEffort(providerType, modelId)
   }
   
   function defaultAgentForProvider(providerType) {
-    return providerLibrary.defaultAgent(providerType)
+    return modelSettings.defaultAgent(providerType)
   }
   
   function effectiveModelForProvider(providerType) {
-    return providerLibrary.effectiveModel(providerType)
+    return modelSettings.effectiveModel(providerType)
   }
   
   function effectiveEffortForProvider(providerType) {
-    return providerLibrary.effectiveEffort(providerType)
+    return modelSettings.effectiveEffort(providerType)
   }
   
   function effectiveAgentForProvider(providerType) {
-    return providerLibrary.effectiveAgent(providerType)
+    return modelSettings.effectiveAgent(providerType)
   }
   
   function modelEffortsForProvider(providerType, modelId) {
-    return providerLibrary.modelEfforts(providerType, modelId)
+    return modelSettings.modelEfforts(providerType, modelId)
   }
   
   function setModelForProvider(providerType, value) {
-    providerLibrary.setModel(providerType, value)
+    modelSettings.setModel(providerType, value)
   }
   
   function setEffortForProvider(providerType, value) {
-    providerLibrary.setEffort(providerType, value)
+    modelSettings.setEffort(providerType, value)
   }
   
   function setAgentForProvider(providerType, value) {
-    providerLibrary.setAgent(providerType, value)
+    modelSettings.setAgent(providerType, value)
   }
 }

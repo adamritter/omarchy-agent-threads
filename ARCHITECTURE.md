@@ -49,7 +49,10 @@ The intended boundaries are:
 - `logic/` owns pure transformations and state transitions. It has no runtime
   dependencies and exposes values rather than mutable global state.
 - `providers/` owns provider-specific protocol, process, and transport details.
-  A provider's internal helpers remain private behind one provider API.
+  `AgentProviderLibrary.qml` composes the provider graph and exposes focused
+  internal ports for routing, models, App Server operations, local providers,
+  remotes, and local Codex lifecycle. `ThreadStore` APIs declare only the ports
+  they consume; UI code never receives those implementation objects.
 - `services/ThreadStore.qml` owns application state and exposes grouped,
   UI-facing domain APIs. UI code must not depend on provider implementation
   objects through aliases or forwarding chains.
