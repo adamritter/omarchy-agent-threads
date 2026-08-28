@@ -10,7 +10,7 @@ Item {
   property string conversationTitle: "New conversation"
   property string conversationDetail: ""
   property bool pageReady: false
-  readonly property url transcriptUrl: Qt.resolvedUrl("web/transcript.html")
+  readonly property url transcriptUrl: Qt.resolvedUrl("../web/transcript.html")
 
   function scheduleSync() {
     syncTimer.restart()

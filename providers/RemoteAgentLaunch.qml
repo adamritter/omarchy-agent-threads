@@ -24,10 +24,7 @@ Item {
         threadId, "cached-remote-" + providerType + "-window")
       return true
     }
-    provider.openIsNew = false
-    provider.openHostId = String(hostId || "")
-    provider.openRequestId = requestId
-    provider.openThreadId = threadId
+    launches.state.trackOpen(requestId, threadId, hostId)
     processes.runOpen(ActionLogic.remoteAgentOpenCommand(
       provider.openHelperPath,
       provider.configPath,
@@ -55,24 +52,14 @@ Item {
       provider.controller.launchError = "The remote home is unknown; set it in the remote settings"
       return
     }
-    provider.openIsNew = true
-    provider.openHostId = String(hostId || "")
     provider.controller.launchingProjectPath = remotePath
-    provider.pendingHostId = String(hostId || "")
-    provider.pendingPath = remotePath
-    provider.pendingWindowAddress = ""
-    provider.pendingAttempts = 24
-    provider.pendingKnownIds = ({})
-    for (var i = 0; i < host.threads.length; i++) {
-      if (host.threads[i] && host.threads[i].id)
-        provider.pendingKnownIds[String(host.threads[i].id)] = true
-    }
+    launches.state.beginPending(host.threads, remotePath, hostId, 24)
     provider.controller.launchError = ""
     processes.runOpen(ActionLogic.remoteAgentOpenCommand(
       provider.openHelperPath,
       provider.configPath,
-      provider.pendingHostId,
-      provider.pendingPath,
+      launches.state.pendingHostId,
+      launches.state.pendingPath,
       "", // new session
       provider.controller.settings.selectedModelForProvider(providerType),
       provider.controller.settings.selectedEffortForProvider(providerType),
@@ -81,32 +68,23 @@ Item {
   }
   
   function clearPendingNew() {
-    provider.openIsNew = false
-    provider.openHostId = ""
-    provider.pendingHostId = ""
-    provider.pendingPath = ""
-    provider.pendingKnownIds = ({})
-    provider.pendingWindowAddress = ""
-    provider.pendingAttempts = 0
+    launches.state.clearPending()
     provider.controller.launchingProjectPath = ""
     provider.stopNewResolveTimer()
   }
   
   function resolvePendingNew(hostId) {
-    if (provider.pendingHostId === "" || provider.pendingHostId !== String(hostId || "")
-        || provider.pendingWindowAddress === "") return
-    var host = provider.hostById(provider.pendingHostId)
+    if (!launches.state.pending
+        || launches.state.pendingHostId !== String(hostId || "")
+        || launches.state.pendingWindowAddress === "") return
+    var host = provider.hostById(launches.state.pendingHostId)
     if (!host) return
-    for (var i = 0; i < host.threads.length; i++) {
-      var thread = host.threads[i]
-      var id = String(thread && thread.id || "")
-      if (id === "" || provider.pendingKnownIds[id] === true) continue
-      if (provider.pathForThread(host, thread) !== provider.pendingPath
-          && String(thread.cwd || "") !== provider.pendingPath) continue
-      launches.map(id, provider.pendingWindowAddress, provider.pendingHostId, "")
-      provider.controller.mutations.observeActiveThread(id, "new-remote-thread")
-      clearPendingNew()
-      return
-    }
+    var id = launches.state.discoverPendingThread(host.threads,
+      function(thread) { return provider.pathForThread(host, thread) })
+    if (id === "") return
+    launches.map(id, launches.state.pendingWindowAddress,
+      launches.state.pendingHostId, launches.state.pendingServerUrl)
+    provider.controller.mutations.observeActiveThread(id, "new-remote-thread")
+    clearPendingNew()
   }
 }

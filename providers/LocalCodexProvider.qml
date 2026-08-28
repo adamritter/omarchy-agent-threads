@@ -9,13 +9,6 @@ Item {
   required property var controller
 
   property bool activeThreadRefreshQueued: false
-  property var newThreadKnownIds: ({})
-  property string pendingNewThreadPath: ""
-  property string pendingNewThreadId: ""
-  property string pendingNewWindowAddress: ""
-  property int pendingNewThreadAttempts: 0
-  property int openRequestId: 0
-  property string openThreadId: ""
 
   readonly property string terminalHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-terminal-open").toString().replace(/^file:\/\//, "")
@@ -41,8 +34,7 @@ Item {
         threadId, "cached-local-codex-window")
       return true
     }
-    openRequestId = requestId
-    openThreadId = threadId
+    launchCoordinator.state.trackOpen(requestId, threadId, "")
     openProcess.command = guarded(ActionLogic.localCodexTerminalCommand(
       terminalHelperPath,
       threadId,
@@ -60,15 +52,7 @@ Item {
     if (path === "" || newProjectProcess.running) return
     controller.launchingProjectPath = path
     controller.launchError = ""
-    newThreadKnownIds = ({})
-    for (var i = 0; i < controller.threads.length; i++) {
-      if (controller.threads[i] && controller.threads[i].id)
-        newThreadKnownIds[String(controller.threads[i].id)] = true
-    }
-    pendingNewThreadPath = path
-    pendingNewThreadId = ""
-    pendingNewWindowAddress = ""
-    pendingNewThreadAttempts = 20
+    launchCoordinator.state.beginPending(controller.threads, path, "", 20)
     newProjectProcess.command = guarded(ActionLogic.localCodexTerminalCommand(
       terminalHelperPath, "", path,
       controller.settings.effectiveModel(), controller.settings.effectiveEffort(),
@@ -77,31 +61,22 @@ Item {
   }
 
   function clearPendingNew() {
-    pendingNewThreadPath = ""
-    pendingNewThreadId = ""
-    pendingNewWindowAddress = ""
-    pendingNewThreadAttempts = 0
-    newThreadKnownIds = ({})
+    launchCoordinator.state.clearPending()
     controller.launchingProjectPath = ""
     newThreadResolveTimer.stop()
   }
 
   function resolvePendingNew() {
-    if (pendingNewThreadPath === "") return
-    if (pendingNewThreadId === "") {
-      for (var i = 0; i < controller.threads.length; i++) {
-        var thread = controller.threads[i]
-        var id = String(thread && thread.id || "")
-        if (id !== "" && newThreadKnownIds[id] !== true
-            && String(thread.cwd || "") === pendingNewThreadPath) {
-          pendingNewThreadId = id
-          controller.mutations.observeActiveThread(id, "new-local-codex-thread")
-          break
-        }
-      }
+    if (!launchCoordinator.state.pending) return
+    var previousId = launchCoordinator.state.pendingThreadId
+    var threadId = launchCoordinator.state.discoverPendingThread(controller.threads)
+    if (threadId !== "" && previousId === "") {
+      controller.mutations.observeActiveThread(threadId, "new-local-codex-thread")
     }
-    if (pendingNewThreadId === "" || pendingNewWindowAddress === "") return
-    launchCoordinator.map(pendingNewThreadId, pendingNewWindowAddress, "", "")
+    if (threadId === "" || launchCoordinator.state.pendingWindowAddress === "") return
+    launchCoordinator.map(
+      threadId, launchCoordinator.state.pendingWindowAddress, "",
+      launchCoordinator.state.pendingServerUrl)
     clearPendingNew()
   }
 
@@ -118,10 +93,9 @@ Item {
     id: openProcess
     running: false
     onExited: function(exitCode) {
-      var requestId = root.openRequestId
-      var threadId = root.openThreadId
-      root.openRequestId = 0
-      root.openThreadId = ""
+      var requestId = launchCoordinator.state.openRequestId
+      var threadId = launchCoordinator.state.openThreadId
+      launchCoordinator.state.clearOpen()
       if (exitCode !== 0) controller.mutations.failThreadLaunch(
         requestId, openStderr.text.trim() || "Could not open the Codex thread")
       else {
@@ -158,7 +132,8 @@ Item {
         root.clearPendingNew()
         return
       }
-      root.pendingNewWindowAddress = String(newProjectStdout.text || "").trim()
+      launchCoordinator.state.recordPendingOutput(
+        String(newProjectStdout.text || "").trim(), "", "")
       controller.threadActions.scheduleEventRefresh()
       newThreadResolveTimer.restart()
       root.resolvePendingNew()
@@ -177,11 +152,11 @@ Item {
     interval: 500
     repeat: true
     onTriggered: {
-      root.pendingNewThreadAttempts--
+      launchCoordinator.state.tickPending()
       controller.providers.refreshThreads()
       root.resolvePendingNew()
-      if (root.pendingNewThreadPath === "") stop()
-      else if (root.pendingNewThreadAttempts <= 0) root.clearPendingNew()
+      if (!launchCoordinator.state.pending) stop()
+      else if (launchCoordinator.state.pendingAttempts <= 0) root.clearPendingNew()
     }
   }
 

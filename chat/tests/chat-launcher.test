@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 test_root="$(mktemp -d -t agent-chat-launcher-XXXXXX)"
 trap 'rm -rf -- "$test_root"' EXIT
 mkdir -p -- "$test_root/bin"

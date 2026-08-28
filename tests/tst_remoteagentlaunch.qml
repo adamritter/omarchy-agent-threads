@@ -52,15 +52,6 @@ TestCase {
     readonly property var controller: controller
     property string openHelperPath: "/test/open"
     property string configPath: "/test/remotes.json"
-    property bool openIsNew: false
-    property string openHostId: ""
-    property int openRequestId: 0
-    property string openThreadId: ""
-    property string pendingHostId: ""
-    property string pendingPath: ""
-    property string pendingWindowAddress: ""
-    property int pendingAttempts: 0
-    property var pendingKnownIds: ({})
     function hostById(hostId) {
       return String(hostId || "") === "remote-a" ? {
         id: "remote-a", available: true, home: "/srv", threads: []
@@ -82,7 +73,26 @@ TestCase {
   }
 
   QtObject {
+    id: launchState
+    property int openRequestId: 0
+    property string openThreadId: ""
+    property string openHostId: ""
+    property string pendingHostId: ""
+    property string pendingPath: ""
+    function trackOpen(requestId, threadId, hostId) {
+      openRequestId = requestId
+      openThreadId = threadId
+      openHostId = hostId
+    }
+    function beginPending(threads, path, hostId, attempts) {
+      pendingPath = path
+      pendingHostId = hostId
+    }
+  }
+
+  QtObject {
     id: launches
+    readonly property var state: launchState
     function focusCachedThread(threadId, hostId) {
       testCase.focusCount++
       return testCase.cachedFocusAvailable
@@ -108,8 +118,9 @@ TestCase {
     observedThreadId = ""
     command = []
     controller.launchError = ""
-    provider.openRequestId = 0
-    provider.openThreadId = ""
+    launchState.openRequestId = 0
+    launchState.openThreadId = ""
+    launchState.openHostId = ""
   }
 
   function test_verifiedCachedWindowBypassesProcessDiscovery() {
@@ -124,8 +135,8 @@ TestCase {
     compare(observedCount, 1)
     compare(observedThreadId, "thread-beta")
     compare(openCount, 0)
-    compare(provider.openRequestId, 0)
-    compare(provider.openThreadId, "")
+    compare(launchState.openRequestId, 0)
+    compare(launchState.openThreadId, "")
   }
 
   function test_staleCacheFallsBackToVerifiedProcessDiscovery() {
@@ -138,8 +149,9 @@ TestCase {
     compare(beginCount, 1)
     compare(observedCount, 0)
     compare(openCount, 1)
-    compare(provider.openRequestId, 73)
-    compare(provider.openThreadId, "thread-beta")
+    compare(launchState.openRequestId, 73)
+    compare(launchState.openThreadId, "thread-beta")
+    compare(launchState.openHostId, "remote-a")
     compare(command[4], "remote-a")
     compare(command[6], "/srv/project")
     compare(command[8], "thread-beta")

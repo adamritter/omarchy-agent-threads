@@ -17,16 +17,8 @@ Item {
   property string actionHostId: ""
   property string actionKind: ""
   property bool actionPinValue: false
-  property bool openIsNew: false
-  property string pendingPath: ""
-  property var pendingKnownIds: ({})
-  property string pendingWindowAddress: ""
-  property string pendingServerUrl: ""
-  property int pendingAttempts: 0
   property int serverRestartAttempts: 0
   property string lastSnapshotSignature: ""
-  property int openRequestId: 0
-  property string openThreadId: ""
   function helperPath(name) { return Qt.resolvedUrl("../bin/" + name)
     .toString().replace(/^file:\/\//, "") }
   readonly property string queryHelperPath: helperPath("omarchy-agent-provider-query")
@@ -35,6 +27,7 @@ Item {
   readonly property string openCodeAuthFile: controller.stateHome
     + "/omarchy/opencode-server-auth.json"
   ThreadLaunchCoordinator { id: launchCoordinator }
+  readonly property bool openIsNew: launchCoordinator.state.pending
   function pathForThread(thread) { return String(
     thread && thread.cwd || host.home || controller.localHome) }
   function threadStatus(thread) { return State.remoteStatusValue(
@@ -149,9 +142,7 @@ Item {
         id, "cached-local-" + providerType + "-window")
       return true
     }
-    openIsNew = false
-    openRequestId = requestId
-    openThreadId = id
+    launchCoordinator.state.trackOpen(requestId, id, hostId)
     processHost.runOpen([
       openHelperPath,
       providerType,
@@ -167,16 +158,7 @@ Item {
   function newThread(directory) {
     if (processHost.openRunning) return
     var target = String(directory || host.home || controller.localHome)
-    pendingPath = target
-    pendingWindowAddress = ""
-    pendingServerUrl = ""
-    pendingAttempts = 60
-    pendingKnownIds = ({})
-    var threads = host.threads || []
-    for (var i = 0; i < threads.length; i++) {
-      if (threads[i] && threads[i].id) pendingKnownIds[String(threads[i].id)] = true
-    }
-    openIsNew = true
+    launchCoordinator.state.beginPending(host.threads, target, hostId, 60)
     controller.launchingProjectPath = target
     controller.launchError = ""
     processHost.runOpen([
@@ -191,28 +173,20 @@ Item {
     ])
   }
   function clearPendingNew() {
-    openIsNew = false
-    pendingPath = ""
-    pendingKnownIds = ({})
-    pendingWindowAddress = ""
-    pendingServerUrl = ""
-    pendingAttempts = 0
+    launchCoordinator.state.clearPending()
     controller.launchingProjectPath = ""
     newResolveTimer.stop()
   }
   function resolvePendingNew() {
-    if (pendingPath === "" || pendingWindowAddress === "") return
-    var threads = host.threads || []
-    for (var i = 0; i < threads.length; i++) {
-      var thread = threads[i]
-      var id = String(thread && thread.id || "")
-      if (id === "" || pendingKnownIds[id] === true) continue
-      if (pathForThread(thread) !== pendingPath) continue
-      launchCoordinator.map(id, pendingWindowAddress, hostId, pendingServerUrl)
-      controller.mutations.observeActiveThread(id, "new-local-provider-thread")
-      clearPendingNew()
-      return
-    }
+    if (!launchCoordinator.state.pending
+        || launchCoordinator.state.pendingWindowAddress === "") return
+    var id = launchCoordinator.state.discoverPendingThread(
+      host.threads, function(thread) { return root.pathForThread(thread) })
+    if (id === "") return
+    launchCoordinator.map(id, launchCoordinator.state.pendingWindowAddress,
+      hostId, launchCoordinator.state.pendingServerUrl)
+    controller.mutations.observeActiveThread(id, "new-local-provider-thread")
+    clearPendingNew()
   }
   Connections {
     target: root.controller
@@ -241,11 +215,11 @@ Item {
     interval: 500
     repeat: true
     onTriggered: {
-      root.pendingAttempts--
+      launchCoordinator.state.tickPending()
       root.refresh()
       root.resolvePendingNew()
-      if (root.pendingPath === "") stop()
-      else if (root.pendingAttempts <= 0) {
+      if (!launchCoordinator.state.pending) stop()
+      else if (launchCoordinator.state.pendingAttempts <= 0) {
         root.clearPendingNew()
       }
     }

@@ -18,8 +18,8 @@ provider CLI selected in the sidebar. These are present on a standard Omarchy
 installation. SSH provider hosts also need Node.js and curl. The optional Agent
 Chat window builds a small local compatibility shim on first use and therefore
 needs a C++17 compiler, `pkg-config`, and the Qt 6 WebEngine development
-package. Its web UI uses vendored Marked and MathJax assets under `app/web`;
-their versions and checksums are recorded in `app/web/vendor/README.md`, and
+package. Its web UI uses vendored Marked and MathJax assets under `chat/web`;
+their versions and checksums are recorded in `chat/web/vendor/README.md`, and
 the page does not download scripts at runtime.
 
 ### 1. Install and enable the plugin

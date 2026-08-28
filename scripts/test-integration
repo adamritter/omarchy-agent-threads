@@ -8,7 +8,7 @@ plugin_dir="$(cd -- "${script_dir}/.." && pwd)"
 if (( $# > 0 )); then
   test_files=("$@")
 else
-  test_files=("$plugin_dir"/tests/*.test)
+  test_files=("$plugin_dir"/tests/*.test "$plugin_dir"/chat/tests/*.test)
 fi
 
 for test_file in "${test_files[@]}"; do

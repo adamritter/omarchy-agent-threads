@@ -1,6 +1,6 @@
 import QtQuick
 import Quickshell
-import qs.AgentThreads.providers as Providers
+import qs.AgentThreads.chat.providers as Providers
 
 ShellRoot {
   id: root

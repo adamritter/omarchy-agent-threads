@@ -6,6 +6,7 @@ Item {
   required property var configStore
   required property var registry
   required property var manager
+  required property var launches
 
   function threadIndex(items, threadId) {
     var wanted = String(threadId || "")
@@ -50,7 +51,8 @@ Item {
       return false
     }
     if ((processes.actionRunning && provider.actionHostId === id)
-        || (processes.openRunning && provider.openHostId === id) || provider.pendingHostId === id) {
+        || (processes.openRunning && launches.state.openHostId === id)
+        || launches.state.pendingHostId === id) {
       provider.addError = "Wait for the remote operation to finish"
       return false
     }

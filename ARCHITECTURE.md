@@ -1,12 +1,14 @@
 # Architecture
 
 Agent Threads keeps runtime integration at the edges and deterministic state
-transformations in plain JavaScript modules.
+transformations in plain JavaScript modules. The sidebar and standalone chat
+are separate feature roots.
 
 ## Dependency direction
 
 ```text
 logic/ -> services/ and providers/ -> ui/ -> Panel.qml
+chat/logic -> chat/providers -> chat/ui -> agent-chat.qml
 ```
 
 - `logic/` contains deterministic transformations and must not import
@@ -61,8 +63,10 @@ The intended boundaries are:
   dependencies.
 - `Panel.qml` remains the composition root and direct owner of shell-sensitive
   objects. It coordinates domains but does not become their implementation.
-- `app/` owns the standalone chat frontend and uses the same provider boundary
-  without depending on panel internals.
+- `chat/` is the complete standalone Agent Chat feature boundary. Its `logic/`,
+  `providers/`, `ui/`, `web/`, `bin/`, `native/`, and `tests/` directories do
+  not depend on panel internals. The root `agent-chat.qml` and public
+  `bin/omarchy-agent-chat` command remain stable compatibility entrypoints.
 
 A boundary is useful when it hides implementation details, enforces ownership,
 or provides a meaningful lifecycle or test seam. A file that only renames or
@@ -98,7 +102,7 @@ neither should create a second source of truth.
 | Remote hosts, remote snapshots, or remote actions | `providers/RemoteAgentProvider.qml`, then `RemoteAgentSnapshots.qml`, `RemoteAgentManagement.qml`, or `RemoteAgentProcessHost.qml` | `providers/RemoteConfigStore.qml` owns host configuration; remote adapters normalize provider data; the remote process host owns SSH execution | `tests/remote-codex.test`, `tests/remote-claude.test`, `tests/remote-opencode.test`, `tests/remote-config.test`, `tests/ssh-hosts.test` |
 | Panel window, focus, overlays, help, or shell lifecycle | `Panel.qml`, then the matching `ui/Panel*Controller.qml` or overlay | `Panel.qml` directly owns shell-sensitive objects; controllers coordinate behavior; deterministic decisions belong in the matching `logic/Panel*Logic.js` module | Run `tests/panel-render.test` before and after the change; run the matching panel logic/controller QML test |
 | Preferences, model/effort/agent selection, cached snapshots, or reload-state restoration | `services/ThreadStoreSettingsApi.qml`, `services/SidebarPreferences.qml`, `services/ProviderSnapshotStore.qml`, `ui/PanelReloadController.qml`, `ui/SidebarReloadController.qml` | The settings API owns the UI-facing selection contract and delegates provider catalog resolution to `providers/AgentProviderModels.qml`; focused stores own durable data; `logic/PanelReloadStateLogic.js` defines capture and restore | `tests/tst_agentproviderlogic.qml`, `tests/tst_sidebarpreferences.qml`, `tests/tst_providersnapshotlogic.qml`, `tests/tst_panelreloadstatelogic.qml`, `tests/panel-render.test` |
-| Standalone Agent Chat UI or conversation protocol | `app/ChatWindow.qml`, then the affected `app/Chat*` component | `providers/CodexConversationClient.qml`, `CodexConversationOperations.qml`, and `CodexConversationResponseHandler.qml` own transport; `logic/Conversation*Logic.js` owns deterministic protocol transformations | The matching `tests/tst_chat*.qml` or `tests/tst_codexconversation*.qml` test; `tests/chat-launcher.test`, `tests/chat-options.test`, `tests/web-transcript.test` as applicable |
+| Standalone Agent Chat UI or conversation protocol | `chat/ui/ChatWindow.qml`, then the affected `chat/ui/Chat*` component | `chat/providers/CodexConversationClient.qml`, `CodexConversationOperations.qml`, and `CodexConversationResponseHandler.qml` own transport; `chat/logic/Conversation*Logic.js` owns deterministic protocol transformations | The matching `chat/tests/tst_chat*.qml` or `chat/tests/tst_codexconversation*.qml` test; `chat/tests/chat-launcher.test`, `chat/tests/chat-options.test`, `chat/tests/web-transcript.test` as applicable |
 | Helper scripts, command construction, quoting, or validation | The matching executable under `bin/`, then its provider adapter | The helper owns the external command boundary; QML passes structured inputs and consumes normalized outputs | The matching integration test under `tests/`; `scripts/check-static` |
 
 When a public boundary or ownership path changes, update this map in the same
@@ -167,7 +171,7 @@ The preferred migration order is:
 2. `ThreadStore` and its grouped domain APIs;
 3. panel state and controllers;
 4. sidebar and thread-list presentation;
-5. standalone chat frontend;
+5. standalone `chat/` feature;
 6. a final cross-project deletion, naming, and dependency audit.
 
 Refactoring is complete only when behavior remains covered, each piece of
@@ -177,11 +181,12 @@ components are not sufficient completion criteria on their own.
 
 ## Safe extension points
 
-Add deterministic routing, filtering, sorting, and state transitions to an
-existing or new module under `logic/`, with a Qt Quick unit test. Add process
-or protocol integration under `providers/`, exposed through the stable
-`ThreadStore` façade. Do not move layer-shell windows or overlays behind
-forwarded host properties.
+Add sidebar routing, filtering, sorting, and state transitions to an existing
+or new module under `logic/`, with a Qt Quick unit test. Add sidebar process or
+protocol integration under `providers/`, exposed through the stable
+`ThreadStore` façade. Keep standalone chat logic and protocol integration under
+`chat/logic` and `chat/providers`. Do not move layer-shell windows or overlays
+behind forwarded host properties.
 
 New QML component files require a fresh shell import scan. Use
 `scripts/reload-plugin` first; a complete shell restart is reserved for the
@@ -250,9 +255,10 @@ cover the outcome, including failure:
 
 Tests follow the same dependency boundaries as production code:
 
-- `tests/tst_*.qml` exercises deterministic logic, QML models, controllers,
-  and rendered component behavior. Interaction assertions belong here rather
-  than in source-text searches.
+- `tests/tst_*.qml` exercises sidebar logic, models, and controllers;
+  `chat/tests/tst_*.qml` exercises the standalone chat feature. Rendered
+  interaction assertions belong in these behavioral tests rather than in
+  source-text searches.
 - `scripts/check-static` runs the plugin validator, language parsers and
   linters, plus the explicit maintained-file size limit. It does not infer
   runtime architecture from source-text patterns.

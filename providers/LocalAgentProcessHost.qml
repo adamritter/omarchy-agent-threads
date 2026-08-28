@@ -123,10 +123,9 @@ Item {
     onExited: function(exitCode) {
       if (exitCode !== 0) {
         if (!provider.openIsNew) provider.controller.mutations.failThreadLaunch(
-          provider.openRequestId,
+          launches.state.openRequestId,
           openStderr.text.trim() || "Could not open " + provider.label)
-        provider.openRequestId = 0
-        provider.openThreadId = ""
+        launches.state.clearOpen()
         if (provider.openIsNew) provider.clearPendingNew()
         return
       }
@@ -141,19 +140,18 @@ Item {
             runtimeSessionId, "new-local-provider-thread")
           provider.clearPendingNew()
         } else {
-          provider.pendingWindowAddress = address
-          provider.pendingServerUrl = runtimeServer
+          launches.state.recordPendingOutput(address, runtimeSessionId, runtimeServer)
           provider.restartNewResolveTimer()
         }
       } else {
         launches.map(
-          provider.openThreadId || runtimeSessionId,
+          launches.state.openThreadId || runtimeSessionId,
           address,
           provider.hostId,
           runtimeServer)
-        provider.controller.mutations.confirmThreadLaunch(provider.openRequestId, "")
-        provider.openRequestId = 0
-        provider.openThreadId = ""
+        provider.controller.mutations.confirmThreadLaunch(
+          launches.state.openRequestId, "")
+        launches.state.clearOpen()
       }
       provider.controller.threadActions.refreshActiveThread()
       provider.refresh()

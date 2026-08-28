@@ -1,6 +1,6 @@
 import QtQuick
 import Quickshell
-import "../logic/AgentProviderLogic.js" as AgentProviderLogic
+import "../../logic/AgentProviderLogic.js" as AgentProviderLogic
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions
 import "../logic/CodexConversationLogic.js" as ConversationLogic
 

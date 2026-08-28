@@ -4,7 +4,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 plugin_dir="$(cd -- "${script_dir}/.." && pwd)"
-options_parser="$plugin_dir/bin/omarchy-agent-chat-options"
+options_parser="$plugin_dir/chat/bin/omarchy-agent-chat-options"
 
 for argument in "$@"; do
   if [[ "$argument" == "-h" || "$argument" == "--help" ]]; then
@@ -52,7 +52,7 @@ fi
 
 webengine_shim="${AGENT_CHAT_WEBENGINE_SHIM:-}"
 if [[ -z "$webengine_shim" ]]; then
-  webengine_shim="$($plugin_dir/bin/omarchy-agent-webengine-shim)"
+  webengine_shim="$($plugin_dir/chat/bin/omarchy-agent-webengine-shim)"
 fi
 shim_directory="$(dirname -- "$webengine_shim")"
 if [[ "$webengine_shim" != /* || ! -f "$webengine_shim" || -L "$webengine_shim"

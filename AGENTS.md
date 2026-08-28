@@ -41,9 +41,10 @@
 
 # Testable architecture
 
-- Put deterministic transformations and routing decisions in modules under
-  `logic/`. Keep rendered controls, Quickshell services, process execution, and
-  Wayland integration in their QML adapters.
+- Put sidebar transformations and routing decisions in modules under `logic/`.
+  Keep standalone Agent Chat transformations under `chat/logic/`. Rendered
+  controls, Quickshell services, process execution, and Wayland integration
+  stay in their respective QML adapters.
 - Add or update Qt Quick unit tests for extracted logic and QML models. Manual
   shell inspection supplements these tests; it does not replace them.
 - Prefer adding focused coverage when changing `Panel.qml`,

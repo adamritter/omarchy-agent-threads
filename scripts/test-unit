@@ -16,7 +16,7 @@ if [[ -z "$qml_test_runner" ]]; then
 fi
 
 if (( $# == 0 )); then
-  set -- "$plugin_dir/tests"
+  set -- "$plugin_dir/tests" "$plugin_dir/chat/tests"
 fi
 
 for input in "$@"; do

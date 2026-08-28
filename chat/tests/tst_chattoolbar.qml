@@ -1,5 +1,5 @@
 import QtQuick
-import "../app" as App
+import "../ui" as App
 
 ChatComponentTestBase {
   name: "ChatToolbarAndApproval"

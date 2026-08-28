@@ -2,7 +2,7 @@
 
 import QtQuick
 import Quickshell
-import "app" as AgentChat
+import "chat/ui" as AgentChat
 
 ShellRoot {
   AgentChat.ChatWindow {}

@@ -9,22 +9,26 @@ omarchy plugin validate "$plugin_dir"
 
 while IFS= read -r file; do
   bash -n "$file"
-done < <(find "$plugin_dir/bin" -type f -exec grep -Il '^#!/.*bash' {} \; | sort)
+done < <(find "$plugin_dir/bin" "$plugin_dir/chat/bin" -type f \
+  -exec grep -Il '^#!/.*bash' {} \; | sort)
 
 while IFS= read -r file; do
   node --check "$file"
-done < <(find "$plugin_dir/bin" -maxdepth 1 -type f -exec grep -Il '^#!/usr/bin/env node' {} \; | sort)
+done < <(find "$plugin_dir/bin" "$plugin_dir/chat/bin" -maxdepth 1 -type f \
+  -exec grep -Il '^#!/usr/bin/env node' {} \; | sort)
 
 while IFS= read -r file; do
   qmllint "$file"
 done < <(find "$plugin_dir/services" "$plugin_dir/providers" \
-  "$plugin_dir/ui" "$plugin_dir/app" -type f -name '*.qml' | sort)
+  "$plugin_dir/ui" "$plugin_dir/chat/ui" "$plugin_dir/chat/providers" \
+  -type f -name '*.qml' | sort)
 
 qmllint "$plugin_dir/agent-chat.qml"
 
 while IFS= read -r file; do
   qmllint "$file"
-done < <(find "$plugin_dir/logic" -maxdepth 1 -type f -name '*.js' | sort)
+done < <(find "$plugin_dir/logic" "$plugin_dir/chat/logic" \
+  -maxdepth 1 -type f -name '*.js' | sort)
 
 oversized_sources=""
 while IFS= read -r -d '' file; do
@@ -33,7 +37,7 @@ while IFS= read -r -d '' file; do
     oversized_sources+="$(printf '%s\t%s' "$size" "${file#"$plugin_dir/"}")"$'\n'
   fi
 done < <(find "$plugin_dir/Panel.qml" "$plugin_dir/agent-chat.qml" \
-  "$plugin_dir/app" "$plugin_dir/bin" "$plugin_dir/logic" \
+  "$plugin_dir/bin" "$plugin_dir/chat" "$plugin_dir/logic" \
   "$plugin_dir/providers" "$plugin_dir/services" "$plugin_dir/ui" \
   "$plugin_dir/tests" "$plugin_dir/scripts" -type f \
   ! -path '*/node_modules/*' ! -path '*/vendor/*' \

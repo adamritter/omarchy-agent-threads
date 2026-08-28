@@ -145,16 +145,15 @@ Item {
   
     onExited: function(exitCode) {
       if (exitCode !== 0) {
-        var failedHost = provider.hostById(provider.openHostId)
+        var failedHost = provider.hostById(launches.state.openHostId)
         var message = openStderr.text.trim()
           || "Could not open remote " + provider.providerLabel(failedHost)
         if (!provider.openIsNew)
-          provider.controller.mutations.failThreadLaunch(provider.openRequestId, message)
+          provider.controller.mutations.failThreadLaunch(
+            launches.state.openRequestId, message)
         else provider.controller.launchError = message
-        provider.openRequestId = 0
-        provider.openThreadId = ""
+        launches.state.clearOpen()
         if (provider.openIsNew) provider.clearPendingNew()
-        else provider.openHostId = ""
         return
       }
       var result = launches.parseOutput(openStdout.text)
@@ -162,24 +161,25 @@ Item {
       var runtimeSessionId = result.sessionId
       if (provider.openIsNew) {
         if (runtimeSessionId !== "" && address !== "") {
-          launches.map(runtimeSessionId, address, provider.pendingHostId, "")
+          launches.map(runtimeSessionId, address,
+            launches.state.pendingHostId, "")
           provider.controller.mutations.observeActiveThread(runtimeSessionId, "new-remote-thread")
           provider.clearPendingNew()
         } else {
-          provider.pendingWindowAddress = address
-          provider.refresh(provider.pendingHostId)
+          launches.state.recordPendingOutput(
+            address, runtimeSessionId, result.serverUrl)
+          provider.refresh(launches.state.pendingHostId)
           provider.restartNewResolveTimer()
         }
       } else {
         launches.map(
-          provider.openThreadId || runtimeSessionId,
+          launches.state.openThreadId || runtimeSessionId,
           address,
-          provider.openHostId,
+          launches.state.openHostId,
           result.serverUrl)
-        provider.controller.mutations.confirmThreadLaunch(provider.openRequestId, "")
-        provider.openRequestId = 0
-        provider.openThreadId = ""
-        provider.openHostId = ""
+        provider.controller.mutations.confirmThreadLaunch(
+          launches.state.openRequestId, "")
+        launches.state.clearOpen()
       }
       provider.controller.threadActions.refreshActiveThread()
     }

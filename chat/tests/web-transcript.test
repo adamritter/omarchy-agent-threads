@@ -2,23 +2,23 @@
 
 set -euo pipefail
 
-plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 test_root="$(mktemp -d -t agent-chat-web-transcript-XXXXXX)"
 trap 'rm -rf -- "$test_root"' EXIT
 
-node --check "$plugin_root/app/web/transcript.js"
-node --check "$plugin_root/app/web/transcript-markdown.js"
-node --check "$plugin_root/app/web/transcript-diff.js"
-test -s "$plugin_root/app/web/node_modules/mathjax/es5/output/chtml/fonts/woff-v2/MathJax_Main-Regular.woff"
-test -s "$plugin_root/app/web/vendor/marked/LICENSE.md"
-test "$(sha256sum "$plugin_root/app/web/vendor/marked/marked.umd.js" | cut -d' ' -f1)" \
+node --check "$plugin_root/chat/web/transcript.js"
+node --check "$plugin_root/chat/web/transcript-markdown.js"
+node --check "$plugin_root/chat/web/transcript-diff.js"
+test -s "$plugin_root/chat/web/node_modules/mathjax/es5/output/chtml/fonts/woff-v2/MathJax_Main-Regular.woff"
+test -s "$plugin_root/chat/web/vendor/marked/LICENSE.md"
+test "$(sha256sum "$plugin_root/chat/web/vendor/marked/marked.umd.js" | cut -d' ' -f1)" \
   = "0db7abc826b5ac76f6ed11951ae34074ba50438ce6ea8d52889203779e5cbbad"
-test "$(sha256sum "$plugin_root/app/web/node_modules/mathjax/es5/tex-chtml.js" | cut -d' ' -f1)" \
+test "$(sha256sum "$plugin_root/chat/web/node_modules/mathjax/es5/tex-chtml.js" | cut -d' ' -f1)" \
   = "0a6ded5abbce13331658dd239f34382abd06492c74b71b61e8caa8112ec55fa5"
 
 if command -v chromium >/dev/null; then
-  cp -a "$plugin_root/app/web/." "$test_root/web/"
-  cp "$plugin_root/tests/fixtures/web-security-test.js" \
+  cp -a "$plugin_root/chat/web/." "$test_root/web/"
+  cp "$plugin_root/chat/tests/fixtures/web-security-test.js" \
     "$test_root/web/security-test.js"
   sed -i '/<script defer src="transcript.js"><\/script>/i\\  <script defer src="security-test.js"></script>' \
     "$test_root/web/transcript.html"
@@ -31,7 +31,7 @@ if command -v chromium >/dev/null; then
   grep -F -- 'data-behavior-status="pass"' "$test_root/transcript-dom" >/dev/null
 fi
 
-shim="$(XDG_CACHE_HOME="$test_root/cache" "$plugin_root/bin/omarchy-agent-webengine-shim")"
+shim="$(XDG_CACHE_HOME="$test_root/cache" "$plugin_root/chat/bin/omarchy-agent-webengine-shim")"
 test -s "$shim"
 file "$shim" | grep -F -- 'shared object' >/dev/null
 if ldd "$shim" | grep -F -- 'Qt6WebEngine' >/dev/null; then

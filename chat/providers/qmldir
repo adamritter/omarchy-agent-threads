@@ -1,0 +1,3 @@
+CodexConversationClient 1.0 CodexConversationClient.qml
+internal CodexConversationOperations CodexConversationOperations.qml
+internal CodexConversationResponseHandler CodexConversationResponseHandler.qml

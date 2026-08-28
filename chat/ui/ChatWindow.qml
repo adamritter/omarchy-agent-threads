@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import "../providers" as Providers
-import "../logic/ActionLogic.js" as ActionLogic
+import "../../logic/ActionLogic.js" as ActionLogic
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions
 
 FloatingWindow {

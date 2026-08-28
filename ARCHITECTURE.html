@@ -1258,8 +1258,8 @@
       </div>
 
       <div class="verification-track" aria-label="Verification sequence">
-        <article class="verify-step" style="--verify-color:var(--violet)"><span class="verify-dot"></span><h3>Pure behavior</h3><p>Logic, models, controllers, and rendered component contracts.</p><code class="verify-command">./scripts/test-unit tests/tst_*.qml</code></article>
-        <article class="verify-step" style="--verify-color:var(--amber)"><span class="verify-dot"></span><h3>Runtime edges</h3><p>Helpers, providers, SSH, IPC, protocols, and real process boundaries.</p><code class="verify-command">./scripts/test-integration tests/*.test</code></article>
+        <article class="verify-step" style="--verify-color:var(--violet)"><span class="verify-dot"></span><h3>Pure behavior</h3><p>Logic, models, controllers, and rendered component contracts.</p><code class="verify-command">./scripts/test-unit</code></article>
+        <article class="verify-step" style="--verify-color:var(--amber)"><span class="verify-dot"></span><h3>Runtime edges</h3><p>Helpers, providers, SSH, IPC, protocols, and real process boundaries.</p><code class="verify-command">./scripts/test-integration</code></article>
         <article class="verify-step" style="--verify-color:var(--blue)"><span class="verify-dot"></span><h3>Static contract</h3><p>Plugin validation, parsers, QML lint, and maintained-file limits.</p><code class="verify-command">./scripts/check-static</code></article>
         <article class="verify-step" style="--verify-color:var(--green)"><span class="verify-dot"></span><h3>Handoff proof</h3><p>Run every static, integration, and Qt Quick unit check on the host.</p><code class="verify-command">./scripts/test</code></article>
       </div>
@@ -1281,7 +1281,7 @@
       <div class="rules-grid">
         <article class="rule-card" style="--rule-color:var(--blue)"><h3>Trace inward once</h3><p>Start at the visible behavior, cross one domain API, and stop at one owner.</p></article>
         <article class="rule-card" style="--rule-color:var(--amber)"><h3>Open one provider chain</h3><p>Use the common library only for shared contracts; otherwise load only the selected provider.</p></article>
-        <article class="rule-card" style="--rule-color:var(--violet)"><h3>Extract the decision</h3><p>Put deterministic branching in <code>logic/</code> before adding it to a QML adapter.</p></article>
+        <article class="rule-card" style="--rule-color:var(--violet)"><h3>Extract the decision</h3><p>Put deterministic branching in the owning feature's <code>logic/</code> directory before adding it to a QML adapter.</p></article>
         <article class="rule-card" style="--rule-color:var(--green)"><h3>Keep one truth</h3><p>Do not duplicate derived values as mutable state to shorten a binding chain.</p></article>
         <article class="rule-card" style="--rule-color:var(--rose)"><h3>Delete the bypass</h3><p>Redirect callers and remove obsolete aliases, routes, and forwarding-only components.</p></article>
         <article class="rule-card" style="--rule-color:var(--cyan)"><h3>Update the map</h3><p>Change this field guide and <code>ARCHITECTURE.md</code> with every public boundary change.</p></article>
@@ -1316,7 +1316,7 @@
         chat: {
           title: "Standalone Agent Chat",
           copy: "Owns the standalone conversation frontend and reuses the provider boundary without importing panel internals.",
-          paths: ["agent-chat.qml", "app/ChatWindow.qml", "app/ChatTranscriptPane.qml"]
+          paths: ["agent-chat.qml", "chat/ui/ChatWindow.qml", "chat/ui/ChatTranscriptPane.qml"]
         },
         ui: {
           title: "UI components and controllers",
@@ -1326,7 +1326,7 @@
         "chat-ui": {
           title: "Conversation components",
           copy: "Composer, toolbar, transcript, and approval controls translate interaction into conversation operations while protocol transformations remain in pure logic.",
-          paths: ["app/ChatComposer.qml", "app/ChatToolbar.qml", "app/ChatApprovalOverlay.qml"]
+          paths: ["chat/ui/ChatComposer.qml", "chat/ui/ChatComposerToolbar.qml", "chat/ui/ChatApprovalOverlay.qml"]
         },
         store: {
           title: "ThreadStore domain APIs",
@@ -1575,7 +1575,7 @@
         },
         "chat-window": {
           title: "Agent Chat window",
-          file: "app/ChatWindow.qml",
+          file: "chat/ui/ChatWindow.qml",
           visibility: "standalone frontend API",
           color: "cyan",
           consumers: "Agent Chat launcher and chat controls",
@@ -1962,7 +1962,7 @@
         },
         "conversation-client": {
           title: "Conversation client",
-          file: "providers/CodexConversationClient.qml",
+          file: "chat/providers/CodexConversationClient.qml",
           visibility: "standalone conversation API",
           color: "cyan",
           consumers: "ChatWindow, composer, toolbar, transcript and approval overlay",
@@ -2143,9 +2143,9 @@
           reload: "Designed to survive in-process graph reload."
         },
         chat: {
-          steps: [["entry", "Standalone window", "app/ChatWindow.qml"], ["component", "Conversation UI", "app/Chat* components"], ["provider", "Transport", "providers/CodexConversationClient.qml"], ["logic", "Protocol values", "logic/Conversation*Logic.js"]],
+          steps: [["entry", "Standalone window", "chat/ui/ChatWindow.qml"], ["component", "Conversation UI", "chat/ui/Chat* components"], ["provider", "Transport", "chat/providers/CodexConversationClient.qml"], ["logic", "Protocol values", "chat/logic/Conversation*Logic.js"]],
           rule: "The standalone frontend uses conversation provider ports and never depends on Panel internals.",
-          tests: "tst_chat*.qml · tst_codexconversation*.qml · chat-launcher.test · web-transcript.test",
+          tests: "chat/tests/tst_chat*.qml · chat/tests/tst_codexconversation*.qml · chat/tests/chat-launcher.test · chat/tests/web-transcript.test",
           reload: "Independent Agent Chat process lifecycle."
         },
         helpers: {

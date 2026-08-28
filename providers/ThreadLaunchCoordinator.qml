@@ -9,6 +9,7 @@ Item {
   property alias entries: cache.entries
   property var compositor: Hyprland
   property var toplevelManager: ToplevelManager
+  readonly property alias state: cache
 
   Logic.ThreadLaunchCache { id: cache }
 

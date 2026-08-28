@@ -28,15 +28,6 @@ Item {
   property var sshHosts: []
   property bool sshHostsLoading: false
   property string sshHostsError: ""
-  property bool openIsNew: false
-  property string openHostId: ""
-  property string pendingHostId: ""
-  property string pendingPath: ""
-  property var pendingKnownIds: ({})
-  property string pendingWindowAddress: ""
-  property int pendingAttempts: 0
-  property int openRequestId: 0
-  property string openThreadId: ""
 
   readonly property string queryHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-remote-query").toString().replace(/^file:\/\//, "")
@@ -63,6 +54,7 @@ Item {
     }
   }
   ThreadLaunchCoordinator { id: launchCoordinator }
+  readonly property bool openIsNew: launchCoordinator.state.pending
   readonly property alias configPath: configStore.path
 
   RemoteAgentSnapshots {
@@ -96,6 +88,7 @@ Item {
     configStore: configStore
     registry: providerRegistry
     manager: claudeManager
+    launches: launchCoordinator
   }
 
   function threadIndex(items, threadId) { return management.threadIndex(items, threadId) }
@@ -154,12 +147,12 @@ Item {
     interval: 800
     repeat: true
     onTriggered: {
-      root.pendingAttempts--
-      root.refresh(root.pendingHostId)
-      root.resolvePendingNew(root.pendingHostId)
-      if (root.pendingHostId === "") stop()
-      else if (root.pendingAttempts <= 0) {
-        var pendingHost = root.hostById(root.pendingHostId)
+      launchCoordinator.state.tickPending()
+      root.refresh(launchCoordinator.state.pendingHostId)
+      root.resolvePendingNew(launchCoordinator.state.pendingHostId)
+      if (!launchCoordinator.state.pending) stop()
+      else if (launchCoordinator.state.pendingAttempts <= 0) {
+        var pendingHost = root.hostById(launchCoordinator.state.pendingHostId)
         root.controller.launchError = "The new remote "
           + root.providerLabel(pendingHost) + " thread did not appear in time"
         root.clearPendingNew()

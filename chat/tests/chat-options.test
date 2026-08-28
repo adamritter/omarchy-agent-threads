@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-parser="$plugin_root/bin/omarchy-agent-chat-options"
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+parser="$plugin_root/chat/bin/omarchy-agent-chat-options"
 
 result="$(node "$parser" resume \
   --remote wss://agent.example.test/socket \

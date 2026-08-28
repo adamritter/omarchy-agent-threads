@@ -2,6 +2,75 @@ import QtQuick
 
 Item {
   property var entries: ({})
+  property int openRequestId: 0
+  property string openThreadId: ""
+  property string openHostId: ""
+  property var pendingLaunch: idlePending()
+  readonly property bool pending: pendingLaunch.active === true
+  readonly property string pendingHostId: String(pendingLaunch.hostId || "")
+  readonly property string pendingPath: String(pendingLaunch.path || "")
+  readonly property string pendingThreadId: String(pendingLaunch.threadId || "")
+  readonly property string pendingWindowAddress: String(pendingLaunch.windowAddress || "")
+  readonly property string pendingServerUrl: String(pendingLaunch.serverUrl || "")
+  readonly property int pendingAttempts: Number(pendingLaunch.attempts || 0)
+
+  function idlePending() {
+    return { active: false, hostId: "", path: "", knownIds: ({}),
+      threadId: "", windowAddress: "", serverUrl: "", attempts: 0 }
+  }
+
+  function trackOpen(requestId, threadId, hostId) {
+    openRequestId = Number(requestId || 0)
+    openThreadId = String(threadId || "")
+    openHostId = String(hostId || "")
+  }
+
+  function clearOpen() { trackOpen(0, "", "") }
+
+  function beginPending(threads, path, hostId, attempts) {
+    var known = ({})
+    var values = Array.isArray(threads) ? threads : []
+    for (var i = 0; i < values.length; i++) {
+      var id = String(values[i] && values[i].id || "")
+      if (id !== "") known[id] = true
+    }
+    pendingLaunch = { active: true, hostId: String(hostId || ""),
+      path: String(path || ""), knownIds: known, threadId: "",
+      windowAddress: "", serverUrl: "",
+      attempts: Math.max(0, Number(attempts || 0)) }
+  }
+
+  function recordPendingOutput(address, sessionId, serverUrl) {
+    if (!pending) return
+    pendingLaunch = Object.assign({}, pendingLaunch, {
+      threadId: String(sessionId || pendingThreadId),
+      windowAddress: String(address || ""), serverUrl: String(serverUrl || "") })
+  }
+
+  function discoverPendingThread(threads, pathForThread) {
+    if (!pending || pendingThreadId !== "") return pendingThreadId
+    var values = Array.isArray(threads) ? threads : []
+    for (var i = 0; i < values.length; i++) {
+      var thread = values[i]
+      var id = String(thread && thread.id || "")
+      if (id === "" || pendingLaunch.knownIds[id] === true) continue
+      var path = typeof pathForThread === "function"
+        ? String(pathForThread(thread) || "") : String(thread && thread.cwd || "")
+      if (path !== pendingPath && String(thread && thread.cwd || "") !== pendingPath)
+        continue
+      pendingLaunch = Object.assign({}, pendingLaunch, { threadId: id })
+      return id
+    }
+    return ""
+  }
+
+  function tickPending() {
+    if (pending) pendingLaunch = Object.assign({}, pendingLaunch,
+      { attempts: Math.max(0, pendingAttempts - 1) })
+    return pendingAttempts
+  }
+
+  function clearPending() { pendingLaunch = idlePending() }
 
   function entryKey(sessionId, hostId) {
     return String(hostId || "") + "\u001f" + String(sessionId || "")

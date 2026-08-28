@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
-import "../app" as App
+import "../ui" as App
 
 ChatComponentTestBase {
   name: "ChatComposer"
