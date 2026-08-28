@@ -46,6 +46,18 @@ o.bind("SUPER + A", "Focus Agent Threads", "omarchy-shell -q adam.codex-threads 
 
 -- Open the newest completed thread that you have not viewed yet.
 o.bind("SUPER + CTRL + J", "Open ready agent thread", "omarchy-shell -q adam.codex-threads openReady")
+
+-- Use Fast while the Codex sidebar or Agent Chat is focused. Preserve tiled
+-- fullscreen everywhere else.
+hl.unbind("SUPER + CTRL + F")
+o.bind("SUPER + CTRL + F", "Toggle Agent Fast / tiled full screen",
+  "omarchy-shell -q adam.codex-threads globalAction fast")
+
+-- Cycle reasoning effort while Agent Threads or Agent Chat is focused.
+-- Preserve the emoji picker during rename and everywhere else.
+hl.unbind("SUPER + CTRL + E")
+o.bind("SUPER + CTRL + E", "Cycle Agent Effort / emojis",
+  "omarchy-shell -q adam.codex-threads globalAction effort")
 ```
 
 Save the file, then validate the Hyprland configuration:
@@ -57,13 +69,15 @@ hyprctl configerrors
 
 `hyprctl configerrors` should print no errors.
 
-The three shortcuts have deliberately different jobs:
+The shortcuts have deliberately different jobs:
 
 | Shortcut | Action |
 | --- | --- |
 | `Super+S` | Show or hide the sidebar without interrupting your current window |
 | `Super+A` | Open the sidebar and give it keyboard focus |
 | `Super+Ctrl+J` | Open the newest completed, unread agent thread |
+| `Super+Ctrl+F` | Toggle Codex Fast when an agent surface is focused; otherwise toggle tiled fullscreen |
+| `Super+Ctrl+E` | Cycle reasoning effort when an agent surface is focused; otherwise open emojis |
 
 Optional direct thread switching:
 
