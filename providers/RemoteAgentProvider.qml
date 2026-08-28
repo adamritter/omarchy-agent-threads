@@ -49,13 +49,18 @@ Item {
   RemoteConfigStore {
     id: configStore
     provider: root
-    controller: root.controller
+    stateHome: root.controller.stateHome
     providerRegistry: providerRegistry
+    onAppServerStartRequested: root.controller.providers.startAppServer()
   }
   RemoteClaudeManager {
     id: claudeManager
     provider: root
-    controller: root.controller
+    shuttingDown: root.controller.shuttingDown
+    streamGuardPath: root.controller.streamGuardPath
+    onLaunchErrorRequested: function(message) {
+      root.controller.launchError = message
+    }
   }
   ThreadLaunchCoordinator { id: launchCoordinator }
   readonly property alias configPath: configStore.path

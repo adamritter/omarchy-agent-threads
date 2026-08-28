@@ -6,10 +6,13 @@ Item {
   id: root
 
   required property var provider
-  required property var controller
+  required property bool shuttingDown
+  required property string streamGuardPath
   property string loginHostId: ""
   property bool loginRunning: false
   property string loginStderrText: ""
+
+  signal launchErrorRequested(string message)
 
   readonly property string loginHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-claude-remote-login").toString().replace(/^file:\/\//, "")
@@ -23,16 +26,16 @@ Item {
   function login(hostId) {
     var id = String(hostId || "")
     if (!validHost(id)) {
-      controller.launchError = "Claude sign-in is only available for an SSH Claude remote"
+      launchErrorRequested("Claude sign-in is only available for an SSH Claude remote")
       return false
     }
-    if (controller.shuttingDown || loginProcess.running) return false
+    if (shuttingDown || loginProcess.running) return false
 
-    controller.launchError = ""
+    launchErrorRequested("")
     loginHostId = id
     loginRunning = true
     loginStderrText = ""
-    loginProcess.command = [controller.streamGuardPath, "--",
+    loginProcess.command = [streamGuardPath, "--",
       loginHelperPath, provider.configPath, id]
     loginProcess.running = true
     return true
@@ -47,8 +50,8 @@ Item {
       root.loginRunning = false
       root.loginHostId = ""
       if (exitCode !== 0) {
-        root.controller.launchError = root.loginStderrText.trim()
-          || "Could not open the remote Claude sign-in terminal"
+        root.launchErrorRequested(root.loginStderrText.trim()
+          || "Could not open the remote Claude sign-in terminal")
         return
       }
       root.provider.refresh(hostId)

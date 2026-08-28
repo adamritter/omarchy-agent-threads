@@ -5,16 +5,18 @@ Item {
   id: root
 
   required property var provider
-  required property var controller
+  required property string stateHome
   required property var providerRegistry
   property bool loaded: false
   property var config: ({})
-  readonly property string path: controller.stateHome + "/omarchy/codex-thread-remotes.json"
+  readonly property string path: stateHome + "/omarchy/codex-thread-remotes.json"
   readonly property string configHelper: Qt.resolvedUrl(
     "../bin/omarchy-agent-remote-config").toString().replace(/^file:\/\//, "")
   readonly property int maxConfigCharacters: 128 * 1024
   property string pendingWrite: ""
   property string persistedText: ""
+
+  signal appServerStartRequested()
 
   function requestRead() {
     if (configRead.running || configWrite.running || pendingWrite !== "") return
@@ -82,7 +84,7 @@ Item {
     config = { version: 2, remotes: configured }
     provider.remoteHosts = nextHosts
     loaded = true
-    controller.providers.startAppServer()
+    appServerStartRequested()
     provider.refresh()
   }
 
