@@ -1,0 +1,1267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A visual architecture field guide for the Agent Threads Omarchy plugin.">
+  <title>Agent Threads — Architecture Field Guide</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #09111f;
+      --bg-elevated: #0f1a2d;
+      --surface: rgba(18, 31, 52, 0.82);
+      --surface-strong: #16243a;
+      --surface-soft: rgba(255, 255, 255, 0.045);
+      --text: #edf4ff;
+      --muted: #9babc2;
+      --faint: #718098;
+      --line: rgba(175, 197, 228, 0.18);
+      --line-strong: rgba(175, 197, 228, 0.36);
+      --cyan: #62d9f5;
+      --blue: #76a7ff;
+      --violet: #ad8cff;
+      --green: #75dfab;
+      --amber: #f5c66d;
+      --rose: #ff8fab;
+      --cyan-soft: rgba(98, 217, 245, 0.13);
+      --blue-soft: rgba(118, 167, 255, 0.13);
+      --violet-soft: rgba(173, 140, 255, 0.13);
+      --green-soft: rgba(117, 223, 171, 0.13);
+      --amber-soft: rgba(245, 198, 109, 0.13);
+      --rose-soft: rgba(255, 143, 171, 0.13);
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+      --radius: 20px;
+      --radius-sm: 12px;
+      --max: 1200px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --bg-elevated: #ffffff;
+      --surface: rgba(255, 255, 255, 0.88);
+      --surface-strong: #ffffff;
+      --surface-soft: rgba(26, 57, 97, 0.045);
+      --text: #122038;
+      --muted: #53637a;
+      --faint: #718097;
+      --line: rgba(34, 68, 112, 0.14);
+      --line-strong: rgba(34, 68, 112, 0.28);
+      --cyan: #087e9d;
+      --blue: #346dcc;
+      --violet: #7352c8;
+      --green: #16875a;
+      --amber: #a66800;
+      --rose: #b83f63;
+      --cyan-soft: rgba(8, 126, 157, 0.09);
+      --blue-soft: rgba(52, 109, 204, 0.09);
+      --violet-soft: rgba(115, 82, 200, 0.09);
+      --green-soft: rgba(22, 135, 90, 0.09);
+      --amber-soft: rgba(166, 104, 0, 0.09);
+      --rose-soft: rgba(184, 63, 99, 0.09);
+      --shadow: 0 24px 70px rgba(40, 65, 100, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0%, var(--blue-soft), transparent 30rem),
+        radial-gradient(circle at 90% 15%, var(--violet-soft), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.55;
+    }
+    a { color: inherit; }
+    button, select { font: inherit; }
+    code {
+      font-family: var(--mono);
+      font-size: 0.88em;
+      color: var(--cyan);
+    }
+    strong { font-weight: 650; }
+
+    .skip-link {
+      position: absolute;
+      left: 16px;
+      top: -80px;
+      z-index: 100;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: var(--text);
+      color: var(--bg);
+    }
+    .skip-link:focus { top: 12px; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 84%, transparent);
+      backdrop-filter: blur(18px);
+    }
+    .topbar-inner {
+      width: min(calc(100% - 32px), var(--max));
+      min-height: 60px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      color: #07111f;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      box-shadow: 0 0 28px var(--blue-soft);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .nav a,
+    .icon-button {
+      border: 0;
+      border-radius: 9px;
+      padding: 8px 10px;
+      background: transparent;
+      color: var(--muted);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .nav a:hover,
+    .nav a:focus-visible,
+    .icon-button:hover,
+    .icon-button:focus-visible {
+      color: var(--text);
+      background: var(--surface-soft);
+      outline: none;
+    }
+
+    main {
+      width: min(calc(100% - 32px), var(--max));
+      margin: 0 auto;
+    }
+    .hero {
+      padding: 92px 0 64px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.7fr);
+      gap: 56px;
+      align-items: end;
+    }
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 780px;
+      margin-bottom: 22px;
+      font-size: clamp(3rem, 7vw, 6.4rem);
+      line-height: 0.96;
+      letter-spacing: -0.065em;
+    }
+    .hero-lede {
+      max-width: 690px;
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: clamp(1.08rem, 2vw, 1.35rem);
+    }
+    .hero-principle {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, var(--surface), var(--surface-soft));
+      box-shadow: var(--shadow);
+    }
+    .hero-principle .label {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .hero-principle p {
+      margin: 12px 0 0;
+      font-size: 1.12rem;
+      line-height: 1.45;
+    }
+    .hero-principle .rule {
+      display: block;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .section {
+      padding: 68px 0;
+      border-top: 1px solid var(--line);
+      scroll-margin-top: 62px;
+    }
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(300px, 1fr);
+      gap: 48px;
+      align-items: start;
+      margin-bottom: 34px;
+    }
+    h2 {
+      margin-bottom: 0;
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      line-height: 1.03;
+      letter-spacing: -0.045em;
+    }
+    h3 {
+      font-size: 1rem;
+      letter-spacing: -0.01em;
+    }
+    .section-intro {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 1.04rem;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px 20px;
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .legend i { width: 9px; height: 9px; border-radius: 50%; background: var(--dot); }
+
+    .system-map {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 4px);
+      background:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px),
+        var(--surface);
+      background-size: 38px 38px;
+      box-shadow: var(--shadow);
+    }
+    .system-map svg {
+      display: block;
+      width: 100%;
+      min-width: 820px;
+      height: auto;
+    }
+    .system-map-scroll { overflow-x: auto; }
+    .graph-edge {
+      fill: none;
+      stroke: var(--line-strong);
+      stroke-width: 2;
+      marker-end: url(#arrow-neutral);
+    }
+    .graph-edge.logic { stroke: var(--violet); stroke-dasharray: 5 6; marker-end: url(#arrow-violet); opacity: 0.75; }
+    .graph-edge.chat { stroke: var(--cyan); marker-end: url(#arrow-cyan); opacity: 0.8; }
+    .graph-node { cursor: pointer; }
+    .graph-node rect {
+      fill: var(--surface-strong);
+      stroke: var(--line-strong);
+      stroke-width: 1;
+      transition: fill 160ms ease, stroke 160ms ease, transform 160ms ease;
+    }
+    .graph-node:hover rect,
+    .graph-node:focus-visible rect,
+    .graph-node.is-active rect {
+      fill: var(--node-soft);
+      stroke: var(--node-color);
+    }
+    .graph-node:focus-visible { outline: none; }
+    .graph-node text { fill: var(--text); pointer-events: none; }
+    .graph-node .node-kicker {
+      fill: var(--node-color);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+    .graph-node .node-title { font-size: 16px; font-weight: 650; }
+    .graph-node .node-copy { fill: var(--muted); font-size: 11px; }
+    .graph-label {
+      fill: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+    }
+    .graph-detail {
+      min-height: 112px;
+      padding: 22px 24px;
+      display: grid;
+      grid-template-columns: minmax(160px, 0.45fr) minmax(0, 1.4fr) minmax(200px, 0.75fr);
+      gap: 24px;
+      border-top: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+    }
+    .detail-label {
+      margin-bottom: 7px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .graph-detail h3 { margin-bottom: 0; font-size: 1.2rem; }
+    .graph-detail p { margin-bottom: 0; color: var(--muted); }
+    .path-list { display: flex; flex-wrap: wrap; gap: 6px; align-content: start; }
+    .path-pill {
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface-soft);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .ownership-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 1px;
+      overflow: hidden;
+      margin-top: 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--line);
+    }
+    .ownership-item {
+      min-height: 176px;
+      padding: 20px;
+      background: var(--bg-elevated);
+    }
+    .ownership-item .number {
+      margin-bottom: 28px;
+      color: var(--owner-color);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    .ownership-item h3 { margin-bottom: 9px; }
+    .ownership-item p { margin-bottom: 0; color: var(--muted); font-size: 13px; }
+
+    .route-tool {
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 4px);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .route-toolbar {
+      padding: 22px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .route-toolbar label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .route-toolbar select {
+      width: min(100%, 520px);
+      padding: 10px 38px 10px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: var(--bg-elevated);
+      color: var(--text);
+    }
+    .route-stage { padding: 30px 24px 24px; }
+    .route-flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 28px;
+      align-items: stretch;
+    }
+    .route-node {
+      position: relative;
+      min-height: 144px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--route-color);
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+    }
+    .route-node:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -23px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--faint);
+      font-size: 18px;
+    }
+    .route-kind {
+      margin-bottom: 11px;
+      color: var(--route-color);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+    .route-node strong { display: block; margin-bottom: 8px; line-height: 1.3; }
+    .route-node code { display: block; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
+    .route-meta {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 0.8fr;
+      gap: 1px;
+      margin-top: 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: var(--line);
+    }
+    .route-meta > div { padding: 18px; background: var(--surface-strong); }
+    .route-meta p { margin-bottom: 0; color: var(--muted); font-size: 13px; }
+    .route-meta code { overflow-wrap: anywhere; }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+    }
+    .diagram-card {
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+    .diagram-card h3 { margin-bottom: 6px; font-size: 1.2rem; }
+    .diagram-card > p { margin-bottom: 22px; color: var(--muted); font-size: 13px; }
+    .state-flow { display: flex; align-items: stretch; gap: 22px; }
+    .state-node {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--bg-elevated);
+    }
+    .state-node:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -17px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--faint);
+    }
+    .state-node .state-name { color: var(--state-color); font-family: var(--mono); font-size: 12px; font-weight: 700; }
+    .state-node small { display: block; margin-top: 7px; color: var(--muted); line-height: 1.4; }
+    .branch-grid {
+      display: grid;
+      grid-template-columns: 1fr 22px 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-top: 14px;
+    }
+    .branch-arrow { color: var(--faint); text-align: center; }
+    .lane-stack { display: grid; gap: 9px; margin-top: 18px; }
+    .lane {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .lane-label { font-family: var(--mono); color: var(--faint); }
+    .lane-track {
+      min-height: 32px;
+      padding: 7px 10px;
+      border-radius: 7px;
+      background: var(--surface-soft);
+      color: var(--text);
+    }
+
+    .reload-flow {
+      display: grid;
+      grid-template-columns: 0.72fr 1.28fr;
+      gap: 28px;
+      align-items: start;
+    }
+    .decision-root {
+      position: sticky;
+      top: 84px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, var(--surface), var(--surface-soft));
+    }
+    .decision-root .change-icon {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 42px;
+      border-radius: 14px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-family: var(--mono);
+      font-weight: 800;
+    }
+    .decision-root h3 { margin-bottom: 9px; font-size: 1.4rem; }
+    .decision-root p { margin-bottom: 0; color: var(--muted); }
+    .decision-list { display: grid; gap: 12px; }
+    .decision-path {
+      display: grid;
+      grid-template-columns: 38px 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--decision-color);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+    }
+    .decision-index {
+      color: var(--decision-color);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .decision-path h3 { margin: 0 0 5px; font-size: 1rem; }
+    .decision-path p { margin: 0; color: var(--muted); font-size: 13px; }
+    .scope-tag {
+      padding: 5px 8px;
+      border-radius: 7px;
+      background: var(--decision-soft);
+      color: var(--decision-color);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .boundary-pair {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .boundary-pair code {
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface-soft);
+      color: var(--text);
+      font-size: 10px;
+      overflow-wrap: anywhere;
+    }
+
+    .verification-track {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 24px;
+      margin-top: 16px;
+    }
+    .verification-track::before {
+      content: "";
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      top: 25px;
+      height: 1px;
+      background: linear-gradient(90deg, var(--violet), var(--blue), var(--green));
+    }
+    .verify-step { position: relative; padding-top: 55px; }
+    .verify-dot {
+      position: absolute;
+      top: 16px;
+      left: 0;
+      width: 19px;
+      height: 19px;
+      border: 4px solid var(--bg);
+      border-radius: 50%;
+      background: var(--verify-color);
+      box-shadow: 0 0 0 1px var(--verify-color);
+    }
+    .verify-step h3 { margin-bottom: 8px; }
+    .verify-step p { margin-bottom: 10px; color: var(--muted); font-size: 13px; }
+    .verify-command {
+      display: inline-block;
+      padding: 6px 8px;
+      border-radius: 7px;
+      background: var(--surface-soft);
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }
+    .panel-warning {
+      margin-top: 30px;
+      padding: 18px 20px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--line));
+      border-radius: var(--radius-sm);
+      background: var(--amber-soft);
+    }
+    .panel-warning .symbol { color: var(--amber); font-family: var(--mono); font-weight: 800; }
+    .panel-warning p { margin: 0; color: var(--muted); }
+
+    .rules-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .rule-card {
+      padding: 20px;
+      border-top: 2px solid var(--rule-color);
+      background: var(--surface-soft);
+    }
+    .rule-card h3 { margin-bottom: 8px; }
+    .rule-card p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    footer {
+      padding: 34px 0 60px;
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .nav a { display: none; }
+      .hero, .section-head, .reload-flow { grid-template-columns: 1fr; }
+      .hero { gap: 34px; padding-top: 64px; }
+      .ownership-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .ownership-item:last-child { grid-column: 1 / -1; }
+      .route-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .route-node:nth-child(2)::after { display: none; }
+      .route-meta { grid-template-columns: 1fr; }
+      .split { grid-template-columns: 1fr; }
+      .decision-root { position: static; }
+      .verification-track { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .verification-track::before { display: none; }
+      .rules-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .graph-detail { grid-template-columns: 1fr 1.5fr; }
+      .graph-detail > :last-child { grid-column: 1 / -1; }
+    }
+
+    @media (max-width: 580px) {
+      main, .topbar-inner { width: min(calc(100% - 22px), var(--max)); }
+      h1 { font-size: clamp(2.7rem, 15vw, 4.4rem); }
+      .section { padding: 52px 0; }
+      .ownership-grid, .route-flow, .verification-track, .rules-grid { grid-template-columns: 1fr; }
+      .ownership-item:last-child { grid-column: auto; }
+      .route-node:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -26px; transform: translateX(50%); }
+      .route-node:nth-child(2)::after { display: block; }
+      .route-toolbar { align-items: stretch; flex-direction: column; }
+      .route-toolbar select { width: 100%; }
+      .graph-detail { grid-template-columns: 1fr; }
+      .graph-detail > :last-child { grid-column: auto; }
+      .state-flow { flex-direction: column; }
+      .state-node:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -21px; transform: translateX(50%); }
+      .decision-path { grid-template-columns: 30px 1fr; }
+      .scope-tag { grid-column: 2; justify-self: start; }
+      .boundary-pair { grid-template-columns: 1fr; }
+      footer { flex-direction: column; }
+    }
+
+    @media print {
+      :root { color-scheme: light; --bg: #fff; --bg-elevated: #fff; --surface: #fff; --surface-strong: #fff; --text: #111827; --muted: #4b5563; --faint: #6b7280; --line: #d1d5db; --line-strong: #9ca3af; --shadow: none; }
+      body { background: #fff; }
+      .topbar { position: static; }
+      .nav { display: none; }
+      .section { break-inside: avoid; }
+      .system-map-scroll { overflow: visible; }
+      .system-map svg { min-width: 0; }
+      .decision-root { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to architecture</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="brand-mark">AT</span> Agent Threads architecture</div>
+      <nav class="nav" aria-label="Document sections">
+        <a href="#system">System</a>
+        <a href="#changes">Change routes</a>
+        <a href="#states">States</a>
+        <a href="#reload">Reload</a>
+        <a href="#verify">Verify</a>
+        <button class="icon-button" id="themeToggle" type="button" aria-label="Switch color theme">Theme</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Human architecture field guide</p>
+        <h1>One owner.<br>One direction.</h1>
+        <p class="hero-lede">Agent Threads keeps shell integration at the edges, application state behind focused domain APIs, and deterministic decisions in plain logic modules.</p>
+      </div>
+      <aside class="hero-principle">
+        <span class="label">The governing rule</span>
+        <p>Trace a behavior inward through one public boundary until you reach the single state or runtime owner.</p>
+        <span class="rule">logic → domain → presentation → composition</span>
+      </aside>
+    </section>
+
+    <section class="section" id="system">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">01 / System map</p>
+          <h2>The runtime graph</h2>
+        </div>
+        <p class="section-intro">Dependencies move toward runtime ownership; deterministic logic supports every layer without importing Quickshell or executing processes. Select any node for its responsibility and key files.</p>
+      </div>
+
+      <div class="legend" aria-label="Diagram legend">
+        <span><i style="--dot:var(--blue)"></i> composition and UI</span>
+        <span><i style="--dot:var(--green)"></i> state boundary</span>
+        <span><i style="--dot:var(--amber)"></i> runtime integration</span>
+        <span><i style="--dot:var(--violet)"></i> deterministic logic</span>
+        <span><i style="--dot:var(--cyan)"></i> standalone chat path</span>
+      </div>
+
+      <div class="system-map">
+        <div class="system-map-scroll">
+          <svg viewBox="0 0 1160 650" role="img" aria-labelledby="systemMapTitle systemMapDesc">
+            <title id="systemMapTitle">Agent Threads dependency and ownership graph</title>
+            <desc id="systemMapDesc">Panel and Agent Chat compose UI, domain APIs, provider ports, and external runtimes. Pure logic modules support the inner layers without runtime dependencies.</desc>
+            <defs>
+              <marker id="arrow-neutral" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--line-strong)"/></marker>
+              <marker id="arrow-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--violet)"/></marker>
+              <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--cyan)"/></marker>
+            </defs>
+
+            <text class="graph-label" x="24" y="54">COMPOSITION</text>
+            <text class="graph-label" x="24" y="178">PRESENTATION</text>
+            <text class="graph-label" x="24" y="302">DOMAIN STATE</text>
+            <text class="graph-label" x="24" y="426">PROVIDER PORTS</text>
+            <text class="graph-label" x="24" y="550">RUNTIME EDGES</text>
+
+            <path class="graph-edge" d="M 560 121 L 560 158"/>
+            <path class="graph-edge" d="M 560 245 L 560 282"/>
+            <path class="graph-edge" d="M 560 369 L 560 406"/>
+            <path class="graph-edge" d="M 425 493 C 425 520 295 516 295 540"/>
+            <path class="graph-edge" d="M 560 493 L 560 540"/>
+            <path class="graph-edge" d="M 695 493 C 695 520 825 516 825 540"/>
+            <path class="graph-edge chat" d="M 955 121 L 955 158"/>
+            <path class="graph-edge chat" d="M 915 245 C 915 352 760 352 720 406"/>
+            <path class="graph-edge logic" d="M 190 493 C 190 418 275 382 315 346"/>
+            <path class="graph-edge logic" d="M 190 493 C 190 328 300 249 370 222"/>
+            <path class="graph-edge logic" d="M 190 493 C 190 265 284 140 435 100"/>
+
+            <g class="graph-node" data-node="panel" tabindex="0" role="button" aria-label="Panel composition" style="--node-color:var(--blue);--node-soft:var(--blue-soft)">
+              <rect x="390" y="34" width="340" height="87" rx="14"/>
+              <text x="412" y="57" class="node-kicker">COMPOSITION ROOT</text>
+              <text x="412" y="82" class="node-title">Panel.qml</text>
+              <text x="412" y="103" class="node-copy">window · overlays · focus · IPC · coordination</text>
+            </g>
+
+            <g class="graph-node" data-node="chat" tabindex="0" role="button" aria-label="Standalone Agent Chat" style="--node-color:var(--cyan);--node-soft:var(--cyan-soft)">
+              <rect x="840" y="34" width="270" height="87" rx="14"/>
+              <text x="862" y="57" class="node-kicker">STANDALONE FRONTEND</text>
+              <text x="862" y="82" class="node-title">app / Agent Chat</text>
+              <text x="862" y="103" class="node-copy">conversation UI without panel internals</text>
+            </g>
+
+            <g class="graph-node" data-node="ui" tabindex="0" role="button" aria-label="UI components and controllers" style="--node-color:var(--blue);--node-soft:var(--blue-soft)">
+              <rect x="350" y="158" width="420" height="87" rx="14"/>
+              <text x="372" y="181" class="node-kicker">PRESENTATION + INTERACTION</text>
+              <text x="372" y="206" class="node-title">UI components &amp; controllers</text>
+              <text x="372" y="227" class="node-copy">render narrow state · delegate every mutation</text>
+            </g>
+
+            <g class="graph-node" data-node="chat-ui" tabindex="0" role="button" aria-label="Conversation components" style="--node-color:var(--cyan);--node-soft:var(--cyan-soft)">
+              <rect x="840" y="158" width="270" height="87" rx="14"/>
+              <text x="862" y="181" class="node-kicker">CONVERSATION UI</text>
+              <text x="862" y="206" class="node-title">Chat components</text>
+              <text x="862" y="227" class="node-copy">composer · transcript · approvals</text>
+            </g>
+
+            <g class="graph-node" data-node="store" tabindex="0" role="button" aria-label="ThreadStore domain APIs" style="--node-color:var(--green);--node-soft:var(--green-soft)">
+              <rect x="330" y="282" width="460" height="87" rx="14"/>
+              <text x="352" y="305" class="node-kicker">STABLE UI-FACING FAÇADE</text>
+              <text x="352" y="330" class="node-title">ThreadStore domain APIs</text>
+              <text x="352" y="351" class="node-copy">thread · settings · provider snapshots · launch state</text>
+            </g>
+
+            <g class="graph-node" data-node="logic" tabindex="0" role="button" aria-label="Deterministic logic modules" style="--node-color:var(--violet);--node-soft:var(--violet-soft)">
+              <rect x="55" y="406" width="270" height="87" rx="14"/>
+              <text x="77" y="429" class="node-kicker">PURE FOUNDATION</text>
+              <text x="77" y="454" class="node-title">logic/</text>
+              <text x="77" y="475" class="node-copy">routing · sorting · transitions · normalization</text>
+            </g>
+
+            <g class="graph-node" data-node="providers" tabindex="0" role="button" aria-label="Provider library and focused ports" style="--node-color:var(--amber);--node-soft:var(--amber-soft)">
+              <rect x="350" y="406" width="420" height="87" rx="14"/>
+              <text x="372" y="429" class="node-kicker">COMMON PROVIDER BOUNDARY</text>
+              <text x="372" y="454" class="node-title">AgentProviderLibrary ports</text>
+              <text x="372" y="475" class="node-copy">routing · models · App Server · local · remote</text>
+            </g>
+
+            <g class="graph-node" data-node="local-codex" tabindex="0" role="button" aria-label="Local Codex runtime" style="--node-color:var(--amber);--node-soft:var(--amber-soft)">
+              <rect x="175" y="540" width="240" height="76" rx="14"/>
+              <text x="197" y="563" class="node-kicker">LOCAL CODEX</text>
+              <text x="197" y="588" class="node-title">App Server + lifecycle</text>
+              <text x="197" y="607" class="node-copy">transport · snapshots · launch</text>
+            </g>
+
+            <g class="graph-node" data-node="local-agents" tabindex="0" role="button" aria-label="Local agent runtimes" style="--node-color:var(--amber);--node-soft:var(--amber-soft)">
+              <rect x="440" y="540" width="240" height="76" rx="14"/>
+              <text x="462" y="563" class="node-kicker">CLAUDE + OPENCODE</text>
+              <text x="462" y="588" class="node-title">Local agent process host</text>
+              <text x="462" y="607" class="node-copy">helpers · queries · terminals</text>
+            </g>
+
+            <g class="graph-node" data-node="remote" tabindex="0" role="button" aria-label="Remote agent runtime" style="--node-color:var(--amber);--node-soft:var(--amber-soft)">
+              <rect x="705" y="540" width="240" height="76" rx="14"/>
+              <text x="727" y="563" class="node-kicker">REMOTE HOSTS</text>
+              <text x="727" y="588" class="node-title">SSH process boundary</text>
+              <text x="727" y="607" class="node-copy">config · adapters · snapshots</text>
+            </g>
+          </svg>
+        </div>
+        <div class="graph-detail" aria-live="polite">
+          <div>
+            <div class="detail-label">Selected boundary</div>
+            <h3 id="graphDetailTitle">ThreadStore domain APIs</h3>
+          </div>
+          <div>
+            <div class="detail-label">Ownership rule</div>
+            <p id="graphDetailCopy">The stable UI-facing façade owns application state and exposes grouped APIs without leaking provider implementation objects.</p>
+          </div>
+          <div>
+            <div class="detail-label">Start here</div>
+            <div class="path-list" id="graphDetailPaths"><span class="path-pill">services/ThreadStore.qml</span><span class="path-pill">services/ThreadStoreThreadApi.qml</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ownership-grid" aria-label="Five ownership boundaries">
+        <article class="ownership-item" style="--owner-color:var(--violet)"><div class="number">01 / DECIDE</div><h3>Logic owns transformations</h3><p>Pure input becomes pure output. No Quickshell imports, process execution, or mutable global state.</p></article>
+        <article class="ownership-item" style="--owner-color:var(--green)"><div class="number">02 / REMEMBER</div><h3>Stores own state</h3><p>Every mutable value has one writer. Focused stores own persistence; ThreadStore owns launch state.</p></article>
+        <article class="ownership-item" style="--owner-color:var(--amber)"><div class="number">03 / EXECUTE</div><h3>Providers own runtime</h3><p>Transport, process, protocol, SSH, and normalization details remain behind provider ports.</p></article>
+        <article class="ownership-item" style="--owner-color:var(--blue)"><div class="number">04 / PRESENT</div><h3>UI delegates actions</h3><p>Rows and controls render narrow state, then route actions through controllers and domain APIs.</p></article>
+        <article class="ownership-item" style="--owner-color:var(--cyan)"><div class="number">05 / COMPOSE</div><h3>Panel owns the shell edge</h3><p>The bar button, layer-shell window, focus, overlays, IPC, and lifecycle stay directly in Panel.</p></article>
+      </div>
+    </section>
+
+    <section class="section" id="changes">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">02 / Change routes</p>
+          <h2>Start where the behavior lives</h2>
+        </div>
+        <p class="section-intro">Choose a change to see the shortest authoritative path. The route ends at the only state or runtime owner that should change the underlying truth.</p>
+      </div>
+
+      <div class="route-tool">
+        <div class="route-toolbar">
+          <label for="changeSelect">Requested behavior</label>
+          <select id="changeSelect">
+            <option value="sidebar-structure">Sidebar structure or composition</option>
+            <option value="sidebar-actions">Sidebar keys, selection, or actions</option>
+            <option value="thread-rows">Thread filtering, grouping, or ordering</option>
+            <option value="thread-launch">Thread activation, launch, or focus</option>
+            <option value="mutations">Rename, archive, pin, or delete</option>
+            <option value="codex">Local Codex snapshots or account state</option>
+            <option value="agents">Claude or OpenCode behavior</option>
+            <option value="remote">Remote hosts, snapshots, or actions</option>
+            <option value="panel">Panel window, focus, overlays, or lifecycle</option>
+            <option value="persistence">Preferences or reload restoration</option>
+            <option value="chat">Standalone Agent Chat or conversation protocol</option>
+            <option value="helpers">Helper scripts, commands, or validation</option>
+          </select>
+        </div>
+        <div class="route-stage">
+          <div class="route-flow" id="routeFlow" aria-live="polite"></div>
+          <div class="route-meta">
+            <div><div class="detail-label">Ownership rule</div><p id="routeRule"></p></div>
+            <div><div class="detail-label">Focused verification</div><p><code id="routeTests"></code></p></div>
+            <div><div class="detail-label">Expected reload</div><p id="routeReload"></p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="states">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">03 / Runtime contracts</p>
+          <h2>State changes are protocols</h2>
+        </div>
+        <p class="section-intro">Folder boundaries are not enough. Launches and mutations carry explicit ownership, tokens, postconditions, and rollback behavior.</p>
+      </div>
+
+      <div class="split">
+        <article class="diagram-card">
+          <h3>Thread launch lifecycle</h3>
+          <p><code>ThreadStore.qml</code> is the single writer. A provider observes the postcondition before confirming the target.</p>
+          <div class="state-flow">
+            <div class="state-node" style="--state-color:var(--muted)"><span class="state-name">idle</span><small>No pending launch token.</small></div>
+            <div class="state-node" style="--state-color:var(--blue)"><span class="state-name">launching</span><small><code>requestId</code>, target, source</small></div>
+          </div>
+          <div class="branch-grid">
+            <div class="state-node" style="--state-color:var(--green)"><span class="state-name">confirmed</span><small>Target window observed.</small></div>
+            <div class="branch-arrow">↙ ↘</div>
+            <div class="state-node" style="--state-color:var(--rose)"><span class="state-name">failed</span><small>Selection stays; error surfaces.</small></div>
+          </div>
+          <div class="lane-stack" aria-label="Launch state separation">
+            <div class="lane"><span class="lane-label">selected</span><span class="lane-track">what the user is pointing at</span></div>
+            <div class="lane"><span class="lane-label">pending</span><span class="lane-track">what a token-authorized launch is opening</span></div>
+            <div class="lane"><span class="lane-label">active</span><span class="lane-track">what the provider has actually observed</span></div>
+          </div>
+        </article>
+
+        <article class="diagram-card">
+          <h3>Mutation transaction</h3>
+          <p>Optimistic UI is permitted only inside the shared mutation boundary and always has a provider-owned rollback.</p>
+          <div class="state-flow">
+            <div class="state-node" style="--state-color:var(--blue)"><span class="state-name">acquire</span><small>One mutation at a time.</small></div>
+            <div class="state-node" style="--state-color:var(--amber)"><span class="state-name">validate</span><small>Check active-writer ownership.</small></div>
+            <div class="state-node" style="--state-color:var(--violet)"><span class="state-name">optimistic</span><small>Apply scoped UI transition.</small></div>
+          </div>
+          <div class="branch-grid">
+            <div class="state-node" style="--state-color:var(--green)"><span class="state-name">reconcile</span><small>Next snapshot confirms truth.</small></div>
+            <div class="branch-arrow">↙ ↘</div>
+            <div class="state-node" style="--state-color:var(--rose)"><span class="state-name">rollback</span><small>Restore and normalize failure.</small></div>
+          </div>
+          <div class="lane-stack" aria-label="Mutation ownership layers">
+            <div class="lane"><span class="lane-label">logic</span><span class="lane-track">transition and stale-completion rules</span></div>
+            <div class="lane"><span class="lane-label">store</span><span class="lane-track">exclusive mutation state and tombstones</span></div>
+            <div class="lane"><span class="lane-label">provider</span><span class="lane-track">external mutation and rollback outcome</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="reload">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">04 / Reload model</p>
+          <h2>Reload the smallest safe graph</h2>
+        </div>
+        <p class="section-intro">Most saves stay inside the running Quickshell process. The manifest boundaries preserve the panel, providers, stores, windows, and service state.</p>
+      </div>
+
+      <div class="reload-flow">
+        <aside class="decision-root">
+          <div class="change-icon">Δ</div>
+          <h3>A plugin file changed</h3>
+          <p>Choose scope from the file’s role, not from how visually large the edit feels.</p>
+          <div class="boundary-pair" aria-label="Declared hot reload boundaries">
+            <code>sidebar → SidebarKeyRouter.qml</code>
+            <code>sidebarContent → SidebarMainContent.qml</code>
+          </div>
+        </aside>
+
+        <div class="decision-list">
+          <article class="decision-path" style="--decision-color:var(--green);--decision-soft:var(--green-soft)">
+            <span class="decision-index">01</span>
+            <div><h3>Exact manifest boundary file?</h3><p>Call <code>reloadEntryPoint()</code> on every live widget instance. Preserve long-lived state and replace only the declared loader.</p></div>
+            <span class="scope-tag">NARROW HOT RELOAD</span>
+          </article>
+          <article class="decision-path" style="--decision-color:var(--blue);--decision-soft:var(--blue-soft)">
+            <span class="decision-index">02</span>
+            <div><h3>Existing imported QML or JavaScript?</h3><p>Use the automatic in-process QML graph reload. If the result is missing, run <code>./scripts/reload-plugin</code>.</p></div>
+            <span class="scope-tag">GRAPH RELOAD</span>
+          </article>
+          <article class="decision-path" style="--decision-color:var(--amber);--decision-soft:var(--amber-soft)">
+            <span class="decision-index">03</span>
+            <div><h3>New or renamed QML component?</h3><p>Try graph reload first. One complete shell restart is valid if Qt’s imported-directory cache cannot discover the new name.</p></div>
+            <span class="scope-tag">CACHE EXCEPTION</span>
+          </article>
+          <article class="decision-path" style="--decision-color:var(--rose);--decision-soft:var(--rose-soft)">
+            <span class="decision-index">04</span>
+            <div><h3>Startup, shutdown, or stuck runtime?</h3><p>A complete restart is appropriate for lifecycle reproduction, socket or child-process recovery, and explicit release smoke tests.</p></div>
+            <span class="scope-tag">FULL RESTART</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="verify">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">05 / Verification</p>
+          <h2>Tests follow the same boundaries</h2>
+        </div>
+        <p class="section-intro">Iterate with the narrowest executable contract, then prove the integrated result once before handoff.</p>
+      </div>
+
+      <div class="verification-track" aria-label="Verification sequence">
+        <article class="verify-step" style="--verify-color:var(--violet)"><span class="verify-dot"></span><h3>Pure behavior</h3><p>Logic, models, controllers, and rendered component contracts.</p><code class="verify-command">./scripts/test-unit tests/tst_*.qml</code></article>
+        <article class="verify-step" style="--verify-color:var(--amber)"><span class="verify-dot"></span><h3>Runtime edges</h3><p>Helpers, providers, SSH, IPC, protocols, and real process boundaries.</p><code class="verify-command">./scripts/test-integration tests/*.test</code></article>
+        <article class="verify-step" style="--verify-color:var(--blue)"><span class="verify-dot"></span><h3>Static contract</h3><p>Plugin validation, parsers, QML lint, and maintained-file limits.</p><code class="verify-command">./scripts/check-static</code></article>
+        <article class="verify-step" style="--verify-color:var(--green)"><span class="verify-dot"></span><h3>Handoff proof</h3><p>Run every static, integration, and Qt Quick unit check on the host.</p><code class="verify-command">./scripts/test</code></article>
+      </div>
+
+      <div class="panel-warning">
+        <span class="symbol">!</span>
+        <p><strong>Panel ownership is a protected seam.</strong> Run <code>tests/panel-render.test</code> before and after changes to <code>Panel.qml</code> ownership, window bindings, overlays, or list wiring. Never run the live Wayland mode during an active session.</p>
+      </div>
+    </section>
+
+    <section class="section" id="rules">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">06 / Change discipline</p>
+          <h2>Six rules keep the graph honest</h2>
+        </div>
+        <p class="section-intro">A useful boundary hides implementation details, enforces ownership, or creates a real lifecycle and test seam. More files alone do not improve architecture.</p>
+      </div>
+      <div class="rules-grid">
+        <article class="rule-card" style="--rule-color:var(--blue)"><h3>Trace inward once</h3><p>Start at the visible behavior, cross one domain API, and stop at one owner.</p></article>
+        <article class="rule-card" style="--rule-color:var(--amber)"><h3>Open one provider chain</h3><p>Use the common library only for shared contracts; otherwise load only the selected provider.</p></article>
+        <article class="rule-card" style="--rule-color:var(--violet)"><h3>Extract the decision</h3><p>Put deterministic branching in <code>logic/</code> before adding it to a QML adapter.</p></article>
+        <article class="rule-card" style="--rule-color:var(--green)"><h3>Keep one truth</h3><p>Do not duplicate derived values as mutable state to shorten a binding chain.</p></article>
+        <article class="rule-card" style="--rule-color:var(--rose)"><h3>Delete the bypass</h3><p>Redirect callers and remove obsolete aliases, routes, and forwarding-only components.</p></article>
+        <article class="rule-card" style="--rule-color:var(--cyan)"><h3>Update the map</h3><p>Change this field guide and <code>ARCHITECTURE.md</code> with every public boundary change.</p></article>
+      </div>
+    </section>
+
+    <footer>
+      <span>Agent Threads architecture field guide</span>
+      <span>Normative companion: <code>ARCHITECTURE.md</code></span>
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const themeToggle = document.getElementById("themeToggle");
+      const storedTheme = localStorage.getItem("agent-threads-architecture-theme");
+      const preferredTheme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      root.dataset.theme = storedTheme || preferredTheme;
+
+      themeToggle.addEventListener("click", () => {
+        root.dataset.theme = root.dataset.theme === "light" ? "dark" : "light";
+        localStorage.setItem("agent-threads-architecture-theme", root.dataset.theme);
+      });
+
+      const graphDetails = {
+        panel: {
+          title: "Panel composition",
+          copy: "Directly owns the bar button, layer-shell window, focus lifecycle, overlays, IPC, and top-level coordination. Shell-sensitive objects are never hidden behind forwarded host properties.",
+          paths: ["Panel.qml", "ui/PanelFocusController.qml", "ui/PanelIpcHandler.qml"]
+        },
+        chat: {
+          title: "Standalone Agent Chat",
+          copy: "Owns the standalone conversation frontend and reuses the provider boundary without importing panel internals.",
+          paths: ["agent-chat.qml", "app/ChatWindow.qml", "app/ChatTranscriptPane.qml"]
+        },
+        ui: {
+          title: "UI components and controllers",
+          copy: "Own presentation and interaction. Components receive narrow state, derive display values once, and delegate every mutation through controllers and domain APIs.",
+          paths: ["ui/SidebarController.qml", "ui/ThreadListModel.qml", "ui/CodexThreadList.qml"]
+        },
+        "chat-ui": {
+          title: "Conversation components",
+          copy: "Composer, toolbar, transcript, and approval controls translate interaction into conversation operations while protocol transformations remain in pure logic.",
+          paths: ["app/ChatComposer.qml", "app/ChatToolbar.qml", "app/ChatApprovalOverlay.qml"]
+        },
+        store: {
+          title: "ThreadStore domain APIs",
+          copy: "The stable UI-facing façade owns application state and exposes grouped APIs without leaking provider implementation objects.",
+          paths: ["services/ThreadStore.qml", "services/ThreadStoreThreadApi.qml", "services/ThreadStoreProviderApi.qml"]
+        },
+        logic: {
+          title: "Deterministic logic",
+          copy: "Pure transformations own routing, filtering, sorting, normalization, and state transitions. They expose values and never import Quickshell or execute processes.",
+          paths: ["logic/ThreadListLogic.js", "logic/ThreadLaunchLogic.js", "logic/ThreadMutationLogic.js"]
+        },
+        providers: {
+          title: "Provider library and ports",
+          copy: "Composes provider implementations behind focused ports for routing, models, App Server operations, local agents, remotes, and local Codex lifecycle.",
+          paths: ["providers/AgentProviderLibrary.qml", "providers/AgentProviderRouting.qml", "providers/AgentProviderModels.qml"]
+        },
+        "local-codex": {
+          title: "Local Codex runtime",
+          copy: "Owns App Server transport, response normalization, snapshot refresh, conversation operations, and verified local launch lifecycle.",
+          paths: ["providers/CodexAppServerClient.qml", "providers/CodexAppServerResponseHandler.qml", "providers/LocalCodexProvider.qml"]
+        },
+        "local-agents": {
+          title: "Local Claude and OpenCode",
+          copy: "Owns provider-specific query helpers, terminal processes, normalization, and lifecycle while exposing only the common agent contract.",
+          paths: ["providers/LocalAgentProvider.qml", "providers/LocalAgentProcessHost.qml", "bin/agent-*-query"]
+        },
+        remote: {
+          title: "Remote provider runtime",
+          copy: "Owns host configuration, SSH execution, remote snapshots, actions, and provider-specific adapters.",
+          paths: ["providers/RemoteAgentProvider.qml", "providers/RemoteAgentProcessHost.qml", "providers/RemoteConfigStore.qml"]
+        }
+      };
+
+      const graphNodes = Array.from(document.querySelectorAll(".graph-node"));
+      const detailTitle = document.getElementById("graphDetailTitle");
+      const detailCopy = document.getElementById("graphDetailCopy");
+      const detailPaths = document.getElementById("graphDetailPaths");
+
+      function selectGraphNode(node) {
+        const detail = graphDetails[node.dataset.node];
+        if (!detail) return;
+        graphNodes.forEach(item => item.classList.toggle("is-active", item === node));
+        detailTitle.textContent = detail.title;
+        detailCopy.textContent = detail.copy;
+        detailPaths.replaceChildren(...detail.paths.map(path => {
+          const pill = document.createElement("span");
+          pill.className = "path-pill";
+          pill.textContent = path;
+          return pill;
+        }));
+      }
+
+      graphNodes.forEach(node => {
+        node.addEventListener("click", () => selectGraphNode(node));
+        node.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            selectGraphNode(node);
+          }
+        });
+      });
+      const initialGraphNode = document.querySelector('[data-node="store"]');
+      if (initialGraphNode) selectGraphNode(initialGraphNode);
+
+      const routes = {
+        "sidebar-structure": {
+          steps: [["entry", "Visible composition", "ui/SidebarMainContent.qml"], ["component", "Header or body", "ui/SidebarHeader.qml · ui/SidebarBody.qml"], ["state", "Ephemeral owner", "ui/PanelSessionState.qml"], ["domain", "Durable settings", "services/ThreadStoreSettingsApi.qml"]],
+          rule: "Panel owns composition; PanelSessionState owns ephemeral UI state; durable preferences cross the settings API.",
+          tests: "tests/panel-render.test · nearest sidebar QML test",
+          reload: "Narrow boundary when SidebarMainContent changes; otherwise graph reload."
+        },
+        "sidebar-actions": {
+          steps: [["entry", "Input boundary", "ui/SidebarKeyRouter.qml"], ["controller", "Action routing", "ui/SidebarController.qml"], ["navigation", "Movement", "ui/SidebarNavigationController.qml"], ["domain", "Thread operation", "services/ThreadStoreThreadApi.qml"]],
+          rule: "Selection remains in PanelSessionState; rows and key handlers never mutate providers or store state directly.",
+          tests: "tst_keycatcher.qml · tst_sidebarcontroller.qml · tst_sidebarnavigation.qml",
+          reload: "Narrow boundary for SidebarKeyRouter; graph reload below it."
+        },
+        "thread-rows": {
+          steps: [["entry", "Model adapter", "ui/ThreadListModel.qml"], ["logic", "Derive rows", "logic/ThreadListLogic.js"], ["state", "Source collections", "services/ThreadStore.qml"], ["view", "Render + scroll", "ui/CodexThreadList.qml"]],
+          rule: "ThreadStore owns collections; pure logic derives rows; the model adapts them without reimplementing grouping or sorting.",
+          tests: "tst_threadlistmodel.qml · tst_threadrowlogic.qml · tst_presentationlogic.qml",
+          reload: "In-process QML graph reload."
+        },
+        "thread-launch": {
+          steps: [["entry", "Public operation", "services/ThreadStoreThreadApi.qml"], ["logic", "Route decision", "logic/ThreadLaunchLogic.js"], ["provider", "Select runtime", "providers/AgentProviderLibrary.qml"], ["runtime", "Verify launch", "providers/ThreadLaunchCoordinator.qml"]],
+          rule: "ThreadStore owns launch tokens and active state; the provider owns execution and must observe the target before confirmation.",
+          tests: "tst_threadlaunchcoordinator.qml · thread-launch-focus.test · codex-terminal-lifecycle.test",
+          reload: "Graph reload; no shell restart."
+        },
+        mutations: {
+          steps: [["entry", "Public operation", "services/ThreadStoreThreadApi.qml"], ["state", "Exclusive boundary", "services/ThreadStoreMutations.qml"], ["logic", "Transition rules", "logic/ThreadMutationLogic.js"], ["runtime", "External mutation", "selected provider boundary"]],
+          rule: "One mutation at a time. Optimistic state always has provider-owned rollback and snapshot reconciliation.",
+          tests: "tst_threadmutationlogic.qml · tst_sidebarcontroller.qml · provider integration test",
+          reload: "Graph reload."
+        },
+        codex: {
+          steps: [["runtime", "Transport", "providers/CodexAppServerClient.qml"], ["adapter", "Normalize response", "providers/CodexAppServerResponseHandler.qml"], ["domain", "Expose snapshots", "services/ThreadStoreProviderApi.qml"], ["state", "Persist cache", "services/ProviderSnapshotStore.qml"]],
+          rule: "App Server transport and normalization stay private; UI consumes normalized provider snapshots through ThreadStore.",
+          tests: "app-server-transport.test · thread-statuses.test · tst_providersnapshotlogic.qml",
+          reload: "Graph reload; transport process remains a provider concern."
+        },
+        agents: {
+          steps: [["boundary", "Common contract", "providers/AgentProviderLibrary.qml"], ["provider", "Local provider", "providers/LocalAgentProvider.qml"], ["runtime", "Process owner", "providers/LocalAgentProcessHost.qml"], ["helper", "Provider query", "bin/agent-*-query"]],
+          rule: "Claude and OpenCode parsing, commands, and process behavior remain private to the chosen provider chain.",
+          tests: "claude-provider.test · opencode-provider.test · opencode-auth.test · agent-launchers.test",
+          reload: "QML graph reload for adapters; no reload needed for isolated helper tests."
+        },
+        remote: {
+          steps: [["boundary", "Remote API", "providers/RemoteAgentProvider.qml"], ["adapter", "Snapshots/actions", "RemoteAgentSnapshots.qml · RemoteAgentManagement.qml"], ["state", "Host config", "providers/RemoteConfigStore.qml"], ["runtime", "SSH owner", "providers/RemoteAgentProcessHost.qml"]],
+          rule: "RemoteConfigStore owns host configuration; adapters normalize provider data; the process host owns SSH execution.",
+          tests: "remote-codex.test · remote-claude.test · remote-opencode.test · remote-config.test",
+          reload: "Graph reload."
+        },
+        panel: {
+          steps: [["owner", "Shell edge", "Panel.qml"], ["controller", "Coordinate", "ui/Panel*Controller.qml"], ["logic", "Pure decision", "logic/Panel*Logic.js"], ["contract", "Ownership proof", "tests/panel-render.test"]],
+          rule: "Panel directly owns shell-sensitive windows, overlays, focus, and lifecycle. Do not move them behind forwarded host properties.",
+          tests: "panel-render.test before and after · matching panel QML test",
+          reload: "Graph reload; full restart only for explicit lifecycle testing."
+        },
+        persistence: {
+          steps: [["state", "Preferences", "services/SidebarPreferences.qml"], ["state", "Snapshots", "services/ProviderSnapshotStore.qml"], ["logic", "Capture/restore", "logic/PanelReloadStateLogic.js"], ["controller", "Apply", "ui/PanelReloadController.qml"]],
+          rule: "Durable preferences and ephemeral reload state stay separate; controllers apply transitions without becoming stores.",
+          tests: "tst_sidebarpreferences.qml · tst_providersnapshotlogic.qml · tst_panelreloadstatelogic.qml",
+          reload: "Designed to survive in-process graph reload."
+        },
+        chat: {
+          steps: [["entry", "Standalone window", "app/ChatWindow.qml"], ["component", "Conversation UI", "app/Chat* components"], ["provider", "Transport", "providers/CodexConversationClient.qml"], ["logic", "Protocol values", "logic/Conversation*Logic.js"]],
+          rule: "The standalone frontend uses conversation provider ports and never depends on Panel internals.",
+          tests: "tst_chat*.qml · tst_codexconversation*.qml · chat-launcher.test · web-transcript.test",
+          reload: "Independent Agent Chat process lifecycle."
+        },
+        helpers: {
+          steps: [["entry", "Executable", "matching bin/ helper"], ["boundary", "Structured input", "provider adapter"], ["runtime", "External command", "process / SSH / IPC"], ["output", "Normalized result", "provider boundary"]],
+          rule: "Helpers own quoting and external commands; QML passes structured inputs and consumes normalized outputs.",
+          tests: "matching tests/*.test · ./scripts/check-static",
+          reload: "No QML reload for isolated helper changes."
+        }
+      };
+
+      const routeColors = ["var(--blue)", "var(--violet)", "var(--green)", "var(--amber)"];
+      const changeSelect = document.getElementById("changeSelect");
+      const routeFlow = document.getElementById("routeFlow");
+      const routeRule = document.getElementById("routeRule");
+      const routeTests = document.getElementById("routeTests");
+      const routeReload = document.getElementById("routeReload");
+
+      function renderRoute() {
+        const route = routes[changeSelect.value];
+        if (!route) return;
+        routeFlow.replaceChildren(...route.steps.map((step, index) => {
+          const node = document.createElement("article");
+          node.className = "route-node";
+          node.style.setProperty("--route-color", routeColors[index % routeColors.length]);
+          const kind = document.createElement("div");
+          kind.className = "route-kind";
+          kind.textContent = step[0];
+          const title = document.createElement("strong");
+          title.textContent = step[1];
+          const path = document.createElement("code");
+          path.textContent = step[2];
+          node.append(kind, title, path);
+          return node;
+        }));
+        routeRule.textContent = route.rule;
+        routeTests.textContent = route.tests;
+        routeReload.textContent = route.reload;
+      }
+
+      changeSelect.addEventListener("change", renderRoute);
+      renderRoute();
+    })();
+  </script>
+</body>
+</html>
