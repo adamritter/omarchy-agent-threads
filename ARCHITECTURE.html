@@ -372,6 +372,148 @@
     .ownership-item h3 { margin-bottom: 9px; }
     .ownership-item p { margin-bottom: 0; color: var(--muted); font-size: 13px; }
 
+    .api-explorer {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 4px);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .api-toolbar {
+      padding: 22px 24px;
+      display: grid;
+      grid-template-columns: minmax(170px, 0.42fr) minmax(280px, 1fr);
+      gap: 22px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+    }
+    .api-toolbar label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .api-toolbar select {
+      width: 100%;
+      padding: 10px 38px 10px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: var(--bg-elevated);
+      color: var(--text);
+    }
+    .api-overview {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: minmax(190px, 0.55fr) minmax(0, 1.45fr);
+      gap: 28px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg-elevated) 74%, transparent);
+    }
+    .api-component-title h3 {
+      margin: 5px 0 8px;
+      font-size: 1.35rem;
+    }
+    .api-file {
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+    .api-visibility {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      background: var(--api-soft);
+      color: var(--api-color);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .api-contract-flow {
+      display: grid;
+      grid-template-columns: 1fr 36px 1fr 36px 1fr;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .api-flow-node {
+      min-width: 0;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--surface-soft);
+    }
+    .api-flow-node strong { display: block; margin-bottom: 6px; }
+    .api-flow-node p { margin: 0; color: var(--muted); font-size: 12px; }
+    .api-flow-arrow {
+      display: grid;
+      place-items: center;
+      color: var(--faint);
+      font-size: 18px;
+    }
+    .api-groups {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+    }
+    .api-group {
+      min-width: 0;
+      padding: 22px 24px;
+      background: var(--bg-elevated);
+    }
+    .api-group-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: baseline;
+      margin-bottom: 14px;
+    }
+    .api-group-head h3 { margin: 0; }
+    .api-count {
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+    .api-list { display: grid; gap: 8px; }
+    .api-member {
+      padding: 10px 0 0;
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(150px, 1.1fr);
+      gap: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .api-member:first-child { padding-top: 0; border-top: 0; }
+    .api-signature {
+      min-width: 0;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+    .api-member p { margin: 0; color: var(--muted); font-size: 12px; }
+    .api-kind {
+      display: inline-block;
+      margin: 0 6px 3px 0;
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: var(--surface-soft);
+      color: var(--api-color);
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .api-empty { color: var(--faint); font-size: 12px; }
+    .api-footnote {
+      margin: 0;
+      padding: 15px 24px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 11px;
+    }
+
     .route-tool {
       border: 1px solid var(--line);
       border-radius: calc(var(--radius) + 4px);
@@ -672,6 +814,10 @@
       .rules-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .graph-detail { grid-template-columns: 1fr 1.5fr; }
       .graph-detail > :last-child { grid-column: 1 / -1; }
+      .api-overview { grid-template-columns: 1fr; }
+      .api-contract-flow { grid-template-columns: 1fr 28px 1fr; }
+      .api-contract-flow .api-flow-node:last-child { grid-column: 1 / -1; }
+      .api-contract-flow .api-flow-arrow:nth-of-type(4) { display: none; }
     }
 
     @media (max-width: 580px) {
@@ -684,6 +830,12 @@
       .route-node:nth-child(2)::after { display: block; }
       .route-toolbar { align-items: stretch; flex-direction: column; }
       .route-toolbar select { width: 100%; }
+      .api-toolbar, .api-groups { grid-template-columns: 1fr; }
+      .api-contract-flow { grid-template-columns: 1fr; }
+      .api-flow-arrow { transform: rotate(90deg); }
+      .api-contract-flow .api-flow-node:last-child { grid-column: auto; }
+      .api-contract-flow .api-flow-arrow:nth-of-type(4) { display: grid; }
+      .api-member { grid-template-columns: 1fr; gap: 5px; }
       .graph-detail { grid-template-columns: 1fr; }
       .graph-detail > :last-child { grid-column: auto; }
       .state-flow { flex-direction: column; }
@@ -713,6 +865,7 @@
       <div class="brand"><span class="brand-mark">AT</span> Agent Threads architecture</div>
       <nav class="nav" aria-label="Document sections">
         <a href="#system">System</a>
+        <a href="#apis">APIs</a>
         <a href="#changes">Change routes</a>
         <a href="#states">States</a>
         <a href="#reload">Reload</a>
@@ -878,10 +1031,93 @@
       </div>
     </section>
 
+    <section class="section" id="apis">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">02 / Boundary APIs</p>
+          <h2>What each component exposes</h2>
+        </div>
+        <p class="section-intro">Select a component to see the contract its callers can rely on: required inputs, readable state, callable operations, emitted events, consumers, and owned side effects.</p>
+      </div>
+
+      <div class="api-explorer" style="--api-color:var(--green);--api-soft:var(--green-soft)">
+        <div class="api-toolbar">
+          <label for="apiSelect">Architecture component</label>
+          <select id="apiSelect">
+            <optgroup label="Composition">
+              <option value="panel">Panel</option>
+              <option value="chat-window">Agent Chat window</option>
+            </optgroup>
+            <optgroup label="UI and controllers">
+              <option value="sidebar-controller">Sidebar controller</option>
+              <option value="thread-list-model">Thread list model</option>
+              <option value="focus-controller">Panel focus controller</option>
+              <option value="reload-controller">Sidebar reload controller</option>
+            </optgroup>
+            <optgroup label="ThreadStore domain">
+              <option value="thread-store" selected>ThreadStore singleton</option>
+              <option value="thread-actions">Thread actions API</option>
+              <option value="provider-api">Provider API</option>
+              <option value="settings-api">Settings API</option>
+              <option value="mutations-api">Mutation and launch API</option>
+            </optgroup>
+            <optgroup label="Provider boundary">
+              <option value="provider-library">Agent provider library</option>
+              <option value="provider-routing">Provider routing</option>
+              <option value="provider-models">Provider model settings</option>
+            </optgroup>
+            <optgroup label="Provider implementations">
+              <option value="app-server">Codex App Server client</option>
+              <option value="local-codex">Local Codex provider</option>
+              <option value="local-agent">Local Claude/OpenCode provider</option>
+              <option value="remote-agent">Remote agent provider</option>
+              <option value="conversation-client">Conversation client</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="api-overview" aria-live="polite">
+          <div class="api-component-title">
+            <div class="detail-label">Selected contract</div>
+            <h3 id="apiTitle"></h3>
+            <div class="api-file" id="apiFile"></div>
+            <span class="api-visibility" id="apiVisibility"></span>
+          </div>
+          <div class="api-contract-flow" aria-label="Selected component contract flow">
+            <div class="api-flow-node"><div class="detail-label">Called by</div><strong id="apiConsumers"></strong><p id="apiConsumerNote"></p></div>
+            <div class="api-flow-arrow" aria-hidden="true">→</div>
+            <div class="api-flow-node"><div class="detail-label">Boundary promise</div><strong id="apiPromise"></strong><p id="apiPromiseNote"></p></div>
+            <div class="api-flow-arrow" aria-hidden="true">→</div>
+            <div class="api-flow-node"><div class="detail-label">Owns / affects</div><strong id="apiEffects"></strong><p id="apiEffectNote"></p></div>
+          </div>
+        </div>
+
+        <div class="api-groups">
+          <section class="api-group">
+            <div class="api-group-head"><h3>Required inputs</h3><span class="api-count" id="apiInputsCount"></span></div>
+            <div class="api-list" id="apiInputs"></div>
+          </section>
+          <section class="api-group">
+            <div class="api-group-head"><h3>Readable state</h3><span class="api-count" id="apiStateCount"></span></div>
+            <div class="api-list" id="apiState"></div>
+          </section>
+          <section class="api-group">
+            <div class="api-group-head"><h3>Callable operations</h3><span class="api-count" id="apiOperationsCount"></span></div>
+            <div class="api-list" id="apiOperations"></div>
+          </section>
+          <section class="api-group">
+            <div class="api-group-head"><h3>Explicit events</h3><span class="api-count" id="apiEventsCount"></span></div>
+            <div class="api-list" id="apiEvents"></div>
+          </section>
+        </div>
+        <p class="api-footnote">This is the cross-boundary contract, not an inventory of request IDs, timers, loaders, or implementation helpers. Every QML property also exposes its generated <code>&lt;property&gt;Changed</code> notifier; only explicit signals are listed.</p>
+      </div>
+    </section>
+
     <section class="section" id="changes">
       <div class="section-head">
         <div>
-          <p class="eyebrow">02 / Change routes</p>
+          <p class="eyebrow">03 / Change routes</p>
           <h2>Start where the behavior lives</h2>
         </div>
         <p class="section-intro">Choose a change to see the shortest authoritative path. The route ends at the only state or runtime owner that should change the underlying truth.</p>
@@ -919,7 +1155,7 @@
     <section class="section" id="states">
       <div class="section-head">
         <div>
-          <p class="eyebrow">03 / Runtime contracts</p>
+          <p class="eyebrow">04 / Runtime contracts</p>
           <h2>State changes are protocols</h2>
         </div>
         <p class="section-intro">Folder boundaries are not enough. Launches and mutations carry explicit ownership, tokens, postconditions, and rollback behavior.</p>
@@ -970,7 +1206,7 @@
     <section class="section" id="reload">
       <div class="section-head">
         <div>
-          <p class="eyebrow">04 / Reload model</p>
+          <p class="eyebrow">05 / Reload model</p>
           <h2>Reload the smallest safe graph</h2>
         </div>
         <p class="section-intro">Most saves stay inside the running Quickshell process. The manifest boundaries preserve the panel, providers, stores, windows, and service state.</p>
@@ -1015,7 +1251,7 @@
     <section class="section" id="verify">
       <div class="section-head">
         <div>
-          <p class="eyebrow">05 / Verification</p>
+          <p class="eyebrow">06 / Verification</p>
           <h2>Tests follow the same boundaries</h2>
         </div>
         <p class="section-intro">Iterate with the narrowest executable contract, then prove the integrated result once before handoff.</p>
@@ -1037,7 +1273,7 @@
     <section class="section" id="rules">
       <div class="section-head">
         <div>
-          <p class="eyebrow">06 / Change discipline</p>
+          <p class="eyebrow">07 / Change discipline</p>
           <h2>Six rules keep the graph honest</h2>
         </div>
         <p class="section-intro">A useful boundary hides implementation details, enforces ownership, or creates a real lifecycle and test seam. More files alone do not improve architecture.</p>
@@ -1154,6 +1390,696 @@
       });
       const initialGraphNode = document.querySelector('[data-node="store"]');
       if (initialGraphNode) selectGraphNode(initialGraphNode);
+
+      const apiContracts = {
+        panel: {
+          title: "Panel",
+          file: "Panel.qml + qs.Ui.Panel",
+          visibility: "shell-facing composition API",
+          color: "blue",
+          consumers: "Omarchy bar, shell IPC, UI controllers",
+          consumerNote: "The host injects the bar context; child controllers receive the panel as their composition root.",
+          promise: "Own the complete shell-sensitive surface",
+          promiseNote: "Coordinates domains without forwarding ownership of windows, focus, overlays, or lifecycle.",
+          effects: "Layer-shell window, focus, loaders, IPC",
+          effectNote: "Maps the sidebar, routes focus, composes overlays, and exposes loader boundaries for hot reload.",
+          inputs: [
+            ["service: ThreadStore", "Injectable domain singleton; defaults to Services.ThreadStore.", "input"],
+            ["bar: QtObject", "Inherited Omarchy bar context used for placement, appearance, and panel switching.", "host"],
+            ["layerNamespace: string", "Wayland layer-shell namespace; defaults to omarchy-codex-threads.", "config"],
+            ["layerMappingEnabled: bool", "Allows tests or lifecycle checks to suppress real layer mapping.", "config"],
+            ["fullscreenSuppressionEnabled: bool", "Controls whether a fullscreen workspace hides the sidebar surface.", "config"]
+          ],
+          state: [
+            ["opened: bool", "Inherited requested open state.", "read"],
+            ["sidebarPresented: bool", "True only when opened and not fullscreen-suppressed.", "derived"],
+            ["sidebarFocused: bool", "Keyboard focus request plus actual sidebar item focus.", "derived"],
+            ["activeProvider / activeProviderHost", "Selected provider type and its normalized host.", "derived"],
+            ["viewRows[] / selectedIndex", "Current rendered navigation model and cursor.", "model"],
+            ["projectCount / visibleThreadCount / readyThreadCount", "Presentation counts derived from the model and notifications.", "derived"],
+            ["sidebarActions / providerActions / listActions / focusActions / reloadActions", "Focused controller ports exposed to composed children.", "ports"]
+          ],
+          operations: [
+            ["open() / close() / toggle()", "Inherited panel lifecycle operations.", "lifecycle"],
+            ["switchPanel(direction): bool", "Ask the host bar to move to the adjacent panel.", "host"],
+            ["reloadEntryPoint(kind): bool", "Delegate a declared manifest boundary reload to SidebarReloadController.", "reload"]
+          ],
+          events: []
+        },
+
+        "settings-api": {
+          title: "Settings API",
+          file: "services/ThreadStoreSettingsApi.qml",
+          visibility: "public durable-settings API",
+          color: "green",
+          consumers: "Panel and sidebar presentation controllers",
+          consumerNote: "UI reads normalized settings and changes them through methods that preserve validation and provenance.",
+          promise: "Hide persistence and provider-specific model settings",
+          promiseNote: "Combines SidebarPreferences with AgentProviderModels while exposing one stable settings shape.",
+          effects: "Sidebar preferences and provider model configuration",
+          effectNote: "Writes durable settings, schedules persistence, and changes provider/model/frontend selection.",
+          inputs: [
+            ["preferences: SidebarPreferences", "Durable sidebar and interaction settings owner.", "required"],
+            ["modelSettings: AgentProviderModels", "Cross-provider model, effort, and agent selection port.", "required"]
+          ],
+          state: [
+            ["loaded / hydrating", "Preference persistence lifecycle.", "lifecycle"],
+            ["sidebarOpen / scope / globalOpen / openWorkspaces", "Global and per-workspace visibility state.", "sidebar"],
+            ["collapsedProjects / collapsedRemotes / pinnedSections", "Durable list presentation state.", "list"],
+            ["selectedProvider / selectedModel / selectedEffort", "Current provider and local Codex model choices.", "selection"],
+            ["threadFrontend / threadFrontendChangedBy / threadFrontendChangedAt", "Frontend selection with explicit provenance.", "frontend"],
+            ["fastMode / notificationsEnabled", "Runtime tier and notification preferences.", "toggle"]
+          ],
+          operations: [
+            ["sidebarOpenOnWorkspace / setSidebarOpenOnWorkspace / setSidebarScope / migrateSidebarOpenState", "Read, write, and migrate workspace visibility.", "sidebar"],
+            ["setSelectedProvider / setSelectedModel / setSelectedEffort", "Change the primary provider or local Codex selections.", "selection"],
+            ["providerHost / modelsForProvider / agentsForProvider", "Read normalized choices for any provider type.", "query"],
+            ["selected*ForProvider / default*ForProvider / effective*ForProvider", "Resolve selected, default, and effective model, effort, and agent values.", "query"],
+            ["setModelForProvider / setEffortForProvider / setAgentForProvider", "Persist provider-specific runtime choices.", "selection"],
+            ["setThreadFrontend(value, source) / toggleThreadFrontend(source)", "Change terminal versus Agent Chat with provenance.", "frontend"],
+            ["setFastMode / toggleFastMode / setNotificationsEnabled / toggleNotifications", "Change boolean runtime preferences.", "toggle"],
+            ["setCollapsedProjects / setCollapsedRemotes / setPinnedSections", "Persist list presentation collections.", "list"],
+            ["loadSidebarSettings(raw) / flushSidebarSettings()", "Hydrate or synchronously persist preferences.", "persistence"]
+          ],
+          events: []
+        },
+        "mutations-api": {
+          title: "Mutation and launch API",
+          file: "services/ThreadStoreMutations.qml",
+          visibility: "state-transition API",
+          color: "green",
+          consumers: "Thread actions and provider implementations",
+          consumerNote: "Providers request and complete transitions through tokens rather than writing active or mutation state directly.",
+          promise: "Serialize mutations and reject stale launch completions",
+          promiseNote: "Applies pure ThreadLaunchLogic and ThreadMutationLogic results to the single ThreadStore owner.",
+          effects: "ThreadStore launch, active-thread, mutation, and error state",
+          effectNote: "This is the only write path for tokenized launches and the shared exclusive mutation lifecycle.",
+          inputs: [["store: ThreadStore", "Authoritative launch, mutation, active-thread, and error state.", "required"]],
+          state: [],
+          operations: [
+            ["beginThreadLaunch(threadId, source): requestId|0", "Acquire a launch token; zero means rejected.", "launch"],
+            ["confirmThreadLaunch(requestId, threadId): bool", "Confirm only the current token and update activeThreadId.", "launch"],
+            ["failThreadLaunch(requestId, message): bool", "Fail only the current token and normalize launch error state.", "launch"],
+            ["observeActiveThread(threadId, source): bool", "Confirm a matching launch or apply an independently observed active thread.", "launch"],
+            ["threadMutationRunning(): bool", "Report whether the exclusive mutation boundary is occupied.", "mutation"],
+            ["beginThreadMutation(kind, threadId): bool", "Validate active-writer ownership and acquire the mutation boundary.", "mutation"],
+            ["finishThreadMutation(kind): bool", "Complete only the matching mutation kind.", "mutation"],
+            ["failThreadMutation(kind, message): bool", "Complete the matching mutation and expose a normalized error.", "mutation"],
+            ["resetThreadMutations()", "Return mutation state to idle during backend reset.", "mutation"],
+            ["setPendingPinValue(pinned) / confirmThreadArchive()", "Attach pin intent or archive confirmation to the active transaction.", "mutation"]
+          ],
+          events: [["store.threadLaunchRequested(threadId)", "Raised by beginThreadLaunch after a token is accepted.", "indirect signal"]]
+        },
+        "provider-library": {
+          title: "Agent provider library",
+          file: "providers/AgentProviderLibrary.qml",
+          visibility: "ThreadStore-internal provider boundary",
+          color: "amber",
+          consumers: "ThreadStore composition only",
+          consumerNote: "ThreadStore injects only the focused ports each grouped API consumes; UI never sees this object.",
+          promise: "Compose every provider behind normalized hosts and ports",
+          promiseNote: "Keeps provider type independent from transport and prevents implementation aliases from crossing into UI.",
+          effects: "Provider component lifecycles and normalized host graph",
+          effectNote: "Creates App Server, local providers, remote provider, routing, registry, and model-settings components.",
+          inputs: [["controller: ThreadStore", "State owner and grouped domain API callbacks required by provider implementations.", "required"]],
+          state: [
+            ["appServer / localCodex / localProviders / remotes / routing / modelSettings", "Focused internal ports consumed by ThreadStore APIs.", "ports"],
+            ["localCodexHost", "Normalized built-in local Codex host.", "host"],
+            ["localHosts / configuredRemoteHosts / supplementalHosts / allHosts", "Normalized host views for specific consumers.", "hosts"],
+            ["actionHostId", "Current local or remote host performing a provider action.", "operation"]
+          ],
+          operations: [],
+          events: [
+            ["settingsChanged()", "Provider-specific model or agent settings changed and should be persisted.", "signal"],
+            ["snapshotsChanged()", "Provider state changed and should be captured in the shared snapshot.", "signal"],
+            ["remoteHostsChanged()", "The normalized configured remote host collection changed.", "signal"]
+          ]
+        },
+        "provider-routing": {
+          title: "Provider routing",
+          file: "providers/AgentProviderRouting.qml",
+          visibility: "provider dispatch port",
+          color: "amber",
+          consumers: "ThreadStore thread and provider APIs",
+          consumerNote: "Callers provide a host ID and domain object; routing selects local Codex, a local agent, or a remote provider.",
+          promise: "Dispatch by host without leaking implementation type",
+          promiseNote: "Provider and transport remain independent dimensions; every operation uses the same host-aware contract.",
+          effects: "Selected provider implementation",
+          effectNote: "Queries or invokes exactly one local Codex, local agent, or remote provider path.",
+          inputs: [
+            ["controller: ThreadStore", "Domain callbacks and state used by local Codex routing.", "required"],
+            ["appServerClient / localCodexProvider", "Local Codex transport and launch implementation.", "required"],
+            ["localRegistry / remoteProvider", "Local agent and remote implementation registries.", "required"],
+            ["allHosts: array", "Normalized host graph used for identity lookup.", "required"]
+          ],
+          state: [],
+          operations: [
+            ["normalizeProviderType(value) / hostById(hostId) / isLocalCodex(hostId)", "Normalize and classify routing identities.", "query"],
+            ["localProviderForHost(hostId) / localProviderForThread(thread)", "Resolve a local Claude or OpenCode implementation.", "query"],
+            ["pathForThread(hostId, thread) / threadStatus(hostId, thread)", "Read provider-normalized path and status.", "query"],
+            ["refreshHost(hostId) / refreshSupplementalHosts(hostId?)", "Refresh one host or every non-built-in provider.", "refresh"],
+            ["markSupplementalThreadSeen(threadId)", "Clear unread state across local and remote agent providers.", "state"],
+            ["archiveThread / renameThread / toggleThreadPin", "Dispatch mutations to the host owner.", "mutation"],
+            ["openThread(hostId, thread, path, source): bool", "Dispatch an existing-thread launch.", "launch"],
+            ["createThread(hostId, path)", "Dispatch new-thread creation.", "launch"]
+          ],
+          events: []
+        },
+        "provider-models": {
+          title: "Provider model settings",
+          file: "providers/AgentProviderModels.qml",
+          visibility: "settings normalization port",
+          color: "amber",
+          consumers: "ThreadStore Settings API and SidebarPreferences",
+          consumerNote: "Callers use one providerType-based contract for Codex, Claude, and OpenCode choices.",
+          promise: "Resolve selected, default, and effective runtime choices",
+          promiseNote: "Uses Codex App Server model/config state for Codex and ProviderRegistry settings for other agents.",
+          effects: "Provider registry or durable Codex preferences",
+          effectNote: "Setters route to the correct settings owner; queries remain deterministic projections.",
+          inputs: [
+            ["controller: ThreadStore", "Codex models, config, and selected preference values.", "required"],
+            ["registry: ProviderRegistry", "Claude/OpenCode hosts, models, agents, defaults, and settings.", "required"]
+          ],
+          state: [],
+          operations: [
+            ["providerHost(providerType)", "Return the normalized local host for a provider type.", "query"],
+            ["models / agents / modelState", "Return available choices and the complete resolution state.", "query"],
+            ["selectedModel / selectedEffort / selectedAgent", "Return persisted selections.", "query"],
+            ["defaultModel / defaultEffort / defaultAgent", "Return provider or model defaults.", "query"],
+            ["effectiveModel / effectiveEffort / effectiveAgent", "Return the value that will actually be sent to a launch.", "query"],
+            ["modelEfforts(providerType, modelId)", "Return allowed efforts for a model.", "query"],
+            ["setModel / setEffort / setAgent", "Persist a provider-specific selection.", "command"],
+            ["loadSettings(settings) / settingsObject()", "Hydrate or serialize non-Codex provider settings.", "persistence"]
+          ],
+          events: []
+        },
+        "chat-window": {
+          title: "Agent Chat window",
+          file: "app/ChatWindow.qml",
+          visibility: "standalone frontend API",
+          color: "cyan",
+          consumers: "Agent Chat launcher and chat controls",
+          consumerNote: "Launch options configure the window; composer, toolbar, and IPC commands drive it after startup.",
+          promise: "Present one conversation without Panel internals",
+          promiseNote: "Translates UI choices into CodexConversationClient operations and readable conversation state.",
+          effects: "Conversation transport and standalone window",
+          effectNote: "Starts or resumes chats, sends prompts, changes runtime options, and answers approvals.",
+          inputs: [
+            ["AGENT_THREADS_CHAT_OPTIONS", "JSON launch contract parsed into cwd, model, effort, tier, approvals, sandbox, remote, and prompt.", "launch"],
+            ["workingDirectory / selectedModel / selectedEffort", "Mutable user selections for the next operation.", "config"],
+            ["serviceTier / approvalPolicy / approvalsReviewer / sandboxMode", "Runtime policy selections synchronized into the conversation client.", "config"],
+            ["remoteAddress", "Optional remote App Server transport endpoint.", "config"]
+          ],
+          state: [
+            ["initialOptions", "Normalized immutable launch options.", "read"],
+            ["startupConfigured: bool", "Whether initial options have been applied.", "read"],
+            ["pendingLaunchPrompt: string", "Prompt waiting for session readiness.", "read"],
+            ["modelChoices() / effortChoices()", "Display-ready runtime choices derived from the client model state.", "derived"]
+          ],
+          operations: [
+            ["newConversation()", "Start a new thread with the current cwd, model, and effort.", "command"],
+            ["sendComposer()", "Send the current composer text or interrupt when busy.", "command"],
+            ["cycleEffort()", "Advance to the next allowed reasoning effort.", "settings"],
+            ["applyApproval(policy, reviewer)", "Update approval policy and reviewer routing.", "settings"],
+            ["applyLaunchOptions(options) / applyLaunchOptionsJson(json)", "Apply a new launch contract to the live window.", "launch"],
+            ["IPC open(optionsJson): string", "Apply options and show the window.", "ipc"],
+            ["IPC fast(mode): string", "Read or change service tier.", "ipc"],
+            ["IPC effort(mode): string", "Read or change reasoning effort.", "ipc"]
+          ],
+          events: []
+        },
+        "sidebar-controller": {
+          title: "Sidebar controller",
+          file: "ui/SidebarController.qml",
+          visibility: "UI interaction port",
+          color: "blue",
+          consumers: "Sidebar key router, rows, menus, Panel",
+          consumerNote: "All pointer, keyboard, cycle, and row actions converge here before crossing a domain API.",
+          promise: "Keep pointer and keyboard behavior equivalent",
+          promiseNote: "Owns activation intent and exposes action and navigation sub-ports; it does not own domain state.",
+          effects: "Selection, overlays, focus release, domain calls",
+          effectNote: "Updates the UI cursor and delegates thread, remote, terminal, and navigation commands.",
+          inputs: [
+            ["panel: Panel", "Composition root supplying state, domain ports, and focused controllers.", "required"],
+            ["listView: ListView", "Rendered thread list used for positioning and viewport calculations.", "required"]
+          ],
+          state: [
+            ["service: ThreadStore", "Read-only projection of panel.service.", "read"],
+            ["followedActiveThreadId: string", "Last active thread followed by navigation.", "cursor"],
+            ["activationIntentThreadId: string", "Target selected for a launch that has not yet been confirmed.", "intent"],
+            ["actions: SidebarActionController", "Row actions, activation, creation, mutation, and terminal commands.", "port"],
+            ["navigation: SidebarNavigationController", "Horizontal movement, active-thread following, pin navigation, and cursor points.", "port"]
+          ],
+          operations: [
+            ["actions.activateRow(index, source): string", "Select and open a row using the same launch path as keyboard activation.", "activation"],
+            ["actions.openSelected(source): string", "Toggle structural rows or open the selected thread.", "activation"],
+            ["actions.activateAdjacentThread(direction): string", "Cycle from the pending or active thread, not merely the UI cursor.", "activation"],
+            ["actions.newSelectedThread() / openSelectedTerminal()", "Create a thread or open a terminal in the selected scope.", "command"],
+            ["actions.archiveRow / renameRow / moveRowToProject / togglePin", "Delegate row mutations through ThreadStore APIs.", "mutation"],
+            ["actions.loginRemoteForRow / testRemoteForRow / manageRemoteForRow / disableRemoteForRow", "Delegate remote-management actions.", "remote"],
+            ["navigation.handleHorizontalNavigation(direction)", "Expand, collapse, or move through the hierarchy.", "navigation"],
+            ["navigation.followActiveThread(force)", "Align selection with launch intent or confirmed active state.", "navigation"],
+            ["navigation.togglePinSelected()", "Toggle the selected thread or section pin.", "navigation"]
+          ],
+          events: []
+        },
+        "thread-list-model": {
+          title: "Thread list model",
+          file: "ui/ThreadListModel.qml",
+          visibility: "UI model API",
+          color: "blue",
+          consumers: "Panel, CodexThreadList, list and sidebar controllers",
+          consumerNote: "The panel supplies source state; the list consumes only the derived rows and counts.",
+          promise: "Adapt state into stable, selectable rows",
+          promiseNote: "Delegates filtering, grouping, ordering, and stable keys to ThreadListLogic.",
+          effects: "In-memory derived rows and selection",
+          effectNote: "No provider or process effects; rebuilds deterministic presentation state only.",
+          inputs: [
+            ["service: ThreadStore", "Threads, projects, remote hosts, and durable presentation preferences.", "required"],
+            ["session: PanelSessionState", "Search text and expanded preview groups.", "required"],
+            ["activeProvider: string", "Provider dimension to render.", "required"],
+            ["groupPreviewLimit: int", "Maximum rows before a group receives a More row.", "required"],
+            ["homePath / workPath / codexScratchRoot", "Path context for grouping and labels.", "required"]
+          ],
+          state: [
+            ["viewRows: array", "Stable structural, project, remote, More, and thread rows.", "output"],
+            ["projectCount: int", "Number of projects represented by the active view.", "output"],
+            ["visibleThreadCount: int", "Number of thread rows after filtering and grouping.", "output"],
+            ["selectedIndex: int", "Current list cursor restored by stable row key.", "output"],
+            ["searchText: string", "Read-only projection of session.searchText.", "read"]
+          ],
+          operations: [
+            ["rebuildRows(preferredKey?)", "Recompute rows and restore selection by stable row key when possible.", "model"]
+          ],
+          events: []
+        },
+        "focus-controller": {
+          title: "Panel focus controller",
+          file: "ui/PanelFocusController.qml",
+          visibility: "shell integration controller",
+          color: "blue",
+          consumers: "Panel button, sidebar keys, IPC and runtime probes",
+          consumerNote: "Input paths request intent; this controller coordinates compositor, pointer, workspace, and QML focus.",
+          promise: "Make focus transfer explicit and recoverable",
+          promiseNote: "Separates requested focus, priming, compositor probes, pointer return, and release behavior.",
+          effects: "Panel open state, keyboard focus, compositor cursor",
+          effectNote: "May map the sidebar, dispatch cursor movement, request fullscreen probes, and restore pointer position.",
+          inputs: [
+            ["panel: Panel", "Complete panel/session/runtime composition context.", "required"],
+            ["compositor: Hyprland", "Dispatch and focused-workspace integration.", "required"]
+          ],
+          state: [
+            ["panel.session.keyboardFocusRequested", "Intent to hold keyboard focus.", "writes"],
+            ["panel.session.focusWorkflowPending", "Summon workflow awaiting cursor or compositor completion.", "writes"],
+            ["panel.session.activeWorkspace*", "Current workspace and fullscreen state.", "writes"],
+            ["panel.session.cursorReturnX / cursorReturnY", "Pointer position restored when leaving the sidebar.", "writes"]
+          ],
+          operations: [
+            ["requestOpen() / requestClose() / requestToggle()", "Change requested visibility and refresh fullscreen state.", "lifecycle"],
+            ["focusSidebar() / summonSidebarFocus()", "Acquire QML and compositor keyboard focus.", "focus"],
+            ["completeSidebarSummon(cursorText)", "Finish pointer-aware summon after the position probe.", "focus"],
+            ["releaseSidebarFocus(force) / escapeSidebarFocus()", "Release keyboard focus and optionally restore the pointer.", "focus"],
+            ["focusSidebarFrom(x, y)", "Focus while remembering an explicit return point.", "focus"],
+            ["toggleSidebarScope() / applySidebarOpenState()", "Switch global/workspace visibility and apply its persisted value.", "settings"],
+            ["queryFullscreenState() / applyFullscreenState(text)", "Probe and apply workspace suppression state.", "workspace"]
+          ],
+          events: []
+        },
+        "reload-controller": {
+          title: "Sidebar reload controller",
+          file: "ui/SidebarReloadController.qml",
+          visibility: "manifest hot-reload API",
+          color: "green",
+          consumers: "Omarchy shell through Panel.reloadEntryPoint()",
+          consumerNote: "The host resolves an exact manifest boundary key and asks each live widget instance to handle it.",
+          promise: "Replace only the declared sidebar loader",
+          promiseNote: "Captures selection and focus state around the replacement while keeping Panel and ThreadStore alive.",
+          effects: "Loader source revisions and ephemeral restore state",
+          effectNote: "Changes revisioned QML URLs, then restores captured panel state after the new item loads.",
+          inputs: [["panel: Panel", "Panel, session, sidebar loader, and focus/reload controller context.", "required"]],
+          state: [
+            ["sidebarRevision: int", "Revision for SidebarKeyRouter.qml.", "revision"],
+            ["contentRevision: int", "Revision for SidebarMainContent.qml.", "revision"],
+            ["pendingState: object|null", "Captured state waiting for the replacement item.", "snapshot"],
+            ["sidebarSource / contentSource", "Resolved revisioned loader URLs.", "output"]
+          ],
+          operations: [
+            ["captureState(): object", "Capture row key, focus, search, overlays, and other reload-safe UI state.", "snapshot"],
+            ["restoreState()", "Apply pending state after the replacement loader completes.", "restore"],
+            ["reloadEntryPoint(kind): bool", "Handle sidebar or sidebarContent; return false for unknown keys so the host falls back.", "reload"]
+          ],
+          events: []
+        },
+        "thread-store": {
+          title: "ThreadStore singleton",
+          file: "services/ThreadStore.qml",
+          visibility: "stable UI-facing domain façade",
+          color: "green",
+          consumers: "Panel, UI models and controllers",
+          consumerNote: "UI code reads state and calls four grouped ports; it never receives provider implementations.",
+          promise: "Keep one authoritative application state",
+          promiseNote: "Composes focused stores and provider ports while remaining the single writer for launch and mutation state.",
+          effects: "Application state, persistence, provider runtime",
+          effectNote: "Schedules provider snapshots, starts providers after preferences hydrate, and shuts down runtime processes.",
+          inputs: [],
+          state: [
+            ["threads[] / projects[]", "Normalized local Codex collections.", "domain"],
+            ["rateLimits / rateLimitResetCredits / models / codexConfig", "Codex account and model snapshot state.", "domain"],
+            ["threadStatuses / unreadThreads", "Cross-provider activity and unread state.", "domain"],
+            ["activeThreadId: string", "Provider-observed active thread.", "launch"],
+            ["threadLaunchState + phase/requestId/launching/failed/source", "Tokenized launch lifecycle and derived fields.", "launch"],
+            ["threadMutationState + archiving/renaming/pinning/moving fields", "Exclusive mutation lifecycle and optimistic state.", "mutation"],
+            ["errorText / launchError / launchingProjectPath", "User-facing domain and launch failures.", "error"],
+            ["threadActions / providers / settings / mutations", "The four grouped public domain ports.", "ports"]
+          ],
+          operations: [
+            ["threadActions.*", "Thread queries, activation, creation, mutation, and status operations.", "port"],
+            ["providers.*", "Provider snapshot, remote management, runtime, and refresh operations.", "port"],
+            ["settings.*", "Durable sidebar, provider, model, frontend, and notification settings.", "port"],
+            ["mutations.*", "Tokenized launch and exclusive mutation transitions.", "port"]
+          ],
+          events: [["threadLaunchRequested(threadId)", "Emitted after a launch token is accepted, before provider execution begins.", "signal"]]
+        },
+        "thread-actions": {
+          title: "Thread actions API",
+          file: "services/ThreadStoreThreadApi.qml",
+          visibility: "public domain API",
+          color: "green",
+          consumers: "Sidebar controllers, provider routing, App Server callbacks",
+          consumerNote: "UI uses high-level thread commands; provider callbacks use the same boundary to reconcile results.",
+          promise: "Translate thread intent into owned state transitions",
+          promiseNote: "Hides provider routing, optimistic mutation mechanics, status merging, and launch frontend selection.",
+          effects: "ThreadStore state and selected provider runtime",
+          effectNote: "May update unread/status/mutation state and invoke App Server, terminal, or Agent Chat operations.",
+          inputs: [
+            ["store: ThreadStore", "Authoritative application state and grouped sibling APIs.", "required"],
+            ["appServer: CodexAppServerClient", "Local Codex metadata and mutation transport.", "required"],
+            ["routing: AgentProviderRouting", "Host-aware dispatch across local and remote providers.", "required"],
+            ["localCodex: LocalCodexProvider", "Local terminal lifecycle and active-thread observation.", "required"]
+          ],
+          state: [],
+          operations: [
+            ["projectForId / projectForRoot / projectRootPath / projectPathForThread", "Resolve project identity and paths from store collections.", "query"],
+            ["threadStatus(threadId) / threadUnread(threadId)", "Read normalized presentation state.", "query"],
+            ["markThreadSeen(threadId)", "Clear unread state and notify supplemental providers.", "state"],
+            ["openThread(thread, cwdOverride?, source?): bool", "Choose terminal or Agent Chat frontend and start a tokenized launch.", "launch"],
+            ["newProjectThread(projectPath)", "Create a new local Codex thread using the selected frontend.", "launch"],
+            ["launchAgentChat(thread?, cwd, source?): bool", "Start the standalone conversation frontend and bind its launch token.", "launch"],
+            ["archiveThread / renameThread / toggleThreadPin", "Route local Codex mutations through the common provider contract.", "mutation"],
+            ["moveThreadToProject(thread, path, name): bool", "Begin an exclusive move; create the project first when necessary.", "mutation"],
+            ["refreshThreadStatuses() / applyRemoteStatusNotification(params)", "Refresh helper state or merge App Server notifications.", "status"],
+            ["assignMovingThreadToProject / finishThreadMove / failThreadMove", "Provider callback contract for move completion and failure.", "callback"],
+            ["restoreArchivedThread / failThreadArchive / setArchiveTombstone", "Provider callback and rollback contract for optimistic archive.", "callback"],
+            ["clearPendingNewThread / resolvePendingNewThread / refreshActiveThread", "Forward local Codex lifecycle reconciliation.", "callback"]
+          ],
+          events: []
+        },
+        "provider-api": {
+          title: "Provider API",
+          file: "services/ThreadStoreProviderApi.qml",
+          visibility: "public domain API",
+          color: "green",
+          consumers: "Panel provider/list controllers and ThreadStore",
+          consumerNote: "The UI sees normalized readiness, hosts, management state, and operations instead of provider objects.",
+          promise: "Expose provider capabilities in one UI-safe shape",
+          promiseNote: "Owns snapshot persistence coordination and delegates transport-specific work through focused internal ports.",
+          effects: "Provider snapshots, App Server, remote config, SSH and terminals",
+          effectNote: "Starts refreshes, manages hosts, launches remote actions, and persists normalized provider state.",
+          inputs: [
+            ["store / preferences / snapshots", "Authoritative state plus persistence collaborators.", "required"],
+            ["appServer / routing / localProviders / remotes", "Focused provider implementation ports.", "required"],
+            ["supplementalHosts / configuredRemoteHosts / actionHostId", "Normalized host projections from AgentProviderLibrary.", "required"]
+          ],
+          state: [
+            ["ready / loading / refreshQueued / lastRefreshMs", "Local Codex App Server lifecycle.", "codex"],
+            ["remoteHosts / remoteConfig / remoteConfigLoaded", "Normalized supplemental hosts and durable remote config.", "remote"],
+            ["remoteQueryHostId / remoteActionHostId", "Hosts currently used for remote query or mutation work.", "remote"],
+            ["remoteTest* / remoteClaudeLogin* / remoteAddError", "Remote management operation state.", "remote"],
+            ["sshHosts / sshHostsLoading / sshHostsError", "Discovered SSH aliases and refresh state.", "ssh"],
+            ["snapshotLoaded / snapshotRestored / snapshotHydrating / snapshot", "Persisted provider snapshot lifecycle.", "snapshot"]
+          ],
+          operations: [
+            ["startAppServer() / resetBackendState()", "Start or reset the local Codex runtime and its domain state.", "lifecycle"],
+            ["refreshThreads / refreshProjects / refreshRateLimits / refreshModels / refreshConfig", "Request focused local Codex snapshots.", "refresh"],
+            ["remoteHostById / remotePathForThread / remoteThreadStatus", "Read normalized remote identity, paths, and status.", "query"],
+            ["refreshRemotes(hostId?) / localAgentProvider*", "Refresh supplemental providers or resolve an internal local provider.", "query"],
+            ["addRemote / updateRemote / removeRemote / testRemote", "Manage durable remote host definitions and connectivity.", "remote"],
+            ["loginRemoteClaude / refreshSshHosts / sshHostEnabled / remoteIdForSshHost", "Manage login and SSH discovery.", "remote"],
+            ["openRemoteThread / newRemoteThread / openTerminal", "Launch remote threads or a scoped terminal.", "launch"],
+            ["archiveRemoteThread / renameRemoteThread / toggleRemoteThreadPin", "Run remote mutations through provider routing.", "mutation"],
+            ["providerSnapshotObject / scheduleProviderSnapshot / flushProviderSnapshot", "Capture and persist the normalized cross-provider snapshot.", "snapshot"],
+            ["attachProviderSnapshot / restoreProviderSnapshot", "Attach persistence and hydrate provider/domain state.", "snapshot"]
+          ],
+          events: []
+        },
+        "app-server": {
+          title: "Codex App Server client",
+          file: "providers/CodexAppServerClient.qml",
+          visibility: "provider-internal transport API",
+          color: "amber",
+          consumers: "ThreadStore Provider API and Thread Actions API",
+          consumerNote: "Domain APIs request operations; response handling writes normalized results back through ThreadStore callbacks.",
+          promise: "Own the Codex JSONL request/response lifecycle",
+          promiseNote: "Tracks request IDs, pagination, reconnects, and operation completion without exposing protocol details to UI.",
+          effects: "codex app-server process and ThreadStore Codex state",
+          effectNote: "Writes requests to the process, parses responses, refreshes collections, and resolves optimistic mutations.",
+          inputs: [["controller: ThreadStore", "Domain state plus thread, provider, settings, and mutation callback ports.", "required"]],
+          state: [
+            ["ready: bool", "Initialization handshake completed.", "lifecycle"],
+            ["loading: bool", "Thread pagination is in progress.", "lifecycle"],
+            ["refreshQueued: bool", "Another thread refresh should run after the current one.", "lifecycle"],
+            ["lastRefreshMs: number", "Completion timestamp of the latest thread snapshot.", "lifecycle"]
+          ],
+          operations: [
+            ["start() / reset()", "Start the guarded App Server process or reset its complete domain snapshot.", "lifecycle"],
+            ["refreshThreads() / refreshProjects()", "Request paginated thread or project collections.", "query"],
+            ["refreshRateLimits() / refreshModels() / refreshConfig()", "Request account and runtime metadata.", "query"],
+            ["archiveThread(threadId): bool", "Send thread/archive and retain request state for rollback.", "mutation"],
+            ["renameThread(threadId, name): bool", "Send thread/name/set.", "mutation"],
+            ["setThreadPinned(threadId, pinned, sectionId): bool", "Send thread/section/move.", "mutation"],
+            ["createProject(threadId, name, path) / moveThread(threadId, projectId)", "Complete the two-stage project move workflow.", "mutation"],
+            ["clearMoveRequests()", "Clear project-create and move request bookkeeping after completion or failure.", "callback"],
+            ["send(message): bool", "Write one JSONL protocol message when the process is live.", "transport"],
+            ["handleLine(line) / handleResponse(message)", "Parse notifications and delegate response reconciliation.", "transport"]
+          ],
+          events: []
+        },
+        "local-codex": {
+          title: "Local Codex provider",
+          file: "providers/LocalCodexProvider.qml",
+          visibility: "provider-internal launch API",
+          color: "amber",
+          consumers: "AgentProviderRouting and Thread Actions API",
+          consumerNote: "Routing sends local Codex launches here; ThreadStore receives only token transitions and observed active state.",
+          promise: "Turn terminal launches into verified active-thread state",
+          promiseNote: "Uses cached windows when valid, otherwise runs guarded helpers and reconciles window/thread discovery.",
+          effects: "Terminal processes, window map cache, activeThreadId",
+          effectNote: "Starts terminals, maps thread IDs to windows, probes the focused terminal, and confirms or fails launch tokens.",
+          inputs: [["controller: ThreadStore", "Launch tokens, settings, thread paths, helpers, snapshots, and error state.", "required"]],
+          state: [
+            ["openRequestId / openThreadId", "Current existing-thread launch token and target.", "launch"],
+            ["pendingNewThreadPath / pendingNewThreadId / pendingNewWindowAddress", "New-thread reconciliation state.", "launch"],
+            ["activeThreadRefreshQueued: bool", "A focused-terminal probe should rerun after the current one.", "probe"]
+          ],
+          operations: [
+            ["openThread(thread, cwdOverride?, source?): bool", "Acquire a launch token, focus a verified cached window, or start the terminal helper.", "launch"],
+            ["newThread(projectPath)", "Start a project terminal and begin discovering its new thread and window.", "launch"],
+            ["refreshActiveThread()", "Probe the focused terminal and report its thread to the mutation API.", "probe"],
+            ["resolvePendingNew()", "Join the newly observed thread ID with the helper-returned window address.", "reconcile"],
+            ["clearPendingNew()", "Cancel and clear new-thread reconciliation state.", "reconcile"]
+          ],
+          events: []
+        },
+        "local-agent": {
+          title: "Local Claude/OpenCode provider",
+          file: "providers/LocalAgentProvider.qml",
+          visibility: "provider implementation API",
+          color: "amber",
+          consumers: "ProviderRegistry and AgentProviderRouting",
+          consumerNote: "One parameterized implementation is instantiated for each supported local non-Codex provider.",
+          promise: "Expose a normalized local-agent host contract",
+          promiseNote: "Hides provider query helpers, OpenCode server lifecycle, terminal helpers, snapshots, unread state, and mutations.",
+          effects: "Local provider helpers, terminals, optional OpenCode server",
+          effectNote: "Refreshes snapshots, mutates sessions, launches terminals, and reconciles active/new threads.",
+          inputs: [
+            ["controller: ThreadStore", "Settings, state paths, launch/mutation APIs, and error state.", "required"],
+            ["providerType: string", "claude or opencode.", "required"],
+            ["label: string", "Human-facing provider label.", "required"],
+            ["serverUrl: string", "Local OpenCode server URL when applicable.", "config"]
+          ],
+          state: [
+            ["enabled: bool", "Whether provider prerequisites and settings make this host usable.", "lifecycle"],
+            ["hostId: string / host: object", "Normalized provider identity and snapshot exposed to the registry.", "host"],
+            ["actionHostId / actionKind / actionPinValue", "Current provider mutation state.", "mutation"],
+            ["pendingPath / pendingKnownIds / pendingWindowAddress / pendingServerUrl", "New-thread discovery state.", "launch"]
+          ],
+          operations: [
+            ["pathForThread(thread) / threadStatus(thread)", "Return normalized path and status.", "query"],
+            ["restoreSnapshot(snapshot) / applySnapshot(snapshot)", "Hydrate or replace normalized host state.", "snapshot"],
+            ["markThreadSeen(threadId) / mergeUnread(nextThreads)", "Maintain provider unread state.", "state"],
+            ["activate() / deactivate() / refresh()", "Manage provider runtime and request a fresh snapshot.", "lifecycle"],
+            ["archiveThread / renameThread / toggleThreadPin", "Delegate session mutations to LocalAgentProcessHost.", "mutation"],
+            ["openThread(thread, directory, source): bool", "Acquire a launch token and open or focus a local agent terminal.", "launch"],
+            ["newThread(directory)", "Launch a new local agent session and begin discovery.", "launch"],
+            ["resolvePendingNew() / clearPendingNew()", "Reconcile or cancel new-session discovery.", "reconcile"]
+          ],
+          events: []
+        },
+        "remote-agent": {
+          title: "Remote agent provider",
+          file: "providers/RemoteAgentProvider.qml",
+          visibility: "provider implementation façade",
+          color: "amber",
+          consumers: "AgentProviderLibrary and AgentProviderRouting",
+          consumerNote: "The library consumes normalized hosts; routing and Provider API call its snapshot, management, and launch methods.",
+          promise: "Unify SSH and direct remote transports behind host IDs",
+          promiseNote: "Composes focused snapshot, management, process-host, configuration, Claude login, and launch collaborators.",
+          effects: "Remote config, SSH queries, remote mutations and launches",
+          effectNote: "Reads and writes host config, runs remote helpers, mutates remote sessions, and maps remote terminals.",
+          inputs: [["controller: ThreadStore", "Settings, launch/mutation APIs, runtime paths, active state, and errors.", "required"]],
+          state: [
+            ["configLoaded / remoteConfig / configPath", "Durable remote host configuration lifecycle.", "config"],
+            ["remoteHosts: array", "Normalized configured remote host snapshots.", "hosts"],
+            ["queryQueue / queryHostId", "Remote snapshot refresh queue and active query host.", "query"],
+            ["actionHostId / actionKind / actionThreadId / actionPinValue", "Current remote mutation state.", "mutation"],
+            ["managementTest* / addError / loginHostId / loginRunning", "Remote setup, connectivity, and login state.", "management"],
+            ["sshHosts / sshHostsLoading / sshHostsError", "Discovered SSH configuration aliases.", "ssh"],
+            ["openHostId / openThreadId / openRequestId / pending*", "Existing and new remote launch reconciliation.", "launch"]
+          ],
+          operations: [
+            ["hostById / providerTypeForEntry / providerLabel", "Resolve normalized remote identity and labels.", "query"],
+            ["projectForId / projectRoot / pathForThread / threadStatus", "Read normalized remote thread metadata.", "query"],
+            ["refresh(hostId?) / refreshVisibleProvider / restoreSnapshots / applySnapshot", "Refresh and hydrate remote host snapshots.", "snapshot"],
+            ["markThreadSeen / mergeUnread", "Maintain remote unread state.", "state"],
+            ["add / updateRemote / removeRemote / writeRemoteConfig", "Manage durable host definitions.", "management"],
+            ["testRemote / loginClaude / refreshSshHosts / sshHostEnabled / remoteIdForSshHost", "Validate and discover remote connectivity.", "management"],
+            ["archiveThread / renameThread / toggleThreadPin", "Run remote session mutations with rollback state.", "mutation"],
+            ["openThread(hostId, thread, path, source): bool", "Launch or focus an existing remote thread.", "launch"],
+            ["newThread(hostId, path)", "Launch a new remote session.", "launch"],
+            ["resolvePendingNew(hostId) / clearPendingNew()", "Reconcile or cancel remote new-session discovery.", "reconcile"]
+          ],
+          events: []
+        },
+        "conversation-client": {
+          title: "Conversation client",
+          file: "providers/CodexConversationClient.qml",
+          visibility: "standalone conversation API",
+          color: "cyan",
+          consumers: "ChatWindow, composer, toolbar, transcript and approval overlay",
+          consumerNote: "The standalone frontend binds directly to normalized conversation state and high-level operations.",
+          promise: "Hide App Server conversation protocol and transport",
+          promiseNote: "Owns initialization, reconnects, deadlines, response normalization, optimistic messages, approvals, and busy state.",
+          effects: "Local process or remote WebSocket conversation session",
+          effectNote: "Starts transport, sends protocol requests, mutates normalized messages, and answers approvals.",
+          inputs: [
+            ["configure(options)", "Set thread, cwd, model, effort, tier, approvals, sandbox, overrides, and remote transport before start.", "config"],
+            ["configured* properties", "Writable normalized runtime configuration used by start/newChat/sendPrompt.", "config"]
+          ],
+          state: [
+            ["ready / loading / busy", "Transport initialization and active-turn lifecycle.", "lifecycle"],
+            ["activeThreadId / activeTurnId / activeCwd", "Current conversation identity and location.", "conversation"],
+            ["activeModel / activeEffort", "Runtime-confirmed model choices.", "conversation"],
+            ["models / codexConfig", "Available model and config snapshot.", "metadata"],
+            ["messages: array", "Bounded normalized conversation transcript.", "output"],
+            ["approvalRequest: object|null", "Current approval prompt awaiting an answer.", "output"],
+            ["errorText / protocolViolation", "Normalized failure and transport-safety state.", "error"]
+          ],
+          operations: [
+            ["configure(options) / start()", "Apply launch policy and start the selected transport.", "lifecycle"],
+            ["runtimeOptions(): object / modelState(...): object", "Read normalized launch policy and model resolution.", "query"],
+            ["newChat(cwd, model, effort)", "Start a new conversation thread.", "conversation"],
+            ["sendPrompt(prompt, cwd, model, effort)", "Resume or create as needed, append optimistic user content, and start a turn.", "conversation"],
+            ["interrupt()", "Interrupt the active turn.", "conversation"],
+            ["answerApproval(accepted, remember)", "Resolve the current approval request with optional remembered scope.", "approval"],
+            ["stopTransport()", "Stop the active process or WebSocket transport.", "lifecycle"],
+            ["send(message): bool / handleLine(line)", "Low-level transport boundary used by operations and response handling.", "transport"]
+          ],
+          events: [
+            ["threadChanged(threadId)", "Conversation started or resumed a different thread.", "signal"],
+            ["turnCompleted(threadId)", "The active turn reached a terminal state.", "signal"],
+            ["sessionReady()", "Transport, initialization, and requested conversation are ready for interaction.", "signal"]
+          ]
+        }
+      };
+
+      const apiColorMap = {
+        blue: ["var(--blue)", "var(--blue-soft)"],
+        cyan: ["var(--cyan)", "var(--cyan-soft)"],
+        green: ["var(--green)", "var(--green-soft)"],
+        amber: ["var(--amber)", "var(--amber-soft)"],
+        violet: ["var(--violet)", "var(--violet-soft)"]
+      };
+      const apiExplorer = document.querySelector(".api-explorer");
+      const apiSelect = document.getElementById("apiSelect");
+      const apiFields = {
+        title: document.getElementById("apiTitle"),
+        file: document.getElementById("apiFile"),
+        visibility: document.getElementById("apiVisibility"),
+        consumers: document.getElementById("apiConsumers"),
+        consumerNote: document.getElementById("apiConsumerNote"),
+        promise: document.getElementById("apiPromise"),
+        promiseNote: document.getElementById("apiPromiseNote"),
+        effects: document.getElementById("apiEffects"),
+        effectNote: document.getElementById("apiEffectNote")
+      };
+      const apiContainers = {
+        inputs: [document.getElementById("apiInputs"), document.getElementById("apiInputsCount")],
+        state: [document.getElementById("apiState"), document.getElementById("apiStateCount")],
+        operations: [document.getElementById("apiOperations"), document.getElementById("apiOperationsCount")],
+        events: [document.getElementById("apiEvents"), document.getElementById("apiEventsCount")]
+      };
+
+      function apiMember(item) {
+        const row = document.createElement("article");
+        row.className = "api-member";
+        const signature = document.createElement("div");
+        signature.className = "api-signature";
+        if (item[2]) {
+          const kind = document.createElement("span");
+          kind.className = "api-kind";
+          kind.textContent = item[2];
+          signature.append(kind);
+        }
+        signature.append(document.createTextNode(item[0]));
+        const description = document.createElement("p");
+        description.textContent = item[1];
+        row.append(signature, description);
+        return row;
+      }
+
+      function renderApiMembers(name, items) {
+        const container = apiContainers[name][0];
+        const count = apiContainers[name][1];
+        count.textContent = items.length + (items.length === 1 ? " contract" : " contracts");
+        if (items.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "api-empty";
+          empty.textContent = name === "events"
+            ? "No explicit signals; observe generated property change notifications."
+            : "No direct cross-boundary members; use the exposed focused ports.";
+          container.replaceChildren(empty);
+          return;
+        }
+        container.replaceChildren(...items.map(apiMember));
+      }
+
+      function renderApiContract() {
+        const contract = apiContracts[apiSelect.value];
+        if (!contract) return;
+        const colors = apiColorMap[contract.color] || apiColorMap.green;
+        apiExplorer.style.setProperty("--api-color", colors[0]);
+        apiExplorer.style.setProperty("--api-soft", colors[1]);
+        Object.keys(apiFields).forEach(key => { apiFields[key].textContent = contract[key]; });
+        renderApiMembers("inputs", contract.inputs);
+        renderApiMembers("state", contract.state);
+        renderApiMembers("operations", contract.operations);
+        renderApiMembers("events", contract.events);
+      }
+
+      const requestedApi = new URLSearchParams(window.location.search).get("api");
+      if (requestedApi && apiContracts[requestedApi]) apiSelect.value = requestedApi;
+      apiSelect.addEventListener("change", renderApiContract);
+      renderApiContract();
 
       const routes = {
         "sidebar-structure": {
