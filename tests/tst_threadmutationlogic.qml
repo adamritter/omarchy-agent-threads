@@ -1,3 +1,4 @@
+// Purpose: Verifies threadmutationlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/ThreadMutationLogic.js" as ThreadMutationLogic

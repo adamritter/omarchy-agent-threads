@@ -1,3 +1,4 @@
+// Purpose: Provides a controlled Panel Reload Boundary Probe harness for behavioral tests.
 import QtQuick
 
 QtObject {

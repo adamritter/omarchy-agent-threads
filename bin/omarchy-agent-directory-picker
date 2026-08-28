@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Implements the agent directory-picker command-line entry point.
 
 import fs from "node:fs"
 import os from "node:os"

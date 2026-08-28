@@ -1,3 +1,4 @@
+// Purpose: Verifies sidebarpreferences behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/SidebarPreferencesLogic.js" as PreferencesLogic

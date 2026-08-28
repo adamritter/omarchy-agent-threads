@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Reload Controller user-interface component.
 import QtQuick
 import Quickshell
 import "../logic/PanelReloadStateLogic.js" as PanelReloadStateLogic

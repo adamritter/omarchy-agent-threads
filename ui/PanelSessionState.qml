@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Session State user-interface component.
 import QtQuick
 
 QtObject {

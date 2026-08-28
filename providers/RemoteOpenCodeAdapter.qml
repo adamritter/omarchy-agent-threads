@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Open Code Adapter provider integration boundary.
 import QtQuick
 
 RemoteProviderAdapter {

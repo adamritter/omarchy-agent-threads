@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Runs the Qt 6 QML unit suites with the appropriate platform backend.
 
 set -euo pipefail
 

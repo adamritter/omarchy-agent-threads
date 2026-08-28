@@ -1,3 +1,4 @@
+// Purpose: Provides shared fixtures and assertions for Sidebar Controller tests.
 import QtQuick
 import QtTest
 import "../ui" as Ui

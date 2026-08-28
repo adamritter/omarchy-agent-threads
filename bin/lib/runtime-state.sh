@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Provides reusable runtime state helpers for command-line adapters.
 
 # Shared validation for short-lived launch-status storage.
 

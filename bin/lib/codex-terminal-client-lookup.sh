@@ -1,3 +1,4 @@
+# Purpose: Provides reusable Codex terminal client lookup helpers for command-line adapters.
 client_exists() {
   local address="$1"
   hyprctl -j clients 2>/dev/null \

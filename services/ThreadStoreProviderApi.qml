@@ -1,3 +1,4 @@
+// Purpose: Provides shared Thread Store Provider API state and operations to the plugin.
 import QtQuick
 import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 

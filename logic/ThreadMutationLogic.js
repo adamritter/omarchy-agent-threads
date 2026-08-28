@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Thread Mutation decisions shared by QML adapters.
 
 function plainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value)

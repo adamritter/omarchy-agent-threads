@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Requests and verifies an in-process QML graph reload of the plugin.
 
 set -euo pipefail
 

@@ -1,3 +1,4 @@
+// Purpose: Provides reusable bounded io helpers for command-line adapters.
 import fs from "node:fs"
 import path from "node:path"
 

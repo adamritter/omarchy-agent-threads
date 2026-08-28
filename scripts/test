@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Runs the complete static, integration, and QML test suite.
 
 set -euo pipefail
 

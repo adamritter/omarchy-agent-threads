@@ -1,3 +1,4 @@
+// Purpose: Verifies chattoolbar behavior with Qt Quick Test.
 import QtQuick
 import "../ui" as App
 

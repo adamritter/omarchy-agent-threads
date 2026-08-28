@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Focus Controller user-interface component.
 import QtQuick
 import "../logic/PanelFocusLogic.js" as PanelFocusLogic
 import "../logic/PointerFocusLogic.js" as PointerFocusLogic

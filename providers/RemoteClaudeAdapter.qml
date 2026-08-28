@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Claude Adapter provider integration boundary.
 import QtQuick
 
 RemoteProviderAdapter {

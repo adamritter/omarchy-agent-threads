@@ -52,7 +52,7 @@
   handling. These are high-coupling integration surfaces.
 - Preserve the original QML ownership boundary: `Panel.qml` directly owns the
   bar button, layer-shell window, focus lifecycle, overlays, and top-level
-  coordination. `ui/CodexThreadList.qml` owns scrolling and rows, and
+  coordination. `ui/ThreadList.qml` owns scrolling and rows, and
   `ui/SidebarController.qml` owns list actions.
 - Run `tests/panel-render.test` outside the sandbox before and after any change
   to `Panel.qml` ownership, window bindings, overlay composition, or list

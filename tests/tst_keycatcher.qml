@@ -1,3 +1,4 @@
+// Purpose: Verifies keycatcher behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../ui" as Ui

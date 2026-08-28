@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Pointer Focus decisions shared by QML adapters.
 
 function cursorPoint(value) {
   var parsed

@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Claude Manager provider integration boundary.
 import QtQuick
 import Quickshell
 import Quickshell.Io

@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Presentation decisions shared by QML adapters.
 
 function text(value) {
   return String(value || "")

@@ -1,3 +1,4 @@
+// Purpose: Provides the websocket flood test fixture used by integration tests.
 import crypto from "node:crypto"
 import net from "node:net"
 import { once } from "node:events"

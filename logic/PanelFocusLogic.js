@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Panel Focus decisions shared by QML adapters.
 
 function number(value, fallback) {
   var parsed = Number(value)

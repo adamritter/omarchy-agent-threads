@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Sidebar Preferences decisions shared by QML adapters.
 
 function map(value) {
   return value && typeof value === "object" && !Array.isArray(value)

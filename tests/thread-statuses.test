@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Exercises the thread statuses workflow across its real process boundary.
 
 set -euo pipefail
 

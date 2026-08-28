@@ -1,6 +1,7 @@
 .pragma library
 .import "ThreadListBaseLogic.js" as Base
 .import "ThreadListRowsLogic.js" as Rows
+// Purpose: Provides deterministic Thread List decisions shared by QML adapters.
 
 function text(value) {
   return Base.text(value)

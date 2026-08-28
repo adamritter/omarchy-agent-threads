@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Discovers configured SSH hosts for remote-agent setup.
 
 import fs from "node:fs"
 import os from "node:os"

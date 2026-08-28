@@ -1,3 +1,4 @@
+// Purpose: Implements the Sidebar Controller user-interface component.
 import QtQuick
 
 Item {

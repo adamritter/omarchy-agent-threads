@@ -1,3 +1,4 @@
+// Purpose: Implements Codex Conversation Response Handler integration for Agent Chat.
 import QtQuick
 import "../logic/CodexConversationLogic.js" as ConversationLogic
 

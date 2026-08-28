@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Setup Actions user-interface component.
 import QtQuick
 import qs.Commons
 

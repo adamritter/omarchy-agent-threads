@@ -1,3 +1,4 @@
+// Purpose: Verifies navigationlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/NavigationLogic.js" as NavigationLogic

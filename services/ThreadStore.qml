@@ -1,4 +1,5 @@
 pragma Singleton
+// Purpose: Provides shared Thread Store state and operations to the plugin.
 
 import QtQuick
 import Quickshell

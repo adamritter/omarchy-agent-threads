@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Bounds and validates streamed provider output before consumers parse it.
 
 "use strict";
 

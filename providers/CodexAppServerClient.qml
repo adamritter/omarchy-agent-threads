@@ -1,3 +1,4 @@
+// Purpose: Implements the Codex App Server Client provider integration boundary.
 import QtQuick
 import Quickshell.Io
 

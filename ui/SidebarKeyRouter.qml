@@ -1,3 +1,4 @@
+// Purpose: Implements the Sidebar Key Router user-interface component.
 import QtQuick
 import QtQuick.Controls
 import qs.Commons

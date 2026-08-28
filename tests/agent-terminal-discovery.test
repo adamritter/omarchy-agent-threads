@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Exercises the agent terminal discovery workflow across its real process boundary.
 
 set -euo pipefail
 

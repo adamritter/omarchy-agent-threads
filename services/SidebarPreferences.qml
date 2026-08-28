@@ -1,3 +1,4 @@
+// Purpose: Provides shared Sidebar Preferences state and operations to the plugin.
 import QtQuick
 import Quickshell
 import Quickshell.Io

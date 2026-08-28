@@ -1,3 +1,4 @@
+// Purpose: Implements the Agent Provider Models provider integration boundary.
 import QtQuick
 import "../logic/AgentProviderLogic.js" as AgentProviderLogic
 

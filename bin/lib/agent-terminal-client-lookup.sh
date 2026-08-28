@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Provides reusable agent terminal client lookup helpers for command-line adapters.
 
 # Process-based recovery for Claude, OpenCode, and SSH-backed terminal sessions.
 # Callers set agent_lookup_kind, agent_lookup_session_id, and optionally

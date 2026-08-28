@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Action decisions shared by QML adapters.
 
 function selectedRow(rows, selectedIndex) {
   return selectedIndex >= 0 && selectedIndex < rows.length ? rows[selectedIndex] : null

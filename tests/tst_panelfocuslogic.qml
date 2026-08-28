@@ -1,3 +1,4 @@
+// Purpose: Verifies panelfocuslogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/PanelFocusLogic.js" as PanelFocusLogic

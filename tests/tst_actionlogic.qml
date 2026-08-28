@@ -1,3 +1,4 @@
+// Purpose: Verifies actionlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/ActionLogic.js" as ActionLogic
@@ -142,9 +143,9 @@ TestCase {
       ])
 
     compare(ActionLogic.remoteAgentOpenCommand(
-      "/plugin/bin/omarchy-codex-remote-open", "/state/remotes.json",
+      "/plugin/bin/omarchy-agent-remote-open", "/state/remotes.json",
       "build", "/srv/app", "thread-2", "gpt-5.6-sol", "high", "", "fast"), [
-        "/plugin/bin/omarchy-codex-remote-open",
+        "/plugin/bin/omarchy-agent-remote-open",
         "--config", "/state/remotes.json",
         "--host-id", "build",
         "--cwd", "/srv/app",

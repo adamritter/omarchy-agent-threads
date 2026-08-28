@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Config Store provider integration boundary.
 import QtQuick
 import Quickshell.Io
 

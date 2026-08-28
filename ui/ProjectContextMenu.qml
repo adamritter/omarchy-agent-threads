@@ -1,3 +1,4 @@
+// Purpose: Implements the Project Context Menu user-interface component.
 import QtQuick
 import QtQuick.Controls
 import qs.Commons

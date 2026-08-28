@@ -1,3 +1,4 @@
+// Purpose: Formats and renders code diffs inside the Agent Chat transcript.
 (function () {
   "use strict";
 

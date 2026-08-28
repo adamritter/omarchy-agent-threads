@@ -1,3 +1,4 @@
+// Purpose: Verifies threadrowlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/ThreadRowLogic.js" as ThreadRowLogic

@@ -1,3 +1,4 @@
+// Purpose: Provides shared Thread Store Settings API state and operations to the plugin.
 import QtQuick
 
 QtObject {

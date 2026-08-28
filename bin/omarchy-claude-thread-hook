@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Translates Claude hook events into Agent Threads runtime state.
 
 import fs from "node:fs"
 import os from "node:os"

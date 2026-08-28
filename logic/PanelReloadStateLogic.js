@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Panel Reload State decisions shared by QML adapters.
 
 var snapshotVersion = 2
 

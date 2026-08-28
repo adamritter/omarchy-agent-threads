@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Setup SSH Hosts user-interface component.
 import QtQuick
 import qs.Commons
 

@@ -1,3 +1,4 @@
+// Purpose: Verifies codexconversationitemlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/CodexConversationLogic.js" as ConversationLogic

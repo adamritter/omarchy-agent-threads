@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Implements the agent thread open command-line entry point.
 
 set -euo pipefail
 

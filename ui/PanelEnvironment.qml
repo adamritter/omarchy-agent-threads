@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Environment user-interface component.
 import QtQuick
 import Quickshell
 

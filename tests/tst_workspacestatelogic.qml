@@ -1,3 +1,4 @@
+// Purpose: Verifies workspacestatelogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/WorkspaceStateLogic.js" as WorkspaceStateLogic

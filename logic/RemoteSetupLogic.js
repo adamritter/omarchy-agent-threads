@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Remote Setup decisions shared by QML adapters.
 
 function setupState(remoteId, host, activeProvider, currentType) {
   var id = String(remoteId || "")

@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Agent Provider decisions shared by QML adapters.
 
 var supportedProviders = ["codex", "claude", "opencode"]
 var supportedConnections = ["local", "ssh", "app-server"]

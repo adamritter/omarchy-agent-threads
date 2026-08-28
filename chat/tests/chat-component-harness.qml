@@ -1,3 +1,4 @@
+// Purpose: Hosts Agent Chat components in a controlled behavioral-test environment.
 import QtQuick
 import Quickshell
 import qs.AgentThreads.chat.providers as Providers

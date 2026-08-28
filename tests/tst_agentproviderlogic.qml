@@ -1,3 +1,4 @@
+// Purpose: Verifies agentproviderlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/AgentProviderLogic.js" as AgentProviderLogic

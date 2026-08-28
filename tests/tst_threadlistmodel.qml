@@ -1,3 +1,4 @@
+// Purpose: Verifies threadlistmodel behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../ui"

@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Thread Launch decisions shared by QML adapters.
 
 function idleThreadLaunchState(sequence, failedThreadId, error) {
   return {

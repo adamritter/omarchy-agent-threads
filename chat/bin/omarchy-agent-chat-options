@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Parses and validates command-line options for the Agent Chat launcher.
 
 import path from "node:path"
 

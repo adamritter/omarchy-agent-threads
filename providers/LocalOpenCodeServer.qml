@@ -1,3 +1,4 @@
+// Purpose: Implements the Local Open Code Server provider integration boundary.
 import QtQuick
 import Quickshell.Io
 

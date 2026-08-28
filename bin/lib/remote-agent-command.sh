@@ -1,3 +1,4 @@
+# Purpose: Provides reusable remote agent command helpers for command-line adapters.
 new_session_id=""
 if [[ "$provider_type" == "claude" ]]; then
   claude_command="$(jq -r '.claudeCommand // "claude"' <<<"$remote_json")"

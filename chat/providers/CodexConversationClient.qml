@@ -1,3 +1,4 @@
+// Purpose: Implements Codex Conversation Client integration for Agent Chat.
 import QtQuick
 import Quickshell
 import Quickshell.Io

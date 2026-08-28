@@ -3,6 +3,7 @@
 .import "ConversationItemLogic.js" as Items
 .import "ConversationMessageLogic.js" as Messages
 .import "ConversationApprovalLogic.js" as Approval
+// Purpose: Provides deterministic Codex Conversation behavior for Agent Chat.
 
 function text(value) {
   return Protocol.text(value)

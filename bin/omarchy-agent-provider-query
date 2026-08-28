@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Queries local provider metadata for the panel and launchers.
 
 import os from "node:os"
 import path from "node:path"

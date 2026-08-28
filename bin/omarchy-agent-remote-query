@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Queries normalized thread snapshots from remote agent providers.
 
 import { createSshTransport, createWebSocketTransport, loadHost } from "./lib/remote-transport.mjs"
 import { providerTypeForHost, runRemoteClaude, runRemoteOpenCode } from "./lib/remote-provider-actions.mjs"

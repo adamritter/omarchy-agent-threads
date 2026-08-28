@@ -1,3 +1,4 @@
+// Purpose: Provides shared Thread Store Thread API state and operations to the plugin.
 import QtQuick
 import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/ThreadListLogic.js" as ThreadListLogic

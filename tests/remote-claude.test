@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Exercises the remote Claude workflow across its real process boundary.
 
 set -euo pipefail
 
@@ -67,7 +68,7 @@ export PATH="$stub_bin:$PATH"
 export REMOTE_FIXTURE_HOME="$remote_home"
 export REMOTE_SESSION_ID="$session_id"
 
-snapshot="$($plugin_root/bin/omarchy-codex-remote-query \
+snapshot="$($plugin_root/bin/omarchy-agent-remote-query \
   "$config" remote-claude snapshot)"
 jq -e --arg id "$session_id" '
   .hostId == "remote-claude" and .providerType == "claude"
@@ -77,25 +78,25 @@ jq -e --arg id "$session_id" '
   <<<"$snapshot" >/dev/null
 
 REMOTE_QUERY_OUTPUT=missing-claude \
-  $plugin_root/bin/omarchy-codex-remote-query "$config" remote-claude snapshot \
+  $plugin_root/bin/omarchy-agent-remote-query "$config" remote-claude snapshot \
   | jq -e '.available == false
     and .error == "Install Claude Code on the remote machine, then test the connection again"' \
     >/dev/null
 
-$plugin_root/bin/omarchy-codex-remote-query \
+$plugin_root/bin/omarchy-agent-remote-query \
   "$config" remote-claude pin "$session_id" true | jq -e '.ok == true' >/dev/null
-$plugin_root/bin/omarchy-codex-remote-query \
+$plugin_root/bin/omarchy-agent-remote-query \
   "$config" remote-claude rename "$session_id" /work "Remote renamed" \
   | jq -e '.ok == true' >/dev/null
-$plugin_root/bin/omarchy-codex-remote-query \
+$plugin_root/bin/omarchy-agent-remote-query \
   "$config" remote-claude archive "$session_id" | jq -e '.ok == true' >/dev/null
-snapshot="$($plugin_root/bin/omarchy-codex-remote-query \
+snapshot="$($plugin_root/bin/omarchy-agent-remote-query \
   "$config" remote-claude snapshot)"
 jq -e --arg id "$session_id" '[.threads[] | select(.id == $id)] | length == 0' \
   <<<"$snapshot" >/dev/null
 
 if REMOTE_QUERY_OUTPUT=oversized-stdout \
-    $plugin_root/bin/omarchy-codex-remote-query "$config" remote-claude snapshot \
+    $plugin_root/bin/omarchy-agent-remote-query "$config" remote-claude snapshot \
     >"$test_root/oversized-stdout" 2>"$test_root/oversized-stdout-error"; then
   echo "Remote Claude unexpectedly accepted oversized SSH stdout" >&2
   exit 1
@@ -104,7 +105,7 @@ grep -F -- "remote Claude SSH stdout exceeded the 16 MiB limit" \
   "$test_root/oversized-stdout-error" >/dev/null
 
 if REMOTE_QUERY_OUTPUT=oversized-stderr \
-    $plugin_root/bin/omarchy-codex-remote-query "$config" remote-claude snapshot \
+    $plugin_root/bin/omarchy-agent-remote-query "$config" remote-claude snapshot \
     >"$test_root/oversized-stderr" 2>"$test_root/oversized-stderr-error"; then
   echo "Remote Claude unexpectedly accepted oversized SSH stderr" >&2
   exit 1

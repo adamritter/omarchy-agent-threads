@@ -1,3 +1,4 @@
+// Purpose: Provides shared fixtures and assertions for Chat Component tests.
 import QtQuick
 import QtTest
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Builds and injects the native preload shim required by Agent Chat WebEngine.
 
 set -euo pipefail
 

@@ -1,3 +1,4 @@
+// Purpose: Provides reusable remote OpenCode bootstrap helpers for command-line adapters.
 export function remoteOpenCodeBootstrap(serverURL, openCodeCommand, openCodePort, shellQuote) {
   const healthURL = shellQuote(serverURL + "/global/health")
   return `set -eu; umask 077; state_dir="$HOME/.local/state/omarchy/codex-threads"; `

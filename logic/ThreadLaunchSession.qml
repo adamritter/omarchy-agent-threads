@@ -1,3 +1,4 @@
+// Purpose: Tracks open, pending, and window-mapping state for thread launches.
 import QtQuick
 
 Item {

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Implements the Codex terminal open command-line entry point.
 
 set -euo pipefail
 

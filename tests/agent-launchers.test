@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Exercises the agent launchers workflow across its real process boundary.
 
 set -euo pipefail
 
@@ -104,7 +105,7 @@ grep -F -- "claude --resume $resume_session --model opus --effort xhigh" \
 printf '%s\n' '{"version":2,"remotes":[{"id":"remote-claude","label":"Remote Claude","type":"ssh","providerType":"claude","sshHost":"fixture","claudeCommand":"claude","home":"/work"}]}' \
   > "$test_root/remotes.json"
 rm -f -- "$HYPR_STUB_COUNT"
-remote_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
+remote_result="$("$plugin_root/bin/omarchy-agent-remote-open" \
   --config "$test_root/remotes.json" --host-id remote-claude --cwd /work \
   --model opus --effort xhigh --agent reviewer)"
 remote_session="$(jq -er '.sessionId | select(test("^[0-9a-f-]{36}$"))' <<<"$remote_result")"
@@ -116,7 +117,7 @@ grep -F -- 'refreshInterval' "$OMARCHY_STUB_LOG" >/dev/null
 grep -F -- '.claude-thread-hook.XXXXXX' "$SSH_STUB_LOG" >/dev/null
 grep -F -- 'mv -fT' "$SSH_STUB_LOG" >/dev/null
 printf '%s\n' -1 > "$HYPR_STUB_COUNT"
-remote_resume_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
+remote_resume_result="$("$plugin_root/bin/omarchy-agent-remote-open" \
   --config "$test_root/remotes.json" --host-id remote-claude --cwd /work \
   --thread-id "$resume_session" --model sonnet --effort medium)"
 jq -e --arg id "$resume_session" '.sessionId == $id and .address == "0xabc123"' \
@@ -130,7 +131,7 @@ jq '.remotes += [{
 }]' "$test_root/remotes.json" > "$test_root/remotes-next.json"
 mv -- "$test_root/remotes-next.json" "$test_root/remotes.json"
 rm -f -- "$HYPR_STUB_COUNT"
-remote_codex_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
+remote_codex_result="$("$plugin_root/bin/omarchy-agent-remote-open" \
   --config "$test_root/remotes.json" --host-id remote-codex --cwd /work \
   --model gpt-test --effort ultra --service-tier fast)"
 jq -e '.address == "0xabc123"' <<<"$remote_codex_result" >/dev/null
@@ -143,7 +144,7 @@ jq '.remotes += [{
 }]' "$test_root/remotes.json" > "$test_root/remotes-next.json"
 mv -- "$test_root/remotes-next.json" "$test_root/remotes.json"
 rm -f -- "$HYPR_STUB_COUNT"
-remote_opencode_result="$("$plugin_root/bin/omarchy-codex-remote-open" \
+remote_opencode_result="$("$plugin_root/bin/omarchy-agent-remote-open" \
   --config "$test_root/remotes.json" --host-id remote-opencode --cwd /work \
   --model fixture/model --effort high --agent build)"
 jq -e '

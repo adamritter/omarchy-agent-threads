@@ -1,3 +1,4 @@
+// Purpose: Owns panel UI, focus, and coordination.
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland

@@ -1,3 +1,4 @@
+// Purpose: Verifies projectpickerlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/ProjectPickerLogic.js" as PickerLogic

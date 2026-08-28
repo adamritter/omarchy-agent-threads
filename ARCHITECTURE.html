@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Purpose: Provides an interactive visual field guide to the plugin architecture. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -1321,7 +1322,7 @@
         ui: {
           title: "UI components and controllers",
           copy: "Own presentation and interaction. Components receive narrow state, derive display values once, and delegate every mutation through controllers and domain APIs.",
-          paths: ["ui/SidebarController.qml", "ui/ThreadListModel.qml", "ui/CodexThreadList.qml"]
+          paths: ["ui/SidebarController.qml", "ui/ThreadListModel.qml", "ui/ThreadList.qml"]
         },
         "chat-ui": {
           title: "Conversation components",
@@ -1553,12 +1554,12 @@
           consumers: "ThreadStore Settings API and SidebarPreferences",
           consumerNote: "Callers use one providerType-based contract for Codex, Claude, and OpenCode choices.",
           promise: "Resolve selected, default, and effective runtime choices",
-          promiseNote: "Uses Codex App Server model/config state for Codex and ProviderRegistry settings for other agents.",
+          promiseNote: "Uses Codex App Server model/config state for Codex and LocalProviderRegistry settings for other agents.",
           effects: "Provider registry or durable Codex preferences",
           effectNote: "Setters route to the correct settings owner; queries remain deterministic projections.",
           inputs: [
             ["controller: ThreadStore", "Codex models, config, and selected preference values.", "required"],
-            ["registry: ProviderRegistry", "Claude/OpenCode hosts, models, agents, defaults, and settings.", "required"]
+            ["registry: LocalProviderRegistry", "Claude/OpenCode hosts, models, agents, defaults, and settings.", "required"]
           ],
           state: [],
           operations: [
@@ -1648,7 +1649,7 @@
           file: "ui/ThreadListModel.qml",
           visibility: "UI model API",
           color: "blue",
-          consumers: "Panel, CodexThreadList, list and sidebar controllers",
+          consumers: "Panel, ThreadList, list and sidebar controllers",
           consumerNote: "The panel supplies source state; the list consumes only the derived rows and counts.",
           promise: "Adapt state into stable, selectable rows",
           promiseNote: "Delegates filtering, grouping, ordering, and stable keys to ThreadListLogic.",
@@ -1895,7 +1896,7 @@
           file: "providers/LocalAgentProvider.qml",
           visibility: "provider implementation API",
           color: "amber",
-          consumers: "ProviderRegistry and AgentProviderRouting",
+          consumers: "LocalProviderRegistry and AgentProviderRouting",
           consumerNote: "One parameterized implementation is instantiated for each supported local non-Codex provider.",
           promise: "Expose a normalized local-agent host contract",
           promiseNote: "Hides provider query helpers, OpenCode server lifecycle, terminal helpers, snapshots, unread state, and mutations.",
@@ -2095,7 +2096,7 @@
           reload: "Narrow boundary for SidebarKeyRouter; graph reload below it."
         },
         "thread-rows": {
-          steps: [["entry", "Model adapter", "ui/ThreadListModel.qml"], ["logic", "Derive rows", "logic/ThreadListLogic.js"], ["state", "Source collections", "services/ThreadStore.qml"], ["view", "Render + scroll", "ui/CodexThreadList.qml"]],
+          steps: [["entry", "Model adapter", "ui/ThreadListModel.qml"], ["logic", "Derive rows", "logic/ThreadListLogic.js"], ["state", "Source collections", "services/ThreadStore.qml"], ["view", "Render + scroll", "ui/ThreadList.qml"]],
           rule: "ThreadStore owns collections; pure logic derives rows; the model adapts them without reimplementing grouping or sorting.",
           tests: "tst_threadlistmodel.qml · tst_threadrowlogic.qml · tst_presentationlogic.qml",
           reload: "In-process QML graph reload."

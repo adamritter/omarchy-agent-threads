@@ -1,3 +1,4 @@
+// Purpose: Provides shared Thread Store Mutations state and operations to the plugin.
 import QtQuick
 import "../logic/ThreadLaunchLogic.js" as ThreadLaunchLogic
 import "../logic/ThreadMutationLogic.js" as ThreadMutationLogic

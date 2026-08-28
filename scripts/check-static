@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Checks source structure, imports, documentation headers, and maintainability constraints.
 
 set -euo pipefail
 
@@ -29,6 +30,29 @@ while IFS= read -r file; do
   qmllint "$file"
 done < <(find "$plugin_dir/logic" "$plugin_dir/chat/logic" \
   -maxdepth 1 -type f -name '*.js' | sort)
+
+undocumented_sources=""
+while IFS= read -r -d '' file; do
+  case "$file" in
+    *.qml|*.js|*.mjs|*.sh|*.cpp|*.css|*.html|*.test|*/qmldir) ;;
+    "$plugin_dir/bin/"*|"$plugin_dir/chat/bin/"*|"$plugin_dir/scripts/"*) ;;
+    *) continue ;;
+  esac
+  if ! head -n 6 "$file" | grep -Eq '^(#|//|/\*|<!--) Purpose:'; then
+    undocumented_sources+="${file#"$plugin_dir/"}"$'\n'
+  fi
+done < <(find "$plugin_dir/Panel.qml" "$plugin_dir/agent-chat.qml" \
+  "$plugin_dir/ARCHITECTURE.html" "$plugin_dir/bin" "$plugin_dir/chat" \
+  "$plugin_dir/logic" "$plugin_dir/providers" "$plugin_dir/services" \
+  "$plugin_dir/ui" "$plugin_dir/tests" "$plugin_dir/scripts" -type f \
+  ! -path '*/node_modules/*' ! -path '*/vendor/*' \
+  ! -name 'LICENSE*' ! -name '*.bak.*' -print0)
+
+if [[ -n "$undocumented_sources" ]]; then
+  printf '%s\n' 'Maintained source files need a concise Purpose header:' >&2
+  printf '%s' "$undocumented_sources" >&2
+  exit 1
+fi
 
 oversized_sources=""
 while IFS= read -r -d '' file; do

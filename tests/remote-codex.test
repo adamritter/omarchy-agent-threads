@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Exercises the remote Codex workflow across its real process boundary.
 
 set -euo pipefail
 
@@ -56,7 +57,7 @@ jq -n '{version:2,remotes:[{
   sshHost:"fixture",codexCommand:"codex",home:"/work"
 }]}' > "$config"
 
-snapshot="$(PATH="$stub_bin:$PATH" "$plugin_root/bin/omarchy-codex-remote-query" \
+snapshot="$(PATH="$stub_bin:$PATH" "$plugin_root/bin/omarchy-agent-remote-query" \
   "$config" remote-codex snapshot)"
 jq -e '
   .hostId == "remote-codex" and .type == "ssh" and .home == "/work"
@@ -64,7 +65,7 @@ jq -e '
 ' <<<"$snapshot" >/dev/null
 
 if PATH="$stub_bin:$PATH" REMOTE_QUERY_OUTPUT=oversized-stdout \
-    "$plugin_root/bin/omarchy-codex-remote-query" "$config" remote-codex snapshot \
+    "$plugin_root/bin/omarchy-agent-remote-query" "$config" remote-codex snapshot \
     >"$test_root/oversized-stdout" 2>"$test_root/oversized-stdout-error"; then
   echo "Remote Codex unexpectedly accepted an oversized SSH response line" >&2
   exit 1
@@ -73,7 +74,7 @@ grep -F -- "remote Codex SSH response line exceeded the 16 MiB limit" \
   "$test_root/oversized-stdout-error" >/dev/null
 
 if PATH="$stub_bin:$PATH" REMOTE_QUERY_OUTPUT=oversized-stderr \
-    "$plugin_root/bin/omarchy-codex-remote-query" "$config" remote-codex snapshot \
+    "$plugin_root/bin/omarchy-agent-remote-query" "$config" remote-codex snapshot \
     >"$test_root/oversized-stderr" 2>"$test_root/oversized-stderr-error"; then
   echo "Remote Codex unexpectedly accepted oversized SSH stderr" >&2
   exit 1
@@ -83,7 +84,7 @@ grep -F -- "remote Codex SSH stderr exceeded the 256 KiB limit" \
 
 oversized_config="$test_root/oversized-remotes.json"
 head -c $((1024 * 1024 + 1)) /dev/zero | tr '\0' x >"$oversized_config"
-if "$plugin_root/bin/omarchy-codex-remote-query" \
+if "$plugin_root/bin/omarchy-agent-remote-query" \
     "$oversized_config" remote-codex snapshot \
     >"$test_root/config-output" 2>"$test_root/config-error"; then
   echo "Remote Codex unexpectedly accepted an oversized remotes config" >&2
@@ -99,7 +100,7 @@ jq -n --arg tokenFile "$token_file" '{version:2,remotes:[{
   id:"remote-app-server",label:"Fixture App Server",type:"app-server",
   providerType:"codex",url:"ws://127.0.0.1:1",authTokenFile:$tokenFile
 }]}' >"$app_server_config"
-if "$plugin_root/bin/omarchy-codex-remote-query" \
+if "$plugin_root/bin/omarchy-agent-remote-query" \
     "$app_server_config" remote-app-server snapshot \
     >"$test_root/token-output" 2>"$test_root/token-error"; then
   echo "Remote Codex unexpectedly accepted an oversized token file" >&2
@@ -118,7 +119,7 @@ for special_file in "$test_root/token-link" "$test_root/token-fifo" /dev/zero; d
     '(.remotes[0].authTokenFile) = $tokenFile' "$app_server_config" \
     > "$test_root/special-remotes.json"
   set +e
-  timeout 2 "$plugin_root/bin/omarchy-codex-remote-query" \
+  timeout 2 "$plugin_root/bin/omarchy-agent-remote-query" \
     "$test_root/special-remotes.json" remote-app-server snapshot \
     >/dev/null 2>"$test_root/special-error"
   special_status=$?
@@ -131,7 +132,7 @@ done
 
 for attack in excess-items aggregate-bytes; do
   if PATH="$stub_bin:$PATH" REMOTE_QUERY_OUTPUT="$attack" \
-      "$plugin_root/bin/omarchy-codex-remote-query" "$config" remote-codex snapshot \
+      "$plugin_root/bin/omarchy-agent-remote-query" "$config" remote-codex snapshot \
       >/dev/null 2>"$test_root/$attack-error"; then
     echo "Remote Codex unexpectedly accepted $attack" >&2
     exit 1

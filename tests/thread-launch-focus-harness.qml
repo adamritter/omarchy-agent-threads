@@ -1,3 +1,4 @@
+// Purpose: Hosts thread-launch focus behavior in a controlled test environment.
 import QtQuick
 import Quickshell
 import qs.AgentThreads.providers as Providers

@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Agent Provider provider integration boundary.
 import QtQuick
 
 Item {
@@ -30,9 +31,9 @@ Item {
   property string sshHostsError: ""
 
   readonly property string queryHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-codex-remote-query").toString().replace(/^file:\/\//, "")
+    "../bin/omarchy-agent-remote-query").toString().replace(/^file:\/\//, "")
   readonly property string openHelperPath: Qt.resolvedUrl(
-    "../bin/omarchy-codex-remote-open").toString().replace(/^file:\/\//, "")
+    "../bin/omarchy-agent-remote-open").toString().replace(/^file:\/\//, "")
   readonly property string sshHostsHelperPath: Qt.resolvedUrl(
     "../bin/omarchy-codex-ssh-hosts").toString().replace(/^file:\/\//, "")
 

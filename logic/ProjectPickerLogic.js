@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Project Picker decisions shared by QML adapters.
 
 function rows(currentPath, parentPath, entries, browsable) {
   var result = [{ kind: "use", name: "Use this directory", path: String(currentPath || "") }]

@@ -1,3 +1,4 @@
+// Purpose: Verifies globalactionlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/GlobalActionLogic.js" as GlobalActionLogic

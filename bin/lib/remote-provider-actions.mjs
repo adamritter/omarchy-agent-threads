@@ -1,3 +1,4 @@
+// Purpose: Provides reusable remote provider actions helpers for command-line adapters.
 import fs from "node:fs"
 import path from "node:path"
 import { spawn } from "node:child_process"

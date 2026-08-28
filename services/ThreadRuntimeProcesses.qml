@@ -1,3 +1,4 @@
+// Purpose: Provides shared Thread Runtime Processes state and operations to the plugin.
 import QtQuick
 import Quickshell.Io
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Implements the agent remote open command-line entry point.
 
 set -euo pipefail
 
@@ -37,7 +38,7 @@ fi
 
 remote_usage() {
   cat <<'EOF'
-Usage: omarchy-codex-remote-open --config FILE --host-id ID --cwd DIR [OPTIONS]
+Usage: omarchy-agent-remote-open --config FILE --host-id ID --cwd DIR [OPTIONS]
 
 Options:
   --thread-id ID

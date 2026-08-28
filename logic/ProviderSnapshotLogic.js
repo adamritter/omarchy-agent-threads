@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Provider Snapshot decisions shared by QML adapters.
 
 var snapshotVersion = 1
 

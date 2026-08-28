@@ -1,3 +1,4 @@
+// Purpose: Provides reusable OpenCode auth helpers for command-line adapters.
 import os from "node:os"
 import path from "node:path"
 import { readJsonLimited } from "./bounded-io.mjs"

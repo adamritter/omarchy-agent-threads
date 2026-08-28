@@ -1,3 +1,4 @@
+# Purpose: Declares the importable QML types in the services module.
 singleton ThreadStore 1.0 ThreadStore.qml
 ProviderSnapshotStore 1.0 ProviderSnapshotStore.qml
 SidebarPreferences 1.0 SidebarPreferences.qml

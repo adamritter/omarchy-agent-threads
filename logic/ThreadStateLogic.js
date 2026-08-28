@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Thread State decisions shared by QML adapters.
 
 function threadIsPinned(thread, pinnedSectionId) {
   if (!thread) return false

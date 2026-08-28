@@ -1,3 +1,4 @@
+// Purpose: Configures Chromium flags before Agent Chat creates its WebEngine process.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Implements the Agent Threads OpenCode server command-line entry point.
 
 import fs from "node:fs"
 import path from "node:path"

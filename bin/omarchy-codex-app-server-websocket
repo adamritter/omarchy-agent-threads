@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Bridges Codex App Server JSON-RPC over a bounded WebSocket transport.
 
 import os from "node:os"
 import { readFileLimited } from "./lib/bounded-io.mjs"

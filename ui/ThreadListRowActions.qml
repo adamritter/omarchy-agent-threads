@@ -1,3 +1,4 @@
+// Purpose: Implements the Thread List Row Actions user-interface component.
 import QtQuick
 import QtQuick.Controls
 import qs.Commons

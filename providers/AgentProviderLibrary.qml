@@ -1,3 +1,4 @@
+// Purpose: Implements the Agent Provider Library provider integration boundary.
 import QtQuick
 import "../logic/AgentProviderLogic.js" as AgentProviderLogic
 
@@ -59,7 +60,7 @@ Item {
     controller: root.controller
   }
 
-  ProviderRegistry {
+  LocalProviderRegistry {
     id: localRegistry
     controller: root.controller
     onSettingsChanged: root.settingsChanged()

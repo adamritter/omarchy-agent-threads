@@ -1,11 +1,12 @@
+// Purpose: Verifies threadlaunchcoordinator behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic" as Logic
 
 TestCase {
-  name: "ThreadLaunchCache"
+  name: "ThreadLaunchSession"
 
-  Logic.ThreadLaunchCache { id: coordinator }
+  Logic.ThreadLaunchSession { id: coordinator }
 
   function init() {
     coordinator.entries = ({})

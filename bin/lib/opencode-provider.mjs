@@ -1,3 +1,4 @@
+// Purpose: Provides reusable OpenCode provider helpers for command-line adapters.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"

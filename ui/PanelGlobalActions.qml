@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Global Actions user-interface component.
 import QtQuick
 import Quickshell
 import Quickshell.Wayland

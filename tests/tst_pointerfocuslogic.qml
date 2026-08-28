@@ -1,3 +1,4 @@
+// Purpose: Verifies pointerfocuslogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/PointerFocusLogic.js" as PointerFocusLogic

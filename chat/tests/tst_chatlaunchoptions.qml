@@ -1,3 +1,4 @@
+// Purpose: Verifies chatlaunchoptions behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/ChatLaunchOptions.js" as ChatLaunchOptions

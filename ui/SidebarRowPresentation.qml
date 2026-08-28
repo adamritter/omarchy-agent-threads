@@ -1,3 +1,4 @@
+// Purpose: Implements the Sidebar Row Presentation user-interface component.
 import QtQuick
 import "../logic/ThreadRowLogic.js" as ThreadRowLogic
 

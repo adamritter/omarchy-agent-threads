@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel IPC Handler user-interface component.
 import QtQuick
 import Quickshell
 import Quickshell.Io

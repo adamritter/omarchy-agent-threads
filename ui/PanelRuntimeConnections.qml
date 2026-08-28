@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Runtime Connections user-interface component.
 import QtQuick
 import Quickshell.Hyprland
 import Quickshell.Wayland

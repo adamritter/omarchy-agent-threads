@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Provider Controller user-interface component.
 import QtQuick
 import Quickshell
 import "../logic/ActionLogic.js" as ActionLogic

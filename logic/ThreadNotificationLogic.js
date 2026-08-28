@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Thread Notification decisions shared by QML adapters.
 
 function notificationEvents(previousStates, nextStates) {
   var events = []

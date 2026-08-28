@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Agent Launch provider integration boundary.
 import QtQuick
 import "../logic/ActionLogic.js" as ActionLogic
 

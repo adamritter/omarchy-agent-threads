@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Implements the agent auth URL watcher command-line entry point.
 
 const WINDOW_BYTES = 4096
 const URL_BYTES = 2048

@@ -1,3 +1,4 @@
+// Purpose: Verifies remoteagentlaunch behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../providers" as Providers

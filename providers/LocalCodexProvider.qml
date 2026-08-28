@@ -1,3 +1,4 @@
+// Purpose: Implements the Local Codex Provider provider integration boundary.
 import QtQuick
 import Quickshell.Io
 import Quickshell.Wayland

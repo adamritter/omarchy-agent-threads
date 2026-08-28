@@ -1,3 +1,4 @@
+// Purpose: Provides a controlled Fake Panel Service harness for behavioral tests.
 import QtQuick
 import Quickshell
 

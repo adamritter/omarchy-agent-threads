@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Agent Management provider integration boundary.
 import QtQuick
 
 Item {

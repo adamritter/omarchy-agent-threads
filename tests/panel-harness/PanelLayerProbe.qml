@@ -1,3 +1,4 @@
+// Purpose: Provides a controlled Panel Layer Probe harness for behavioral tests.
 import QtQuick
 import Quickshell.Io
 

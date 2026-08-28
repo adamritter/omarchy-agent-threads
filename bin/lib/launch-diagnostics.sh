@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Provides reusable launch diagnostics helpers for command-line adapters.
 
 # Shared, private diagnostics for terminal launch helpers. Callers may set
 # AGENT_THREADS_LAUNCH_LOG to redirect the log, primarily for tests.

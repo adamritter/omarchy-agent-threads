@@ -1,3 +1,4 @@
+// Purpose: Verifies threadstatelogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/ThreadLaunchLogic.js" as ThreadLaunchLogic

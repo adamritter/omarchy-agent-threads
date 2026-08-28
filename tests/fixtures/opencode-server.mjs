@@ -1,3 +1,4 @@
+// Purpose: Provides the OpenCode server fixture used by integration tests.
 import fs from "node:fs"
 import http from "node:http"
 

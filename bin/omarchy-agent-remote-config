@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Reads and updates remote-host configuration for Agent Threads.
 
 import fs from "node:fs"
 import path from "node:path"

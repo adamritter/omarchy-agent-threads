@@ -1,3 +1,4 @@
+// Purpose: Provides reusable Claude transcript parser helpers for command-line adapters.
 import os from "node:os"
 import path from "node:path"
 import { readClaudeTranscript } from "./claude-transcript-files.mjs"

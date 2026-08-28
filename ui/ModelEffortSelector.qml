@@ -1,3 +1,4 @@
+// Purpose: Implements the Model Effort Selector user-interface component.
 import QtQuick
 import QtQuick.Controls
 import Quickshell

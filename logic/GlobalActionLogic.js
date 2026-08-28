@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Global Action decisions shared by QML adapters.
 
 function activeTarget(toplevel) {
   var source = toplevel || ({})

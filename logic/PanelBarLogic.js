@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Panel Bar decisions shared by QML adapters.
 
 function tooltip(readyThreadCount, fullscreenSuppressed, opened, focused) {
   if (readyThreadCount > 0)

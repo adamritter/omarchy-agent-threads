@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Implements the Claude remote login command-line entry point.
 
 set -euo pipefail
 

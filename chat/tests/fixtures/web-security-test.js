@@ -1,3 +1,4 @@
+// Purpose: Provides the web security test fixture used by integration tests.
 (function () {
   "use strict";
 

@@ -1,3 +1,4 @@
+// Purpose: Implements the Sidebar Main Content user-interface component.
 import QtQuick
 import QtQuick.Controls
 import qs.Commons

@@ -1,3 +1,4 @@
+// Purpose: Implements the Agent Provider Routing provider integration boundary.
 import QtQuick
 import "../logic/AgentProviderLogic.js" as AgentProviderLogic
 

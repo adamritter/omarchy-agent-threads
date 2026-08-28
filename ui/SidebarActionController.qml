@@ -1,3 +1,4 @@
+// Purpose: Implements the Sidebar Action Controller user-interface component.
 import QtQuick
 import "../logic/ActionLogic.js" as ActionLogic
 

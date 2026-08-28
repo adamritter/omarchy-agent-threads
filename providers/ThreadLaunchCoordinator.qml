@@ -1,3 +1,4 @@
+// Purpose: Implements the Thread Launch Coordinator provider integration boundary.
 import QtQuick
 import Quickshell.Hyprland
 import Quickshell.Wayland
@@ -11,7 +12,7 @@ Item {
   property var toplevelManager: ToplevelManager
   readonly property alias state: cache
 
-  Logic.ThreadLaunchCache { id: cache }
+  Logic.ThreadLaunchSession { id: cache }
 
   function entryKey(sessionId, hostId) { return cache.entryKey(sessionId, hostId) }
   function parseOutput(output) { return cache.parseOutput(output) }

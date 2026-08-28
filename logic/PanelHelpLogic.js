@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Panel Help decisions shared by QML adapters.
 
 function items(threadFrontend, fastMode, effort) {
   return [

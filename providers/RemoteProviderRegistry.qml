@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Provider Registry provider integration boundary.
 import QtQuick
 
 Item {

@@ -1,3 +1,4 @@
+// Purpose: Implements Codex Conversation Operations integration for Agent Chat.
 import QtQuick
 import Quickshell
 import "../../logic/AgentProviderLogic.js" as AgentProviderLogic

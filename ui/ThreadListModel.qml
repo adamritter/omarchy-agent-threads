@@ -1,3 +1,4 @@
+// Purpose: Implements the Thread List Model user-interface component.
 import QtQuick
 import "../logic/ThreadListLogic.js" as ThreadListLogic
 

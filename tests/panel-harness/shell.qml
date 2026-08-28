@@ -1,3 +1,4 @@
+// Purpose: Provides a controlled shell harness for behavioral tests.
 import QtQuick
 import Quickshell
 import qs.AgentThreads as AgentThreads

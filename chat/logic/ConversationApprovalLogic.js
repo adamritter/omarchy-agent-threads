@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Conversation Approval behavior for Agent Chat.
 
 var maxToolCharacters = 30000
 var maxItemParts = 128

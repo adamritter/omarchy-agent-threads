@@ -1,3 +1,4 @@
+// Purpose: Coordinates transcript rendering, updates, scrolling, and the QML web channel.
 (function () {
   "use strict";
 

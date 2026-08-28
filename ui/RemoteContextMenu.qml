@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Context Menu user-interface component.
 import QtQuick
 import QtQuick.Controls
 import qs.Commons

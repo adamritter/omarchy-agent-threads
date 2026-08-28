@@ -1,3 +1,4 @@
+// Purpose: Implements the Sidebar Body user-interface component.
 import QtQuick
 import QtQuick.Controls
 import qs.Commons
@@ -33,7 +34,7 @@ Item {
       horizontalAlignment: Text.AlignHCenter
     }
 
-    Ui.CodexThreadList {
+    Ui.ThreadList {
       id: threadListView
       anchors.fill: parent
       panel: root.panel

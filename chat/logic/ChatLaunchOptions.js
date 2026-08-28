@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Chat Launch Options behavior for Agent Chat.
 
 function text(value) {
   return String(value === undefined || value === null ? "" : value)

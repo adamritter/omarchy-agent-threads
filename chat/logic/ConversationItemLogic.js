@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Conversation Item behavior for Agent Chat.
 
 var maxMessageCharacters = 200000
 var maxToolCharacters = 30000

@@ -1,3 +1,4 @@
+// Purpose: Verifies chatcomposer behavior with Qt Quick Test.
 import QtQuick
 import QtQuick.Layouts
 import "../ui" as App

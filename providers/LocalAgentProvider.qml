@@ -1,3 +1,4 @@
+// Purpose: Implements the Local Agent Provider provider integration boundary.
 import QtQuick
 import Quickshell.Io
 import "../logic/ProviderSnapshotLogic.js" as Snap

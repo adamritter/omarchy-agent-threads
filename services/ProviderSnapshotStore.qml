@@ -1,3 +1,4 @@
+// Purpose: Provides shared Provider Snapshot Store state and operations to the plugin.
 import QtQuick
 import Quickshell.Io
 import "../logic/ProviderSnapshotLogic.js" as SnapshotLogic

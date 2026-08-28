@@ -1,3 +1,4 @@
+// Purpose: Verifies panelhelplogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/PanelHelpLogic.js" as PanelHelpLogic

@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Navigation decisions shared by QML adapters.
 
 function appendCount(current, digit) {
   var value = String(current || "")

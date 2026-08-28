@@ -1,3 +1,4 @@
+// Purpose: Implements the Codex App Server Response Handler provider integration boundary.
 import QtQuick
 
 QtObject {

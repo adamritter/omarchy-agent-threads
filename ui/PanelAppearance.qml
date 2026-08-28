@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Appearance user-interface component.
 import QtQuick
 import qs.Commons
 import qs.Ui

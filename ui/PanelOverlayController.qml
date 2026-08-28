@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Overlay Controller user-interface component.
 import QtQuick
 import "../logic/ActionLogic.js" as ActionLogic
 import "../logic/RemoteSetupLogic.js" as RemoteSetupLogic

@@ -1,3 +1,4 @@
+// Purpose: Implements the Web Transcript component for Agent Chat.
 import QtQuick
 import QtWebEngine
 

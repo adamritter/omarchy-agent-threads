@@ -19,7 +19,7 @@ chat/logic -> chat/providers -> chat/ui -> agent-chat.qml
 - `providers/` owns provider transports, helper processes, and normalization.
 - `ui/ThreadListModel.qml` adapts service state to `ThreadListLogic`; it does
   not implement grouping or sorting itself.
-- `ui/CodexThreadList.qml` owns scrolling. `ThreadListRow.qml` owns core row
+- `ui/ThreadList.qml` owns scrolling. `ThreadListRow.qml` owns core row
   presentation, while `ThreadListRowActions.qml` owns its buttons and menus.
   The action layer is loaded by URL so adding it does not depend on QML type
   directory discovery during a live reload.
@@ -93,7 +93,7 @@ neither should create a second source of truth.
 | --- | --- | --- | --- |
 | Sidebar structure, header, or body composition | `ui/SidebarMainContent.qml`, then `ui/SidebarHeader.qml` or `ui/SidebarBody.qml` | `Panel.qml` owns composition; `ui/PanelSessionState.qml` owns ephemeral panel state; durable preferences go through `services/ThreadStoreSettingsApi.qml` | `tests/panel-render.test`; the nearest sidebar QML test |
 | Sidebar keys, global shortcuts, selection, or list actions | `ui/SidebarKeyRouter.qml`, `ui/PanelIpcHandler.qml`, `ui/PanelGlobalActions.qml`, `ui/SidebarController.qml` | Fixed global shortcuts enter through plugin IPC and are routed from live QML state; list actions go through the controller to `services/ThreadStoreThreadApi.qml`; selection remains in `ui/PanelSessionState.qml` | `tests/tst_globalactionlogic.qml`, `tests/tst_keycatcher.qml`, `tests/tst_sidebarcontroller.qml`, `tests/tst_sidebarnavigation.qml` |
-| Thread filtering, grouping, ordering, or row derivation | `ui/ThreadListModel.qml`, then `logic/ThreadListLogic.js` and the relevant `ThreadList*Logic.js` module | `services/ThreadStore.qml` owns source collections; deterministic logic derives rows; the model exposes them to `ui/CodexThreadList.qml` | `tests/tst_threadlistmodel.qml`, `tests/tst_threadrowlogic.qml`, `tests/tst_presentationlogic.qml` |
+| Thread filtering, grouping, ordering, or row derivation | `ui/ThreadListModel.qml`, then `logic/ThreadListLogic.js` and the relevant `ThreadList*Logic.js` module | `services/ThreadStore.qml` owns source collections; deterministic logic derives rows; the model exposes them to `ui/ThreadList.qml` | `tests/tst_threadlistmodel.qml`, `tests/tst_threadrowlogic.qml`, `tests/tst_presentationlogic.qml` |
 | Thread row presentation or row actions | `ui/ThreadListRow.qml`, `ui/ThreadListRowActions.qml` | Rows display model values and delegate mutations through `ui/SidebarController.qml`; they do not write store or provider state | `tests/panel-render.test`, `tests/tst_threadrowlogic.qml`, `tests/tst_sidebarcontroller.qml` |
 | Thread activation, launch, terminal focus, or resume | `services/ThreadStoreThreadApi.qml`, then `providers/ThreadLaunchCoordinator.qml` | `logic/ThreadLaunchLogic.js` decides routing; `providers/AgentProviderLibrary.qml` selects the provider; the selected provider and process host own runtime execution | `tests/tst_threadlaunchcoordinator.qml`, `tests/tst_remoteagentlaunch.qml`; `tests/thread-launch-focus.test`, `tests/codex-terminal-lifecycle.test` |
 | Rename, archive, pin, delete, or bulk mutation | `services/ThreadStoreThreadApi.qml`, `services/ThreadStoreMutations.qml` | `logic/ThreadMutationLogic.js` defines deterministic transitions; the provider boundary performs external mutations; the next provider snapshot reconciles stored state | `tests/tst_threadmutationlogic.qml`, `tests/tst_sidebarcontroller.qml`; the affected provider integration test |

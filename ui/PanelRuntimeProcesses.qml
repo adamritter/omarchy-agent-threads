@@ -1,3 +1,4 @@
+// Purpose: Implements the Panel Runtime Processes user-interface component.
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland

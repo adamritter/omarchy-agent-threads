@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Agent Snapshots provider integration boundary.
 import QtQuick
 import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic
 import "../logic/ThreadStateLogic.js" as ThreadStateLogic

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Runs helper and provider tests across real process boundaries.
 
 set -euo pipefail
 

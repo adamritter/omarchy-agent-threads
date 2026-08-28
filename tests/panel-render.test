@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Verifies panel ownership and wiring, with an opt-in live Wayland smoke mode.
 
 set -euo pipefail
 

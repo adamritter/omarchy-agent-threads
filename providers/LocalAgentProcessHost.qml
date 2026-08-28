@@ -1,3 +1,4 @@
+// Purpose: Implements the Local Agent Process Host provider integration boundary.
 import QtQuick
 import Quickshell.Io
 

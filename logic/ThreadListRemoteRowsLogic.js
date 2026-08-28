@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Thread List Remote Rows decisions shared by QML adapters.
 
 function buildRemoteBlocks(context, api) {
   var remoteHosts = context.remoteHosts

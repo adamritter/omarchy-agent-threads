@@ -1,3 +1,4 @@
+// Purpose: Implements the Model Effort Options user-interface component.
 import QtQuick
 
 QtObject {

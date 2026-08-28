@@ -1,6 +1,7 @@
 .pragma library
 .import "ThreadListBaseLogic.js" as Base
 .import "ThreadListRemoteRowsLogic.js" as RemoteRows
+// Purpose: Provides deterministic Thread List Rows decisions shared by QML adapters.
 
 function text(value) { return Base.text(value) }
 function cleanText(value) { return Base.cleanText(value) }

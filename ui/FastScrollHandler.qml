@@ -1,3 +1,4 @@
+// Purpose: Implements the Fast Scroll Handler user-interface component.
 import QtQuick
 
 Item {

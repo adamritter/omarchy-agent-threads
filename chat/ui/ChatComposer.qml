@@ -1,3 +1,4 @@
+// Purpose: Implements the Chat Composer component for Agent Chat.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

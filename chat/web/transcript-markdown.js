@@ -1,3 +1,4 @@
+// Purpose: Converts conversation Markdown into safe transcript markup.
 (function () {
   "use strict";
 

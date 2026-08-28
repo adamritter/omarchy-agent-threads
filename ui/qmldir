@@ -1,4 +1,5 @@
-CodexThreadList 1.0 CodexThreadList.qml
+# Purpose: Declares the importable QML types in the ui module.
+ThreadList 1.0 ThreadList.qml
 FastScrollHandler 1.0 FastScrollHandler.qml
 HelpOverlay 1.0 HelpOverlay.qml
 ModelEffortSelector 1.0 ModelEffortSelector.qml

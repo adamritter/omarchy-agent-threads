@@ -1,3 +1,4 @@
+// Purpose: Implements the Remote Provider Adapter provider integration boundary.
 import QtQuick
 
 Item {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Purpose: Implements the agent bounded-file command-line entry point.
 
 import path from "node:path"
 import { readFileLimited } from "./lib/bounded-io.mjs"

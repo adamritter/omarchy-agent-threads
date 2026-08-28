@@ -1,3 +1,4 @@
+// Purpose: Implements the Sidebar Reload Controller user-interface component.
 import QtQuick
 
 QtObject {

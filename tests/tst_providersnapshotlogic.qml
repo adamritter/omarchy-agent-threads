@@ -1,3 +1,4 @@
+// Purpose: Verifies providersnapshotlogic behavior with Qt Quick Test.
 import QtQuick
 import QtTest
 import "../logic/ProviderSnapshotLogic.js" as ProviderSnapshotLogic

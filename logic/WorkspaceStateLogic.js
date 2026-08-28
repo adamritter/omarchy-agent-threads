@@ -1,4 +1,5 @@
 .pragma library
+// Purpose: Provides deterministic Workspace State decisions shared by QML adapters.
 
 function number(value, fallback) {
   var parsed = Number(value)

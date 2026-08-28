@@ -1,3 +1,4 @@
+// Purpose: Implements the Sidebar Key Catcher user-interface component.
 import QtQuick
 
 Item {
