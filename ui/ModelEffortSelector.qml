@@ -138,7 +138,7 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.service.providers.setModelForProvider(
+            onClicked: root.service.settings.setModelForProvider(
               root.providerType, modelChoice.modelData.id)
           }
         }
@@ -201,7 +201,7 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-              root.service.providers.setEffortForProvider(
+              root.service.settings.setEffortForProvider(
                 root.providerType, effortChoice.modelData.id)
               picker.close()
             }
@@ -268,7 +268,7 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-              root.service.providers.setAgentForProvider(
+              root.service.settings.setAgentForProvider(
                 root.providerType, agentChoice.modelData.id)
               picker.close()
             }

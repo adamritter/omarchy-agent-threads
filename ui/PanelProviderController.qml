@@ -9,10 +9,10 @@ QtObject {
   required property var panel
 
   function cycleEffort() {
-    var current = panel.service.providers.selectedEffortForProvider(panel.activeProvider)
+    var current = panel.service.settings.selectedEffortForProvider(panel.activeProvider)
     var next = ActionLogic.nextChoiceId(
       current, panel.sidebarView.modelEffortSelector.effortChoices())
-    panel.service.providers.setEffortForProvider(panel.activeProvider, next)
+    panel.service.settings.setEffortForProvider(panel.activeProvider, next)
     return next || "default"
   }
   

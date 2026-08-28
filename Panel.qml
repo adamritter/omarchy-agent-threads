@@ -75,7 +75,7 @@ Panel {
   onSelectedIndexChanged: reloadActions.schedulePanelReloadStateCapture()
   readonly property var helpItems: PanelHelpLogic.items(
     service.settings.threadFrontend, service.settings.fastMode,
-    service.providers.selectedEffortForProvider(activeProvider))
+    service.settings.selectedEffortForProvider(activeProvider))
   readonly property alias session: sessionObject
   Ui.PanelSessionState { id: sessionObject }
   Ui.ThreadListModel {

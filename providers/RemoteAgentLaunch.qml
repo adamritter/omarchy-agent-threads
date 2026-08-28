@@ -34,9 +34,9 @@ Item {
       String(hostId || ""),
       String(path || thread.cwd || ""),
       threadId,
-      provider.controller.providers.selectedModelForProvider(providerType),
-      provider.controller.providers.selectedEffortForProvider(providerType),
-      provider.controller.providers.selectedAgentForProvider(providerType),
+      provider.controller.settings.selectedModelForProvider(providerType),
+      provider.controller.settings.selectedEffortForProvider(providerType),
+      provider.controller.settings.selectedAgentForProvider(providerType),
       providerType === "codex" ? provider.controller.codexServiceTier : ""))
     return true
   }
@@ -74,9 +74,9 @@ Item {
       provider.pendingHostId,
       provider.pendingPath,
       "", // new session
-      provider.controller.providers.selectedModelForProvider(providerType),
-      provider.controller.providers.selectedEffortForProvider(providerType),
-      provider.controller.providers.selectedAgentForProvider(providerType),
+      provider.controller.settings.selectedModelForProvider(providerType),
+      provider.controller.settings.selectedEffortForProvider(providerType),
+      provider.controller.settings.selectedAgentForProvider(providerType),
       providerType === "codex" ? provider.controller.codexServiceTier : ""))
   }
   

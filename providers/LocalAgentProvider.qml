@@ -158,9 +158,9 @@ Item {
       String(directory || pathForThread(thread)),
       id,
       serverUrl,
-      controller.providers.selectedModelForProvider(providerType),
-      controller.providers.selectedEffortForProvider(providerType),
-      controller.providers.selectedAgentForProvider(providerType)
+      controller.settings.selectedModelForProvider(providerType),
+      controller.settings.selectedEffortForProvider(providerType),
+      controller.settings.selectedAgentForProvider(providerType)
     ])
     return true
   }
@@ -185,9 +185,9 @@ Item {
       target,
       "",
       serverUrl,
-      controller.providers.selectedModelForProvider(providerType),
-      controller.providers.selectedEffortForProvider(providerType),
-      controller.providers.selectedAgentForProvider(providerType)
+      controller.settings.selectedModelForProvider(providerType),
+      controller.settings.selectedEffortForProvider(providerType),
+      controller.settings.selectedAgentForProvider(providerType)
     ])
   }
   function clearPendingNew() {

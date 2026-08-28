@@ -70,7 +70,7 @@ Item {
   function effort(mode: string): string {
     if (String(mode || "").toLowerCase() === "cycle")
       return panel.providerActions.cycleEffort()
-    return panel.service.providers.selectedEffortForProvider(
+    return panel.service.settings.selectedEffortForProvider(
       panel.activeProvider) || "default"
   }
 
@@ -187,19 +187,19 @@ Item {
       remoteTestMessage: panel.service.providers.remoteTestMessage,
       codexLimit: panel.providerActions.rateLimitText(),
       providerLimit: panel.providerActions.activeRateLimitText(),
-      modelCount: panel.service.providers.modelsForProvider(
+      modelCount: panel.service.settings.modelsForProvider(
         panel.activeProvider).length,
-      selectedModel: panel.service.providers.selectedModelForProvider(
+      selectedModel: panel.service.settings.selectedModelForProvider(
         panel.activeProvider) || "default",
-      selectedEffort: panel.service.providers.selectedEffortForProvider(
+      selectedEffort: panel.service.settings.selectedEffortForProvider(
         panel.activeProvider) || "default",
-      selectedAgent: panel.service.providers.selectedAgentForProvider(
+      selectedAgent: panel.service.settings.selectedAgentForProvider(
         panel.activeProvider) || "default",
-      effectiveModel: panel.service.providers.effectiveModelForProvider(
+      effectiveModel: panel.service.settings.effectiveModelForProvider(
         panel.activeProvider),
-      effectiveEffort: panel.service.providers.effectiveEffortForProvider(
+      effectiveEffort: panel.service.settings.effectiveEffortForProvider(
         panel.activeProvider),
-      effectiveAgent: panel.service.providers.effectiveAgentForProvider(
+      effectiveAgent: panel.service.settings.effectiveAgentForProvider(
         panel.activeProvider),
       providerVersion: panel.activeProviderHost
         ? String(panel.activeProviderHost.version || "") : "",

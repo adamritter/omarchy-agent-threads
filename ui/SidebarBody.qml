@@ -44,7 +44,7 @@ Item {
     id: codexLimitFooter
     readonly property string label: panel.providerActions.activeRateLimitText()
     readonly property bool hasSelector: panel.service
-      .providers.modelsForProvider(panel.activeProvider).length > 0
+      .settings.modelsForProvider(panel.activeProvider).length > 0
     readonly property bool hasFastButton: panel.activeProvider === "codex"
     anchors.left: parent.left
     anchors.right: parent.right

@@ -41,7 +41,7 @@ TestCase {
   QtObject {
     id: controller
     readonly property var mutations: mutations
-    readonly property var providers: providerModels
+    readonly property var settings: providerModels
     property string launchError: ""
     property string launchingProjectPath: ""
     property string codexServiceTier: "fast"

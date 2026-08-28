@@ -25,7 +25,7 @@ QtObject {
   
   function effectiveModelLabel() {
     if (providerType === "codex")
-      return compactModelLabel(service.providers.effectiveModel() || "gpt-5.6-sol")
+      return compactModelLabel(service.settings.effectiveModel() || "gpt-5.6-sol")
     var selected = selectedModel()
     var defaults = contextDefaults()
     var effective = selected !== "" ? selected
@@ -35,7 +35,7 @@ QtObject {
   
   function effectiveEffortLabel() {
     var effort = providerType === "codex"
-      ? String(service.providers.effectiveEffort() || "medium")
+      ? String(service.settings.effectiveEffort() || "medium")
       : String(selectedEffort() || contextDefaultEffort())
     if (effort === "") return ""
     return effort.charAt(0).toUpperCase() + effort.slice(1)
@@ -52,7 +52,7 @@ QtObject {
   
   function modelChoices() {
     var defaults = contextDefaults()
-    var defaultModel = providerType === "codex" ? service.providers.defaultModelForProvider(providerType)
+    var defaultModel = providerType === "codex" ? service.settings.defaultModelForProvider(providerType)
       : String(defaults.defaultModel || defaults.model || "")
     var result = [{
       id: "",
@@ -61,7 +61,7 @@ QtObject {
     }]
     var entries = providerType !== "codex" && contextHost
         && Array.isArray(contextHost.models)
-      ? contextHost.models : service.providers.modelsForProvider(providerType)
+      ? contextHost.models : service.settings.modelsForProvider(providerType)
     for (var i = 0; i < entries.length; i++) {
       var entry = entries[i] || ({})
       var id = String(entry.model || entry.id || "")
@@ -81,7 +81,7 @@ QtObject {
       id: "",
       label: "default" + (defaultEffort !== "" ? " · " + defaultEffort : "")
     }]
-    var efforts = contextModelEfforts(service.providers.selectedModelForProvider(providerType))
+    var efforts = contextModelEfforts(service.settings.selectedModelForProvider(providerType))
     for (var i = 0; i < efforts.length; i++)
       result.push({ id: efforts[i], label: efforts[i] })
     return result
@@ -101,9 +101,9 @@ QtObject {
     return result
   }
   
-  function selectedModel() { return service.providers.selectedModelForProvider(providerType) }
-  function selectedEffort() { return service.providers.selectedEffortForProvider(providerType) }
-  function selectedAgent() { return service.providers.selectedAgentForProvider(providerType) }
+  function selectedModel() { return service.settings.selectedModelForProvider(providerType) }
+  function selectedEffort() { return service.settings.selectedEffortForProvider(providerType) }
+  function selectedAgent() { return service.settings.selectedAgentForProvider(providerType) }
   
   function contextAgentEntries() {
     if (providerType !== "codex" && contextHost) {
@@ -112,7 +112,7 @@ QtObject {
         return scoped[contextPath]
     }
     return contextHost && Array.isArray(contextHost.agents)
-      ? contextHost.agents : service.providers.agentsForProvider(providerType)
+      ? contextHost.agents : service.settings.agentsForProvider(providerType)
   }
   
   function contextDefaultAgent() {
@@ -132,9 +132,9 @@ QtObject {
   
   function contextModelEfforts(modelId) {
     if (providerType === "codex" || !contextHost)
-      return service.providers.modelEffortsForProvider(providerType, modelId)
+      return service.settings.modelEffortsForProvider(providerType, modelId)
     var wanted = String(modelId || "")
-    if (wanted === "") return service.providers.modelEffortsForProvider(providerType, "")
+    if (wanted === "") return service.settings.modelEffortsForProvider(providerType, "")
     var entries = Array.isArray(contextHost.models) ? contextHost.models : []
     for (var i = 0; i < entries.length; i++) {
       if (String(entries[i] && entries[i].id || "") === wanted)
@@ -145,7 +145,7 @@ QtObject {
   
   function contextDefaultEffort() {
     if (providerType === "codex")
-      return service.providers.defaultEffortForProvider(providerType, selectedModel())
+      return service.settings.defaultEffortForProvider(providerType, selectedModel())
     var selected = selectedModel()
     if (selected !== "" && contextHost) {
       var entries = Array.isArray(contextHost.models) ? contextHost.models : []

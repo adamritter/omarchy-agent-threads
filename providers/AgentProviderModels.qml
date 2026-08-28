@@ -49,12 +49,12 @@ Item {
   }
   function setModel(providerType, value) {
     var type = AgentProviderLogic.providerType(providerType)
-    if (type === "codex") controller.providers.setSelectedModel(value)
+    if (type === "codex") controller.settings.setSelectedModel(value)
     else registry.setModel(type, value)
   }
   function setEffort(providerType, value) {
     var type = AgentProviderLogic.providerType(providerType)
-    if (type === "codex") controller.providers.setSelectedEffort(value)
+    if (type === "codex") controller.settings.setSelectedEffort(value)
     else registry.setEffort(type, value)
   }
   function setAgent(providerType, value) { registry.setAgent(providerType, value) }

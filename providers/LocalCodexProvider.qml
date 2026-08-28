@@ -48,8 +48,8 @@ Item {
       threadId,
       String(cwdOverride || controller.threadActions.projectPathForThread(thread)
         || controller.backendHomePath),
-      controller.providers.effectiveModel(),
-      controller.providers.effectiveEffort(),
+      controller.settings.effectiveModel(),
+      controller.settings.effectiveEffort(),
       controller.codexServiceTier))
     openProcess.running = true
     return true
@@ -71,7 +71,7 @@ Item {
     pendingNewThreadAttempts = 20
     newProjectProcess.command = guarded(ActionLogic.localCodexTerminalCommand(
       terminalHelperPath, "", path,
-      controller.providers.effectiveModel(), controller.providers.effectiveEffort(),
+      controller.settings.effectiveModel(), controller.settings.effectiveEffort(),
       controller.codexServiceTier))
     newProjectProcess.running = true
   }

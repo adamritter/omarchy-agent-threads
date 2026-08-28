@@ -126,7 +126,6 @@ Item {
     store: root
     appServer: agentProviders.appServer
     routing: agentProviders.routing
-    modelSettings: agentProviders.modelSettings
     localProviders: agentProviders.localProviders
     remotes: agentProviders.remotes
     supplementalHosts: agentProviders.supplementalHosts
@@ -142,7 +141,11 @@ Item {
     routing: agentProviders.routing
     localCodex: agentProviders.localCodex
   }
-  ThreadStoreSettingsApi { id: settingsApi; preferences: sidebarPreferences }
+  ThreadStoreSettingsApi {
+    id: settingsApi
+    preferences: sidebarPreferences
+    modelSettings: agentProviders.modelSettings
+  }
 
 
   onActiveThreadIdChanged: {

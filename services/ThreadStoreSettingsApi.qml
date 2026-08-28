@@ -2,6 +2,7 @@ import QtQuick
 
 QtObject {
   required property var preferences
+  required property var modelSettings
 
   readonly property bool loaded: preferences.loaded
   readonly property bool hydrating: preferences.hydrating
@@ -39,6 +40,94 @@ QtObject {
   
   function setSelectedProvider(value) {
     preferences.setSelectedProvider(value)
+  }
+
+  function setSelectedModel(value) {
+    preferences.setSelectedModel(value)
+  }
+
+  function setSelectedEffort(value) {
+    preferences.setSelectedEffort(value)
+  }
+
+  function selectedModelInfo() {
+    return modelSettings.modelState("codex").model
+  }
+
+  function effectiveModel() {
+    return modelSettings.effectiveModel("codex")
+  }
+
+  function effectiveEffort() {
+    return modelSettings.effectiveEffort("codex")
+  }
+
+  function selectedModelEfforts(modelId) {
+    return modelSettings.modelEfforts("codex", modelId)
+  }
+
+  function providerHost(providerType) {
+    return modelSettings.providerHost(providerType)
+  }
+
+  function modelsForProvider(providerType) {
+    return modelSettings.models(providerType)
+  }
+
+  function agentsForProvider(providerType) {
+    return modelSettings.agents(providerType)
+  }
+
+  function selectedModelForProvider(providerType) {
+    return modelSettings.selectedModel(providerType)
+  }
+
+  function selectedEffortForProvider(providerType) {
+    return modelSettings.selectedEffort(providerType)
+  }
+
+  function selectedAgentForProvider(providerType) {
+    return modelSettings.selectedAgent(providerType)
+  }
+
+  function defaultModelForProvider(providerType) {
+    return modelSettings.defaultModel(providerType)
+  }
+
+  function defaultEffortForProvider(providerType, modelId) {
+    return modelSettings.defaultEffort(providerType, modelId)
+  }
+
+  function defaultAgentForProvider(providerType) {
+    return modelSettings.defaultAgent(providerType)
+  }
+
+  function effectiveModelForProvider(providerType) {
+    return modelSettings.effectiveModel(providerType)
+  }
+
+  function effectiveEffortForProvider(providerType) {
+    return modelSettings.effectiveEffort(providerType)
+  }
+
+  function effectiveAgentForProvider(providerType) {
+    return modelSettings.effectiveAgent(providerType)
+  }
+
+  function modelEffortsForProvider(providerType, modelId) {
+    return modelSettings.modelEfforts(providerType, modelId)
+  }
+
+  function setModelForProvider(providerType, value) {
+    modelSettings.setModel(providerType, value)
+  }
+
+  function setEffortForProvider(providerType, value) {
+    modelSettings.setEffort(providerType, value)
+  }
+
+  function setAgentForProvider(providerType, value) {
+    modelSettings.setAgent(providerType, value)
   }
   
   function setThreadFrontend(value, source) {
